@@ -3,6 +3,7 @@ import {
   buildProductionBoundaryBridgeStartPayload,
   ProductionBoundaryBridgeStartError,
 } from '../src/lib/production-boundary-bridge-start';
+import { buildProductionSegmentStartPayload } from '../src/lib/production-segment-start-payload';
 import { evaluateProductionSegmentTransition } from '../src/lib/production-segment-transition';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -283,6 +284,14 @@ assert(transitionReadiness.ok === true, `generated boundary bridge should satisf
 assert(transitionReadiness.firstFrameUrl === 'https://example.invalid/boundary-1-2-new-camera.jpg', 'transition gate should use bridge new-camera image as first frame');
 assert(transitionReadiness.previousLastFrameUrl === 'https://example.invalid/seg1-last.jpg', 'transition gate should preserve previous source tail');
 
+const nextStartPayload = buildProductionSegmentStartPayload(nextSegment as any);
+assert(nextStartPayload.firstFrameImage === 'https://example.invalid/boundary-1-2-new-camera.jpg', 'segment start payload should submit bridge new-camera image');
+assert(nextStartPayload.firstFrameSource === 'boundary-new-camera', 'segment start payload should mark boundary-new-camera source');
+assert(nextStartPayload.previousLastFrameImage === 'https://example.invalid/seg1-last.jpg', 'segment start payload should preserve previous tail as continuity memory');
+assert(nextStartPayload.providerPrompt.includes('首帧来源=边界 bridge 生成并抽取的 new-camera image'), 'provider prompt should explain bridge new-camera source');
+assert(!nextStartPayload.providerPrompt.includes('已传入上一段尾帧作为首帧图像'), 'bridge provider prompt must not claim previous tail is the submitted first frame');
+assert(!nextStartPayload.providerPrompt.includes('从上一段尾帧推进'), 'bridge provider prompt should progress from new-camera first frame, not from previous tail');
+
 let blocked = false;
 try {
   buildProductionBoundaryBridgeStartPayload(makeAssemblyPlan(false), 0);
@@ -310,6 +319,9 @@ console.log(JSON.stringify({
     providerPromptLength: payload.providerPromptLength,
     sourceLastFrameImage: payload.sourceLastFrameImage,
     writebackFirstFrameUrl: nextSegment.expectedInputs.firstFrameUrl,
+    segmentStartFirstFrameSource: nextStartPayload.firstFrameSource,
+    segmentStartFirstFrameImage: nextStartPayload.firstFrameImage,
+    segmentStartPreviousTailMemory: nextStartPayload.previousLastFrameImage,
     boundaryStatusAfterWriteback: updatedBoundary.status,
     transitionGateAcceptsNewCameraImage: transitionReadiness.ok,
   },

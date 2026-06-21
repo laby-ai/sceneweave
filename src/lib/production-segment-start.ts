@@ -364,6 +364,7 @@ export function startProductionAssemblySegment(
     contractVersion: startPayload.contractVersion,
     variationType: startPayload.variationType,
     firstFrameImage: startPayload.firstFrameImage,
+    firstFrameSource: startPayload.firstFrameSource,
     previousLastFrameImage: startPayload.previousLastFrameImage,
     promptPreview: startPayload.promptPreview,
     providerPrompt: startPayload.providerPrompt,

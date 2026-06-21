@@ -8,6 +8,7 @@ export interface ProductionSegmentStartPayload {
   contractVersion: string | null;
   variationType: string | null;
   firstFrameImage: string | null;
+  firstFrameSource: 'none' | 'segment-first-frame' | 'direct-previous-tail' | 'boundary-new-camera';
   previousLastFrameImage: string | null;
   prompt: string;
   promptPreview: string;
@@ -296,7 +297,65 @@ function removeNarrationCarryover(value: string, segment: ProductionSegmentPlan)
     .trim();
 }
 
-function buildProviderTimeAxisConstraint(segment: ProductionSegmentPlan) {
+function resolveFirstFrameInput(segment: ProductionSegmentPlan) {
+  const firstFrameUrl = segment.expectedInputs.firstFrameUrl || null;
+  const previousLastFrameUrl = segment.expectedInputs.previousLastFrameUrl || null;
+  const bridgeFirstFrameUrl = segment.expectedInputs.bridgeFirstFrameUrl || null;
+  const usesBoundaryBridge = segment.expectedInputs.bridgeStrategy === 'transition-bridge'
+    && firstFrameUrl
+    && bridgeFirstFrameUrl
+    && firstFrameUrl === bridgeFirstFrameUrl
+    && firstFrameUrl !== previousLastFrameUrl;
+  const usesDirectPreviousTail = Boolean(firstFrameUrl && previousLastFrameUrl && firstFrameUrl === previousLastFrameUrl);
+
+  if (usesBoundaryBridge) {
+    return {
+      firstFrameImage: firstFrameUrl,
+      previousLastFrameImage: previousLastFrameUrl,
+      firstFrameSource: 'boundary-new-camera' as const,
+    };
+  }
+
+  if (usesDirectPreviousTail) {
+    return {
+      firstFrameImage: firstFrameUrl,
+      previousLastFrameImage: previousLastFrameUrl,
+      firstFrameSource: 'direct-previous-tail' as const,
+    };
+  }
+
+  if (firstFrameUrl) {
+    return {
+      firstFrameImage: firstFrameUrl,
+      previousLastFrameImage: previousLastFrameUrl,
+      firstFrameSource: 'segment-first-frame' as const,
+    };
+  }
+
+  return {
+    firstFrameImage: previousLastFrameUrl,
+    previousLastFrameImage: previousLastFrameUrl,
+    firstFrameSource: previousLastFrameUrl ? 'direct-previous-tail' as const : 'none' as const,
+  };
+}
+
+function describeFirstFrameSource(source: ReturnType<typeof resolveFirstFrameInput>['firstFrameSource']) {
+  if (source === 'boundary-new-camera') {
+    return '边界 bridge 生成并抽取的 new-camera image 是本段首帧；上一段尾帧只作为来源记忆和故事/声音状态，不再直接当作首帧。';
+  }
+  if (source === 'direct-previous-tail') {
+    return '上一段尾帧直接作为本段首帧图像。';
+  }
+  if (source === 'segment-first-frame') {
+    return '本段已有独立首帧图像。';
+  }
+  return '第一段无外部首帧图像。';
+}
+
+function buildProviderTimeAxisConstraint(
+  segment: ProductionSegmentPlan,
+  firstFrameInput: ReturnType<typeof resolveFirstFrameInput>,
+) {
   const contract = segment.shotFrameContract;
   const storyContract = segment.storySegmentContract;
   const duration = Math.min(Math.max(segment.duration, 5), 10);
@@ -307,8 +366,11 @@ function buildProviderTimeAxisConstraint(segment: ProductionSegmentPlan) {
   const narration = storyContract.audioContract.narration || '无旁白';
   const audio = segment.audioState?.audioCue || storyContract.audioContract.soundDesign || contract.audioDescription;
   const progression = buildSegmentProgressionCue(segment);
+  const openingContinuity = firstFrameInput.firstFrameSource === 'boundary-new-camera'
+    ? '复现 bridge new-camera image 的镜头方向、人物站位、关键道具和情绪；只用上一段尾帧解释来源，不把上一段尾帧重新拍一遍'
+    : '复现首帧和上一段尾帧状态，不换人不换关键道具';
   const openingRule = segment.index > 0
-    ? `时间轴硬约束：0-${openingEnd}秒复现首帧和上一段尾帧状态，不换人不换关键道具；${openingEnd}秒后必须明确转入本段核心场景「${progression.title}」，不得整段停留在上一段场景`
+    ? `时间轴硬约束：0-${openingEnd}秒${openingContinuity}；${openingEnd}秒后必须明确转入本段核心场景「${progression.title}」，不得整段停留在上一段场景`
     : `时间轴硬约束：0-${openingEnd}秒建立本段核心场景「${progression.title}」、主角、关键道具和冲突方向`;
 
   return [
@@ -335,7 +397,9 @@ function buildProviderSafePrompt(segment: ProductionSegmentPlan) {
     });
   }
 
-  const firstFrameImage = segment.expectedInputs.firstFrameUrl || segment.expectedInputs.previousLastFrameUrl || null;
+  const firstFrameInput = resolveFirstFrameInput(segment);
+  const firstFrameImage = firstFrameInput.firstFrameImage;
+  const firstFrameSourceText = describeFirstFrameSource(firstFrameInput.firstFrameSource);
   const previousStoryCue = segment.expectedInputs.previousStoryStateCue || '无上一段故事状态';
   const previousAudioCue = segment.expectedInputs.previousAudioCue || '无上一段声音状态';
   const providerPreviousStoryCue = removeNarrationCarryover(previousStoryCue, segment);
@@ -350,13 +414,16 @@ function buildProviderSafePrompt(segment: ProductionSegmentPlan) {
     140
   );
   const progression = buildSegmentProgressionCue(segment);
+  const progressionStartFrame = firstFrameInput.firstFrameSource === 'boundary-new-camera'
+    ? '边界 bridge 的 new-camera 首帧'
+    : '上一段尾帧';
   const continuityHardConstraint = firstFrameImage
-    ? `连续性硬约束：已传入上一段尾帧作为首帧图像，开头1到2秒必须直接承接该图像的人物位置、服装、关键道具、场景方向和情绪，不重新开场；本段不是上一段重复，承接完成后必须推进到「${progression.title}」，不得整段停留在上一段场景；故事承接上一段，上一段故事=${compactPreviousStoryCue}；声音承接上一段，上一段声音=${compactPreviousAudioCue}`
+    ? `连续性硬约束：${firstFrameSourceText} 开头1到2秒必须直接承接传入首帧图像的人物位置、服装、关键道具、场景方向和情绪，不重新开场；本段不是上一段重复，承接完成后必须推进到「${progression.title}」，不得整段停留在上一段场景；故事承接上一段，上一段故事=${compactPreviousStoryCue}；声音承接上一段，上一段声音=${compactPreviousAudioCue}`
     : '连续性硬约束：第一段必须清楚建立人物、地点、关键道具、主角目标、冲突对象和声音基调';
   const progressionHardConstraint = firstFrameImage && segment.index > 0
-    ? `本段不是上一段重复：承接完成后必须从上一段尾帧推进到「${progression.title}」，不得整段停留在上一段场景；画面必须出现${progression.visualEvidence || storyContract.videoDesc.visualCausality}；声音必须出现${progression.soundCue || storyContract.audioContract.soundDesign}`
+    ? `本段不是上一段重复：承接完成后必须从${progressionStartFrame}推进到「${progression.title}」，不得整段停留在上一段场景；画面必须出现${progression.visualEvidence || storyContract.videoDesc.visualCausality}；声音必须出现${progression.soundCue || storyContract.audioContract.soundDesign}`
     : `本段核心信息：${progression.title}；画面必须出现${progression.visualEvidence || storyContract.videoDesc.visualCausality}；声音必须出现${progression.soundCue || storyContract.audioContract.soundDesign}`;
-  const timeAxisConstraint = buildProviderTimeAxisConstraint(segment);
+  const timeAxisConstraint = buildProviderTimeAxisConstraint(segment, firstFrameInput);
 
   return compactProviderPrompt([
     `短剧连续片段 ${segment.index + 1}，写实电影感，镜头和角色动作连续`,
@@ -364,7 +431,7 @@ function buildProviderSafePrompt(segment: ProductionSegmentPlan) {
     firstFrameImage && segment.index > 0
       ? `本段不是上一段重复：承接首帧后必须推进到本段核心信息，不得整段停留在上一段场景。`
       : '',
-    `连续性硬约束摘要：故事承接上一段；上一段故事=${compactPreviousStoryCue}；声音承接上一段；上一段声音=${compactPreviousAudioCue}；边界桥接计划=${boundaryBridgePrompt || '第一段无上一段边界，建立稳定开场'}；时间轴硬约束=开头复现首帧和上一段尾帧状态后推进本段，结尾停在可给下一段接住的尾帧；声音时间轴=承接上一段音色后进入本段`,
+    `连续性硬约束摘要：首帧来源=${firstFrameSourceText}；故事承接上一段；上一段故事=${compactPreviousStoryCue}；声音承接上一段；上一段声音=${compactPreviousAudioCue}；边界桥接计划=${boundaryBridgePrompt || '第一段无上一段边界，建立稳定开场'}；时间轴硬约束=开头复现传入首帧状态后推进本段，结尾停在可给下一段接住的尾帧；声音时间轴=承接上一段音色后进入本段`,
     `声音事件摘要：${audioEventSummary}`,
     `开头画面：${contract.firstFrame.description}`,
     `主角目标：${storyContract.storyState.currentGoal}`,
@@ -412,7 +479,7 @@ function buildProviderSafePrompt(segment: ProductionSegmentPlan) {
 
 export function buildProductionSegmentStartPayload(segment: ProductionSegmentPlan): ProductionSegmentStartPayload {
   const contractBlock = buildContractPromptBlock(segment);
-  const firstFrameImage = segment.expectedInputs.firstFrameUrl || segment.expectedInputs.previousLastFrameUrl || null;
+  const firstFrameInput = resolveFirstFrameInput(segment);
   const prompt = [
     contractBlock,
     '',
@@ -429,7 +496,8 @@ export function buildProductionSegmentStartPayload(segment: ProductionSegmentPla
     usesShotFrameContract: true,
     contractVersion: segment.shotFrameContract.version,
     variationType: segment.shotFrameContract.variationType,
-    firstFrameImage,
+    firstFrameImage: firstFrameInput.firstFrameImage,
+    firstFrameSource: firstFrameInput.firstFrameSource,
     previousLastFrameImage: segment.expectedInputs.previousLastFrameUrl,
     prompt,
     promptPreview: prompt.slice(0, 1400),
