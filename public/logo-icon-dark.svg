@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-label="绘影">
+  <defs>
+    <linearGradient id="frame" x1="10" y1="6" x2="54" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7AF0FF"/>
+      <stop offset="0.45" stop-color="#4F6CFF"/>
+      <stop offset="1" stop-color="#9B5CFF"/>
+    </linearGradient>
+    <linearGradient id="core" x1="21" y1="18" x2="43" y2="46" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#EAF9FF"/>
+      <stop offset="0.48" stop-color="#70E0FF"/>
+      <stop offset="1" stop-color="#6E7BFF"/>
+    </linearGradient>
+    <radialGradient id="glow-core" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(32 32) rotate(90) scale(25)">
+      <stop stop-color="#70E0FF" stop-opacity="0.9"/>
+      <stop offset="0.62" stop-color="#4F6CFF" stop-opacity="0.24"/>
+      <stop offset="1" stop-color="#070A12" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow" x="-45%" y="-45%" width="190%" height="190%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="0" stdDeviation="3.8" flood-color="#70E0FF" flood-opacity="0.55"/>
+      <feDropShadow dx="0" dy="10" stdDeviation="13" flood-color="#000000" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#glow)">
+    <rect x="6.5" y="6.5" width="51" height="51" rx="16" fill="#050711" stroke="url(#frame)" stroke-width="1.2"/>
+    <rect x="11.5" y="11.5" width="41" height="41" rx="12" fill="#080C18" stroke="#FFFFFF" stroke-opacity="0.12"/>
+    <circle cx="32" cy="32" r="22" fill="url(#glow-core)"/>
+
+    <path d="M17.4 32.8C17.4 23.6 24.6 16.4 33.2 16.4C39 16.4 44.5 19.5 47.3 24.9C39.7 21.5 31.1 23.2 26.1 29.6C22.5 34.3 21.9 40.3 24.2 45.4C20 42.7 17.4 38.1 17.4 32.8Z" fill="url(#frame)" opacity="0.92"/>
+    <path d="M46.7 31.2C46.7 40.4 39.5 47.6 30.8 47.6C25.1 47.6 19.7 44.7 16.7 39.5C24.2 42.7 32.7 41.1 37.8 34.8C41.5 30.2 42.3 24.2 40.1 18.9C44.2 21.6 46.7 26 46.7 31.2Z" fill="url(#frame)" opacity="0.7"/>
+
+    <circle cx="32" cy="32" r="11.5" fill="#050711" stroke="#70E0FF" stroke-opacity="0.42"/>
+    <path d="M29.1 25.6L40.4 32L29.1 38.4V25.6Z" fill="url(#core)"/>
+
+    <path d="M16 19.5H22.6" stroke="#70E0FF" stroke-width="1.2" stroke-linecap="round" opacity="0.85"/>
+    <path d="M41.4 44.5H48" stroke="#9B5CFF" stroke-width="1.2" stroke-linecap="round" opacity="0.85"/>
+    <circle cx="21" cy="45" r="1.4" fill="#70E0FF"/>
+    <circle cx="46" cy="20" r="1.4" fill="#9B5CFF"/>
+  </g>
+</svg>

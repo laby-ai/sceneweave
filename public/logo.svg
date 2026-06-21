@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 60" fill="none">
+  <!-- Arc dashed path -->
+  <path d="M30 42 Q100 8 170 42" stroke="#5C4033" stroke-width="1.2" stroke-dasharray="4 3" fill="none"/>
+  
+  <!-- Pen (left) -->
+  <g transform="translate(22, 22)">
+    <rect x="2" y="8" width="6" height="16" rx="1.5" fill="#2C3E6B" stroke="#5C4033" stroke-width="0.8"/>
+    <path d="M5 24 L3 30 L5 32 L7 30 Z" fill="#D4A574" stroke="#5C4033" stroke-width="0.8"/>
+    <rect x="6" y="10" width="1.5" height="10" rx="0.5" fill="#8B9DC3"/>
+    <rect x="3" y="6" width="4" height="3" rx="1" fill="#3B4F7A" stroke="#5C4033" stroke-width="0.6"/>
+  </g>
+  
+  <!-- Clapperboard (center) -->
+  <g transform="translate(85, 18)">
+    <rect x="0" y="10" width="22" height="16" rx="2" fill="#F5F0E8" stroke="#5C4033" stroke-width="0.8"/>
+    <rect x="0" y="6" width="22" height="8" rx="1.5" fill="#5C4033" stroke="#5C4033" stroke-width="0.8"/>
+    <rect x="2" y="7" width="4" height="5" rx="0.5" fill="#F5F0E8"/>
+    <rect x="8" y="7" width="4" height="5" rx="0.5" fill="#F5F0E8"/>
+    <rect x="14" y="7" width="4" height="5" rx="0.5" fill="#F5F0E8"/>
+    <circle cx="11" cy="20" r="3" fill="none" stroke="#5C4033" stroke-width="0.8"/>
+    <rect x="3" y="16" width="2" height="2" rx="0.3" fill="#5C4033"/>
+    <rect x="17" y="16" width="2" height="2" rx="0.3" fill="#5C4033"/>
+  </g>
+  
+  <!-- Lightbulb (right) -->
+  <g transform="translate(155, 16)">
+    <path d="M10 2 C4 2 0 7 0 12 C0 16 3 19 5 21 L5 24 L15 24 L15 21 C17 19 20 16 20 12 C20 7 16 2 10 2Z" fill="#FFE066" stroke="#5C4033" stroke-width="0.8"/>
+    <path d="M7 12 L8 8 L10 14 L12 8 L13 12" stroke="#5C4033" stroke-width="0.7" fill="none"/>
+    <rect x="6" y="24" width="8" height="3" rx="0.8" fill="#D4A574" stroke="#5C4033" stroke-width="0.6"/>
+    <line x1="7" y1="25.5" x2="13" y2="25.5" stroke="#5C4033" stroke-width="0.4"/>
+  </g>
+  
+  <!-- Stars along arc -->
+  <g fill="#E8B931" stroke="#5C4033" stroke-width="0.4">
+    <path d="M40 18 L41 20 L43 20 L41.5 21.5 L42 23.5 L40 22 L38 23.5 L38.5 21.5 L37 20 L39 20Z" transform="scale(0.7) translate(20, 5)"/>
+    <path d="M70 14 L71 16 L73 16 L71.5 17.5 L72 19.5 L70 18 L68 19.5 L68.5 17.5 L67 16 L69 16Z" transform="scale(0.6) translate(30, 2)"/>
+    <path d="M120 8 L121 10 L123 10 L121.5 11.5 L122 13.5 L120 12 L118 13.5 L118.5 11.5 L117 10 L119 10Z" transform="scale(0.5) translate(100, -2)"/>
+    <path d="M150 14 L151 16 L153 16 L151.5 17.5 L152 19.5 L150 18 L148 19.5 L148.5 17.5 L147 16 L149 16Z" transform="scale(0.6) translate(60, 2)"/>
+    <path d="M175 22 L176 24 L178 24 L176.5 25.5 L177 27.5 L175 26 L173 27.5 L173.5 25.5 L172 24 L174 24Z" transform="scale(0.7) translate(-10, 5)"/>
+  </g>
+
+  <!-- Text: 绘影工作室 -->
+  <text x="200" y="38" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="22" font-weight="700" fill="#1a1a2e" letter-spacing="1">
+    绘影工作室
+  </text>
+</svg>

@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 64" fill="none" role="img" aria-label="绘影工作室">
+  <defs>
+    <linearGradient id="mark-a" x1="8" y1="7" x2="56" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#55D5FF"/>
+      <stop offset="0.48" stop-color="#4F6CFF"/>
+      <stop offset="1" stop-color="#8B5CF6"/>
+    </linearGradient>
+    <linearGradient id="mark-b" x1="16" y1="12" x2="50" y2="50" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#EEF6FF"/>
+      <stop offset="1" stop-color="#9FB4FF"/>
+    </linearGradient>
+    <filter id="soft-glow" x="-30%" y="-30%" width="160%" height="160%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#4F6CFF" flood-opacity="0.34"/>
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#soft-glow)">
+    <rect x="7" y="7" width="50" height="50" rx="16" fill="#070A12" stroke="#FFFFFF" stroke-opacity="0.14"/>
+    <path d="M36.6 10.8C27.1 8.2 16.8 13.2 12.7 22.4C20.2 17.5 29.3 18.6 35 24.4C40.7 30.2 41.5 39.3 36.4 46.7C47.3 42.9 52.9 30.9 49.1 20.3C46.9 15.5 42.6 12.4 36.6 10.8Z" fill="url(#mark-a)"/>
+    <path d="M17.1 43.1C24.7 49.8 36.3 49.3 43.4 42.4C34.9 44.2 27.1 40.9 23.2 34C19.2 27.1 20.4 18.9 26.1 12.6C14.7 14.7 7.6 25.9 10.3 37.2C11.4 39.4 13.6 41.3 17.1 43.1Z" fill="url(#mark-a)" opacity="0.84"/>
+    <path d="M33.1 20.8C26.1 20.8 20.5 26.2 20.5 32.9C20.5 39.6 26.1 45.1 33.1 45.1C39.9 45.1 45.5 39.6 45.5 32.9C45.5 26.2 39.9 20.8 33.1 20.8Z" fill="#090D18"/>
+    <path d="M29 26.1L40.4 32.7L29 39.3V26.1Z" fill="url(#mark-b)"/>
+    <path d="M13.5 49.2C24.7 58.2 43.6 56.2 52.1 42.4" stroke="#70E0FF" stroke-width="2" stroke-linecap="round" opacity="0.58"/>
+  </g>
+
+  <text x="76" y="36" font-family="'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, sans-serif" font-size="23" font-weight="750" fill="#F8FBFF" letter-spacing="0">
+    绘影工作室
+  </text>
+  <text x="78" y="52" font-family="Inter, -apple-system, BlinkMacSystemFont, sans-serif" font-size="9" font-weight="600" fill="#7F8AA3" letter-spacing="2.2">
+    HUIYING STUDIO
+  </text>
+</svg>

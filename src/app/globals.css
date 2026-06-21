@@ -1,0 +1,356 @@
+/* Google Fonts - 使用 .cn 域名加速中国访问 - 已移至 layout.tsx <link> 标签加载 */
+
+@import "tailwindcss";
+
+/* ============================================
+   Tailwind v4 Theme Configuration
+   使用 CSS 自定义属性实现亮/暗主题切换
+   ============================================ */
+
+@custom-variant dark (&:is(.dark *));
+
+/* === 亮色主题变量（默认） === */
+:root {
+  --background: #ffffff;
+  --foreground: #111827;
+  --card: #ffffff;
+  --card-foreground: #111827;
+  --secondary: #f3f4f6;
+  --secondary-foreground: #111827;
+  --muted: #f9fafb;
+  --muted-foreground: rgba(0,0,0,0.55);
+  --accent: #e5e7eb;
+  --accent-foreground: #111827;
+  --border: #e5e7eb;
+  --primary: #EF4444;
+  --primary-foreground: #ffffff;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --ring: #EF4444;
+  --nav-bg: rgba(255,255,255,0.9);
+  --radius: 0.75rem;
+  --console-bg: rgba(255,255,255,0.85);
+  --console-bg-solid: #ffffff;
+  --console-border: rgba(0,0,0,0.06);
+}
+
+/* === 暗色主题变量 === */
+.dark {
+  --background: #000000;
+  --foreground: #f8fbff;
+  --card: #0d0f15;
+  --card-foreground: #ffffff;
+  --secondary: #141720;
+  --secondary-foreground: #ffffff;
+  --muted: #11131a;
+  --muted-foreground: rgba(235,242,255,0.68);
+  --accent: #1a1f2e;
+  --accent-foreground: #ffffff;
+  --border: rgba(148,163,184,0.18);
+  --primary: #4f6cff;
+  --primary-foreground: #ffffff;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --ring: #6285ff;
+  --nav-bg: rgba(4,5,8,0.86);
+  --console-bg: rgba(13,15,21,0.86);
+  --console-bg-solid: #0d0f15;
+  --console-border: rgba(148,163,184,0.16);
+}
+
+/* === Tailwind v4 Theme Token 映射 === */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-ring: var(--ring);
+  --color-console-bg: var(--console-bg);
+  --color-console-bg-solid: var(--console-bg-solid);
+  --color-console-border: var(--console-border);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-noto-sans: "Noto Sans SC", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-noto-serif: "Noto Serif SC", Georgia, serif;
+  --font-lxgw-wenkai: "LXGW WenKai", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-ma-shan-zheng: "Ma Shan Zheng", cursive;
+  --font-zcoolkuaile: "ZCOOL KuaiLe", cursive;
+  --font-zcool-qingke: "ZCOOL QingKe HuangYou", cursive;
+  --font-zhimangxing: "Zhi Mang Xing", cursive;
+  --font-liujianmaocao: "Liu Jian Mao Cao", cursive;
+  --font-longcang: "Long Cang", cursive;
+  --font-noto-sans-jp: "Noto Sans JP", "Noto Sans SC", sans-serif;
+  --font-noto-serif-jp: "Noto Serif JP", "Noto Serif SC", serif;
+  --font-zen-maru: "Zen Maru Gothic", "Noto Sans SC", sans-serif;
+  --font-kosugi-maru: "Kosugi Maru", "Noto Sans SC", sans-serif;
+  --font-noto-sans-kr: "Noto Sans KR", "Noto Sans SC", sans-serif;
+  --font-black-han-sans: "Black Han Sans", "Noto Sans SC", sans-serif;
+  --font-do-hyeon: "Do Hyeon", "Noto Sans SC", sans-serif;
+  --font-inter: "Inter", "Noto Sans SC", -apple-system, sans-serif;
+  --font-playfair: "Playfair Display", "Noto Serif SC", serif;
+  --font-fira-code: "Fira Code", "Noto Sans SC", monospace;
+  --font-space-grotesk: "Space Grotesk", "Noto Sans SC", sans-serif;
+  --font-poppins: "Poppins", "Noto Sans SC", sans-serif;
+  --font-source-code: "Source Code Pro", "Noto Sans SC", monospace;
+
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+  --animate-fade-in-up: fadeInUp 0.35s ease-out both;
+}
+
+@keyframes accordion-down {
+  from { height: 0; }
+  to { height: var(--radix-accordion-content-height); }
+}
+@keyframes accordion-up {
+  from { height: var(--radix-accordion-content-height); }
+  to { height: 0; }
+}
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fadeIn {
+  animation: fadeInUp 0.35s ease-out both;
+}
+
+/* ============================================
+   全局基础样式
+   ============================================ */
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-family, 'Noto Sans SC', -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif);
+    font-size: var(--font-size-base, 14px);
+    background:
+      radial-gradient(circle at 18% 0%, rgba(79,108,255,0.15), transparent 28rem),
+      radial-gradient(circle at 82% 8%, rgba(124,58,237,0.12), transparent 26rem),
+      var(--background);
+  }
+  /* 字体风格类 */
+  .font-sans { font-family: var(--font-sans); }
+  .font-noto-sans { font-family: var(--font-noto-sans); }
+  .font-noto-serif { font-family: var(--font-noto-serif); }
+  .font-lxgw-wenkai { font-family: var(--font-lxgw-wenkai); }
+  .font-ma-shan-zheng { font-family: var(--font-ma-shan-zheng); }
+  .font-zcoolkuaile { font-family: var(--font-zcoolkuaile); }
+  .font-zcool-qingke { font-family: var(--font-zcool-qingke); }
+  .font-zhimangxing { font-family: var(--font-zhimangxing); }
+  .font-liujianmaocao { font-family: var(--font-liujianmaocao); }
+  .font-longcang { font-family: var(--font-longcang); }
+  .font-noto-sans-jp { font-family: var(--font-noto-sans-jp); }
+  .font-noto-serif-jp { font-family: var(--font-noto-serif-jp); }
+  .font-zen-maru { font-family: var(--font-zen-maru); }
+  .font-kosugi-maru { font-family: var(--font-kosugi-maru); }
+  .font-noto-sans-kr { font-family: var(--font-noto-sans-kr); }
+  .font-black-han-sans { font-family: var(--font-black-han-sans); }
+  .font-do-hyeon { font-family: var(--font-do-hyeon); }
+  .font-inter { font-family: var(--font-inter); }
+  .font-playfair { font-family: var(--font-playfair); }
+  .font-fira-code { font-family: var(--font-fira-code); }
+  .font-space-grotesk { font-family: var(--font-space-grotesk); }
+  .font-poppins { font-family: var(--font-poppins); }
+  .font-source-code { font-family: var(--font-source-code); }
+}
+
+/* ============================================
+   暗色模式滚动条
+   ============================================ */
+
+.dark ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.dark ::-webkit-scrollbar-track {
+  background: #0a0a0a;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #4b5563;
+  border-radius: 3px;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}
+
+/* 亮色模式滚动条 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* ====== 昼夜切换滑块 ThemeSwitch ====== */
+.theme-checkbox {
+  display: none;
+}
+
+.theme-switch {
+  position: relative;
+  display: inline-block;
+  width: 76px;
+  height: 34px;
+  border-radius: 50px;
+  cursor: pointer;
+  background-color: #5bb3eb;
+  box-shadow: inset 0 0 6px rgba(0,0,0,0.15), 0 2px 8px rgba(0,0,0,0.08);
+  transition: background-color 0.6s cubic-bezier(0.4, 0.0, 0.2, 1);
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+  flex-shrink: 0;
+}
+
+.theme-switch .stars-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transform: translateY(-20px);
+  transition: all 0.6s cubic-bezier(0.4, 0.0, 0.2, 1);
+}
+
+.theme-switch .star {
+  position: absolute;
+  background-color: #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 4px #fff;
+  animation: twinkle 2s infinite alternate;
+}
+
+.theme-switch .star-1 { width: 2px; height: 2px; top: 7px; left: 14px; animation-delay: 0s; }
+.theme-switch .star-2 { width: 1.5px; height: 1.5px; top: 12px; left: 28px; animation-delay: 0.5s; }
+.theme-switch .star-3 { width: 2.5px; height: 2.5px; top: 5px; left: 38px; animation-delay: 1s; }
+.theme-switch .star-4 { width: 1.5px; height: 1.5px; top: 17px; left: 19px; animation-delay: 1.5s; }
+.theme-switch .star-5 { width: 2px; height: 2px; top: 20px; left: 40px; animation-delay: 0.8s; }
+
+@keyframes twinkle {
+  0% { opacity: 0.3; transform: scale(0.8); }
+  100% { opacity: 1; transform: scale(1.2); }
+}
+
+.theme-switch .shooting-star {
+  position: absolute;
+  top: 0;
+  left: 38px;
+  width: 30px;
+  height: 2px;
+  background: linear-gradient(to right, rgba(255,255,255,0), rgba(255,255,255,1));
+  transform: rotate(-45deg);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.theme-checkbox:checked ~ .theme-switch .shooting-star {
+  animation: shooting 4s infinite 2s;
+}
+
+@keyframes shooting {
+  0% { transform: translate(0, 0) rotate(-45deg); opacity: 1; }
+  20% { transform: translate(-80px, 80px) rotate(-45deg); opacity: 0; }
+  100% { transform: translate(-80px, 80px) rotate(-45deg); opacity: 0; }
+}
+
+.theme-switch .clouds-container {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  transition: all 0.6s cubic-bezier(0.4, 0.0, 0.2, 1);
+  opacity: 1;
+  transform: translateY(0);
+  z-index: 20;
+  filter: drop-shadow(0 3px 4px rgba(0,0,0,0.08));
+}
+
+.theme-switch .cloud {
+  position: absolute;
+  background-color: #fff;
+  border-radius: 50%;
+}
+
+.theme-switch .cloud-1 { width: 22px; height: 28px; bottom: -8px; right: 2px; }
+.theme-switch .cloud-2 { width: 22px; height: 22px; bottom: 0px; right: 14px; }
+.theme-switch .cloud-3 { width: 34px; height: 34px; bottom: -13px; right: 28px; }
+
+.theme-switch .celestial-body {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  width: 44px;
+  height: 44px;
+  background-color: #fce870;
+  border-radius: 50%;
+  box-shadow: 0 0 20px #fce870, inset -3px -3px 0 0 #fbd83b;
+  transition: all 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  z-index: 10;
+  overflow: hidden;
+}
+
+.theme-switch .crater {
+  position: absolute;
+  background-color: #d1d5db;
+  border-radius: 50%;
+  box-shadow: inset 2px 2px 0 0 #9ca3af;
+  opacity: 0;
+  transition: all 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.theme-switch .crater-1 { width: 10px; height: 10px; top: 9px; left: 9px; }
+.theme-switch .crater-2 { width: 6px; height: 6px; top: 24px; left: 18px; }
+.theme-switch .crater-3 { width: 14px; height: 14px; top: 16px; left: 28px; }
+
+/* Dark mode states */
+.theme-checkbox:checked + .theme-switch {
+  background-color: #0a0a0a;
+}
+
+.theme-checkbox:checked + .theme-switch .stars-container {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.theme-checkbox:checked + .theme-switch .clouds-container {
+  opacity: 0;
+  transform: translateY(30px);
+}
+
+.theme-checkbox:checked + .theme-switch .celestial-body {
+  transform: translateX(66px) rotate(360deg);
+  background-color: #e5e7eb;
+  box-shadow: 0 0 15px rgba(229, 231, 235, 0.5), inset -5px -3px 0 0 #9ca3af;
+}
+
+.theme-checkbox:checked + .theme-switch .celestial-body .crater {
+  opacity: 1;
+}
