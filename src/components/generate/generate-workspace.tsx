@@ -197,6 +197,9 @@ export function GenerateWorkspace({ initialPrompt, onNavigate }: GenerateWorkspa
   };
 
   const hasMessages = messages.length > 0;
+  const latestCompletedVideoIndex = messages.reduce((latest, message, index) => (
+    message.generatedVideo?.url ? index : latest
+  ), -1);
 
   const handleQuickOption = useCallback((value: string) => {
     if (value === '查看成片') {
@@ -269,8 +272,13 @@ export function GenerateWorkspace({ initialPrompt, onNavigate }: GenerateWorkspa
             </div>
           ) : (
             <div className="mx-auto max-w-4xl space-y-4 px-4 py-6">
-              {messages.map(message => (
-                <MessageBubble key={message.id} message={message} onQuickOption={handleQuickOption} />
+              {messages.map((message, index) => (
+                <MessageBubble
+                  key={message.id}
+                  message={message}
+                  onQuickOption={handleQuickOption}
+                  hideQuickOptions={latestCompletedVideoIndex > index}
+                />
               ))}
             </div>
           )}
@@ -436,7 +444,7 @@ export function GenerateWorkspace({ initialPrompt, onNavigate }: GenerateWorkspa
   }
 }
 
-function MessageBubble({ message, onQuickOption }: { message: ChatMessage; onQuickOption: (value: string) => void }) {
+function MessageBubble({ message, onQuickOption, hideQuickOptions }: { message: ChatMessage; onQuickOption: (value: string) => void; hideQuickOptions?: boolean }) {
   if (message.role === 'user') {
     return (
       <div className="flex justify-end">
@@ -508,7 +516,7 @@ function MessageBubble({ message, onQuickOption }: { message: ChatMessage; onQui
           </div>
         )}
 
-        {message.quickOptions && message.quickOptions.length > 0 && (
+        {!hideQuickOptions && message.quickOptions && message.quickOptions.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
             {message.quickOptions.map(option => (
               <button
