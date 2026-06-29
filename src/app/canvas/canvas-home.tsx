@@ -39,40 +39,12 @@ function withBasePath(url: string) {
 }
 
 const TEMPLATES = [
-  { id: "t1", title: "品牌视觉叙事", desc: "品牌故事到分镜成片", icon: Film, gradient: "from-amber-500/20 to-rose-500/10" },
-  { id: "t2", title: "产品广告短片", desc: "卖点拆解 + 分镜脚本", icon: Video, gradient: "from-sky-500/20 to-cyan-500/10" },
-  { id: "t3", title: "IP 角色设计", desc: "角色设定 + 多视图参考图", icon: ImageIcon, gradient: "from-violet-500/20 to-purple-500/10" },
-  { id: "t4", title: "口播脚本生成", desc: "主题到口播稿 + 配音", icon: Music, gradient: "from-emerald-500/20 to-teal-500/10" },
-  { id: "t5", title: "分镜拆解工作流", desc: "脚本到分镜 + 参考帧", icon: Wand2, gradient: "from-orange-500/20 to-yellow-500/10" },
-  { id: "t6", title: "AI 短剧制作", desc: "ViMAX：剧本到 30 秒成片", icon: Sparkles, gradient: "from-indigo-500/20 to-blue-500/10" },
-];
-
-const BROWSE_ITEMS = [
-  {
-    title: "宇宙迷航短片分镜",
-    desc: "6 镜头短剧结构",
-    src: "/home/huiying-story-aware-10s-poster.jpg",
-  },
-  {
-    title: "雨夜赛博镜头",
-    desc: "人物、城市、情绪参考",
-    src: "/samples/cyber-city.jpg",
-  },
-  {
-    title: "香水产品系列海报",
-    desc: "产品视觉和版式资产",
-    src: "/home/huiying-ad-perfume.png",
-  },
-  {
-    title: "绘影制作台",
-    desc: "素材、分镜、任务联动",
-    src: "/home/huiying-hero-production-console.png",
-  },
-  {
-    title: "流程画布编排",
-    desc: "节点、镜头、资产流转",
-    src: "/home/huiying-workflow-canvas.png",
-  },
+  { id: "t1", title: "品牌视觉叙事", desc: "品牌故事到分镜成片", icon: Film, src: "/home/huiying-story-aware-10s-poster.jpg" },
+  { id: "t2", title: "产品广告短片", desc: "卖点拆解 + 分镜脚本", icon: Video, src: "/home/huiying-ad-perfume.png" },
+  { id: "t3", title: "IP 角色设计", desc: "角色设定 + 多视图参考图", icon: ImageIcon, src: "/home/huiying-hero-production-console.png" },
+  { id: "t4", title: "口播脚本生成", desc: "主题到口播稿 + 配音", icon: Music, src: "/samples/cyber-city.jpg" },
+  { id: "t5", title: "分镜拆解工作流", desc: "脚本到分镜 + 参考帧", icon: Wand2, src: "/home/huiying-workflow-canvas.png" },
+  { id: "t6", title: "AI 短剧制作", desc: "ViMAX：剧本到 30 秒成片", icon: Sparkles, src: "/home/huiying-hero-cosmic-film.png" },
 ];
 
 function projectPreviewMedia(project: CanvasProjectMeta) {
@@ -208,37 +180,25 @@ export default function CanvasHome() {
 
         <section className="mx-auto w-full max-w-none">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-sm font-medium text-white/74">浏览图</h2>
+            <h2 className="text-sm font-medium text-white/74">快速开始</h2>
             <button type="button" onClick={() => createAndEnter()} disabled={!hydrated} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-white/10 px-3 text-xs font-medium text-white/78 hover:bg-white/15 disabled:opacity-40">
               <Plus className="h-4 w-4" /> 新建项目
             </button>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            {BROWSE_ITEMS.map((item) => (
-              <button
-                key={item.title}
-                type="button"
-                onClick={() => createAndEnter(item.title)}
-                disabled={!hydrated}
-                className="group overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] text-left transition-all hover:-translate-y-0.5 hover:border-[#70E0FF]/45 disabled:opacity-50"
-              >
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
+            {TEMPLATES.map((tpl) => (
+              <button key={tpl.id} onClick={() => createAndEnter(tpl.title)} disabled={!hydrated} className="group relative overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] text-left transition-all hover:-translate-y-0.5 hover:border-[#70E0FF]/45 disabled:opacity-50">
                 <div className="aspect-[16/9] overflow-hidden bg-white/5">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={withBasePath(item.src)} alt={item.title} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                  <img src={withBasePath(tpl.src)} alt={tpl.title} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
                 </div>
-                <div className="p-3">
-                  <h3 className="truncate text-sm font-semibold text-white">{item.title}</h3>
-                  <p className="mt-1 text-xs text-white/48">{item.desc}</p>
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/82 via-black/48 to-transparent p-3 pt-10">
+                  <div className="mb-1 flex items-center gap-1.5">
+                    <tpl.icon className="h-3.5 w-3.5 text-[#70E0FF]" />
+                    <h3 className="truncate text-sm font-semibold text-white">{tpl.title}</h3>
+                  </div>
+                  <p className="truncate text-xs text-white/62">{tpl.desc}</p>
                 </div>
-              </button>
-            ))}
-          </div>
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {TEMPLATES.map((tpl) => (
-              <button key={tpl.id} onClick={() => createAndEnter(tpl.title)} disabled={!hydrated} className={`group relative overflow-hidden rounded-xl border border-white/10 bg-gradient-to-br ${tpl.gradient} p-5 text-left transition-all hover:-translate-y-0.5 hover:border-[#70E0FF]/40 disabled:opacity-50`}>
-                <tpl.icon className="mb-3 h-6 w-6 text-white/70" />
-                <h3 className="text-sm font-semibold text-white">{tpl.title}</h3>
-                <p className="mt-1 text-xs text-white/50">{tpl.desc}</p>
               </button>
             ))}
           </div>
