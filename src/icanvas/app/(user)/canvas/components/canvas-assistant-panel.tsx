@@ -290,8 +290,9 @@ export function CanvasAssistantPanel({ nodes, selectedNodeIds, snapshot, session
                 if (confirmTools && writableCalls.length) {
                     upsertMessage(sessionId, { id: assistantId, role: "assistant", text: result.content || streamed || "准备执行工具，等待确认。" });
                     const toolMessageId = nanoid();
-                    pendingToolContextRef.current.set(toolMessageId, { messages, toolCalls: result.toolCalls, assistantId, step: loop.step });
-                    const toolMessage: CanvasAssistantMessage = { id: toolMessageId, role: "tool", title: "确认工具调用", text: summarizeToolCalls(result.toolCalls), detail: { status: "pending", step: loop.step, toolCalls: result.toolCalls } };
+                    const pendingContext = { messages, toolCalls: result.toolCalls, assistantId, step: loop.step };
+                    pendingToolContextRef.current.set(toolMessageId, pendingContext);
+                    const toolMessage: CanvasAssistantMessage = { id: toolMessageId, role: "tool", title: "确认工具调用", text: summarizeToolCalls(result.toolCalls), detail: pendingToolDetail(pendingContext) };
                     appendMessage(sessionId, toolMessage);
                     addOnlineLog("等待用户确认", result.toolCalls);
                     return;
@@ -346,8 +347,9 @@ export function CanvasAssistantPanel({ nodes, selectedNodeIds, snapshot, session
             if (confirmTools && writableCalls.length) {
                 upsertMessage(sessionId, { id: assistantId, role: "assistant", text: next.content || streamed || "准备执行工具，等待确认。" });
                 const toolMessageId = nanoid();
-                pendingToolContextRef.current.set(toolMessageId, { messages: nextMessages, toolCalls: next.toolCalls, assistantId, step: step + 1 });
-                appendMessage(sessionId, { id: toolMessageId, role: "tool", title: "确认工具调用", text: summarizeToolCalls(next.toolCalls), detail: { status: "pending", step: step + 1, toolCalls: next.toolCalls } });
+                const pendingContext = { messages: nextMessages, toolCalls: next.toolCalls, assistantId, step: step + 1 };
+                pendingToolContextRef.current.set(toolMessageId, pendingContext);
+                appendMessage(sessionId, { id: toolMessageId, role: "tool", title: "确认工具调用", text: summarizeToolCalls(next.toolCalls), detail: pendingToolDetail(pendingContext) });
                 addOnlineLog("等待用户确认", next.toolCalls);
                 return;
             }
@@ -412,7 +414,7 @@ export function CanvasAssistantPanel({ nodes, selectedNodeIds, snapshot, session
     const approveOnlineTool = async (messageId: string) => {
         const message = safeSessions.flatMap((session) => session.messages).find((item) => item.id === messageId);
         const detail = objectDetail(message?.detail);
-        const pendingContext = pendingToolContextRef.current.get(messageId);
+        const pendingContext = pendingToolContextRef.current.get(messageId) || pendingContextFromDetail(detail);
         const toolCalls = pendingContext?.toolCalls || toolCallsFromDetail(detail);
         const previousMessages = pendingContext?.messages || [];
         const session = safeSessions.find((session) => session.messages.some((item) => item.id === messageId));
@@ -420,7 +422,7 @@ export function CanvasAssistantPanel({ nodes, selectedNodeIds, snapshot, session
         const assistantId = pendingContext?.assistantId || "";
         if (!session) return;
         if (!toolCalls.length || !previousMessages.length || !assistantId) {
-            upsertMessage(session.id, { id: messageId, role: "tool", title: "工具执行失败", text: "工具上下文不完整，无法执行。", detail: { ...detail, status: "failed" } });
+            upsertMessage(session.id, { id: messageId, role: "tool", title: "确认已失效", text: "确认上下文已失效，请重新发送本轮指令。", detail: { ...detail, status: "failed" } });
             return;
         }
         try {
@@ -1051,10 +1053,35 @@ function toolCallsFromDetail(detail: Record<string, unknown>): ResponseToolCall[
     return Array.isArray(detail.toolCalls) ? (detail.toolCalls.filter(isResponseToolCall) as ResponseToolCall[]) : [];
 }
 
+function pendingToolDetail(context: PendingOnlineToolContext) {
+    return { status: "pending", step: context.step, toolCalls: context.toolCalls, messages: context.messages, assistantId: context.assistantId };
+}
+
+function pendingContextFromDetail(detail: Record<string, unknown>): PendingOnlineToolContext | undefined {
+    const toolCalls = toolCallsFromDetail(detail);
+    const messages = messagesFromDetail(detail);
+    const assistantId = typeof detail.assistantId === "string" ? detail.assistantId : "";
+    const step = typeof detail.step === "number" ? detail.step : Number(detail.step) || 1;
+    if (!toolCalls.length || !messages.length || !assistantId) return undefined;
+    return { messages, toolCalls, assistantId, step };
+}
+
+function messagesFromDetail(detail: Record<string, unknown>): ResponseInputMessage[] {
+    return Array.isArray(detail.messages) ? (detail.messages.filter(isResponseInputMessage) as ResponseInputMessage[]) : [];
+}
+
 function isResponseToolCall(value: unknown): value is ResponseToolCall {
     const item = objectDetail(value);
     const fn = objectDetail(item.function);
     return typeof item.id === "string" && item.type === "function" && typeof fn.name === "string" && typeof fn.arguments === "string";
+}
+
+function isResponseInputMessage(value: unknown): value is ResponseInputMessage {
+    const item = objectDetail(value);
+    if ((item.role === "system" || item.role === "user" || item.role === "assistant") && ("content" in item)) return typeof item.content === "string" || Array.isArray(item.content);
+    if (item.type === "function_call") return typeof item.call_id === "string" && typeof item.name === "string" && typeof item.arguments === "string";
+    if (item.role === "tool") return typeof item.tool_call_id === "string" && typeof item.content === "string";
+    return false;
 }
 
 function toolCallToResponseInput(call: ResponseToolCall): ResponseInputMessage {
