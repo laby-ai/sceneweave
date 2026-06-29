@@ -308,6 +308,7 @@ function InfiniteCanvasPage() {
     const [assistantClosing, setAssistantClosing] = useState(false);
     const [agentMode, setAgentMode] = useState<CanvasAgentMode>("online");
     const [agentUndoSnapshot, setAgentUndoSnapshot] = useState<CanvasAgentSnapshot | null>(null);
+    const homepageAgentPrompt = searchParams.get("agentPrompt")?.trim() || "";
     const codexAutoConnect = ["new", "recent", "choose"].includes(searchParams.get("mode") || "");
     const codexCompactAgent = codexAutoConnect && searchParams.has("agentUrl");
     const [titleEditing, setTitleEditing] = useState(false);
@@ -434,12 +435,18 @@ function InfiniteCanvasPage() {
 
     useEffect(() => {
         if (!projectLoaded || !["new", "recent", "choose"].includes(searchParams.get("mode") || "")) return;
+        if (searchParams.has("agentPrompt")) return;
         if (searchParams.has("agentUrl")) {
             setAgentMode("local");
             return;
         }
         openAgent("local");
     }, [projectLoaded, searchParams]);
+
+    useEffect(() => {
+        if (!projectLoaded || !homepageAgentPrompt) return;
+        openAgent("online");
+    }, [projectLoaded, homepageAgentPrompt]);
 
     useEffect(() => {
         if (!projectLoaded || applyingHistoryRef.current || historyPausedRef.current) return;
@@ -2810,6 +2817,7 @@ function InfiniteCanvasPage() {
                     onPasteImage={pasteAssistantImage}
                     agentMode={agentMode}
                     onAgentModeChange={setAgentMode}
+                    initialPrompt={homepageAgentPrompt}
                     autoConnectLocal={codexAutoConnect}
                     closing={assistantClosing}
                     onCollapse={closeAgent}

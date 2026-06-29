@@ -139,12 +139,13 @@ type CanvasAssistantPanelProps = {
     onPasteImage: (file: File) => void;
     agentMode: CanvasAgentMode;
     onAgentModeChange: (mode: CanvasAgentMode) => void;
+    initialPrompt?: string;
     autoConnectLocal?: boolean;
     closing: boolean;
     onCollapse: () => void;
 };
 
-export function CanvasAssistantPanel({ nodes, selectedNodeIds, snapshot, sessions, activeSessionId, onSelectNodeIds, onSessionsChange, onApplyOps, canUndoOps, onUndoOps, onPasteImage, agentMode, onAgentModeChange, autoConnectLocal, closing, onCollapse }: CanvasAssistantPanelProps) {
+export function CanvasAssistantPanel({ nodes, selectedNodeIds, snapshot, sessions, activeSessionId, onSelectNodeIds, onSessionsChange, onApplyOps, canUndoOps, onUndoOps, onPasteImage, agentMode, onAgentModeChange, initialPrompt, autoConnectLocal, closing, onCollapse }: CanvasAssistantPanelProps) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const user = useUserStore((state) => state.user);
     const effectiveConfig = useEffectiveConfig();
@@ -166,6 +167,7 @@ export function CanvasAssistantPanel({ nodes, selectedNodeIds, snapshot, session
     const [localActiveSessionId, setLocalActiveSessionId] = useState<string | null>(activeSessionId);
     const snapshotRef = useRef(snapshot);
     const pendingToolContextRef = useRef(new Map<string, PendingOnlineToolContext>());
+    const consumedInitialPromptRef = useRef("");
 
     useEffect(() => {
         if (!sessions.length) return;
@@ -449,11 +451,18 @@ export function CanvasAssistantPanel({ nodes, selectedNodeIds, snapshot, session
         if (session) upsertMessage(session.id, { id: messageId, role: "tool", title: "已拒绝执行", text: "工具调用已取消", detail: { ...objectDetail(session.messages.find((item) => item.id === messageId)?.detail), status: "rejected" } });
     };
 
-    const submit = async () => {
-        const text = prompt.trim();
+    const submit = async (overridePrompt?: string) => {
+        const text = (overridePrompt ?? prompt).trim();
         if (!text || isRunning) return;
         await sendMessage(text, messages);
     };
+
+    useEffect(() => {
+        const text = initialPrompt?.trim();
+        if (!text || consumedInitialPromptRef.current === text) return;
+        consumedInitialPromptRef.current = text;
+        setPrompt(text);
+    }, [initialPrompt]);
 
     const addImagesToCanvas = (files: FileList | File[] | null) => {
         const file = Array.from(files || []).find((item) => item.type.startsWith("image/"));
@@ -581,7 +590,7 @@ export function CanvasAssistantPanel({ nodes, selectedNodeIds, snapshot, session
                         placeholder="描述你想让 Agent 如何操作画布"
                         theme={theme}
                         onPromptChange={setPrompt}
-                        onSubmit={submit}
+                        onSubmit={() => void submit()}
                         onAddFiles={addImagesToCanvas}
                         left={
                             <>

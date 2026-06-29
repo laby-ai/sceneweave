@@ -142,14 +142,15 @@ export default function CanvasHome() {
   const createProject = useCanvasStore((s: { createProject: (title?: string) => string }) => s.createProject) as (title?: string) => string;
 
   // 用真实 store 创建项目并进入；store 未水合完成前先不创建，避免被 rehydrate 覆盖丢失。
-  const createAndEnter = (title?: string) => {
+  const createAndEnter = (title?: string, agentPrompt?: string) => {
     if (!hydrated) return;
     const cleanTitle = title?.trim();
     const id = createProject(cleanTitle || `画布 ${projects.length + 1}`);
-    router.push(`/canvas/${id}`);
+    const cleanPrompt = agentPrompt?.trim();
+    router.push(cleanPrompt ? `/canvas/${id}?agentPrompt=${encodeURIComponent(cleanPrompt)}` : `/canvas/${id}`);
   };
   const enterProject = (id: string) => router.push(`/canvas/${id}`);
-  const submitAgentPrompt = () => createAndEnter(prompt || "30 秒短剧画布智能体");
+  const submitAgentPrompt = () => createAndEnter(prompt || "30 秒短剧画布智能体", prompt || "30 秒短剧画布智能体");
 
   return (
     <main className="relative h-full overflow-auto bg-black text-white">
