@@ -11,9 +11,16 @@
  * basePath 为空（根路径部署 / 本地开发）时本垫片不做任何事。
  */
 
-const BASE_PATH = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
+function detectBasePath(): string {
+  const configured = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
+  if (configured) return configured;
+  if (typeof window !== 'undefined' && window.location.pathname === '/huiying') return '/huiying';
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/huiying/')) return '/huiying';
+  return '';
+}
 
 function withBasePath(url: string): string {
+  const BASE_PATH = detectBasePath();
   if (!BASE_PATH) return url;
   // 仅改写同源、以 /api 开头、且还没带 basePath 前缀的绝对路径。
   if (url.startsWith('/api') && !url.startsWith(`${BASE_PATH}/`)) {
@@ -28,7 +35,7 @@ declare global {
   }
 }
 
-if (typeof window !== 'undefined' && BASE_PATH && !window.__huiyingBasePathShimInstalled) {
+if (typeof window !== 'undefined' && detectBasePath() && !window.__huiyingBasePathShimInstalled) {
   window.__huiyingBasePathShimInstalled = true;
 
   const originalFetch = window.fetch.bind(window);

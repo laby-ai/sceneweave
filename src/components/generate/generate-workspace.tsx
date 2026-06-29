@@ -61,6 +61,24 @@ function withBasePath(url: string) {
   return `${BASE_PATH}${url}`;
 }
 
+function parseVimaxDurationSpec(text: string) {
+  const totalMatch = /(\d{1,3})\s*(秒|s|S)/.exec(text);
+  const compact = text.replace(/\s+/g, '');
+  const clipSpecMatch =
+    /(\d{1,2})(?:个|段|条)(\d{1,2})(?:秒|s|S)(?:clip|Clip|CLIP|镜头|分镜|片段)?/.exec(compact)
+    || /(\d{1,2})(?:个|段|条)?(?:clip|Clip|CLIP|镜头|分镜|片段)(?:，|,|、)?(?:每(?:个|段|条)?)?(\d{1,2})(?:秒|s|S)/.exec(compact);
+  const clipCount = clipSpecMatch ? Number(clipSpecMatch[1]) : undefined;
+  const explicitSegmentDuration = clipSpecMatch ? Number(clipSpecMatch[2]) : undefined;
+  const explicitTotal = totalMatch ? Number(totalMatch[1]) : undefined;
+  const duration = explicitTotal || (clipCount && explicitSegmentDuration ? clipCount * explicitSegmentDuration : 30);
+  const segmentDuration = explicitSegmentDuration || (clipCount ? Math.max(1, Math.round(duration / clipCount)) : (duration <= 30 ? 5 : 10));
+  return {
+    duration: Math.max(5, Math.min(120, Math.floor(duration))),
+    segmentDuration: Math.max(2, Math.min(12, Math.floor(segmentDuration))),
+    segmentCount: clipCount || Math.max(1, Math.round(duration / segmentDuration)),
+  };
+}
+
 interface GenerateWorkspaceProps {
   initialPrompt?: string;
   onNavigate?: (section: string, prompt?: string) => void;
@@ -171,7 +189,14 @@ export function GenerateWorkspace({ initialPrompt, onNavigate }: GenerateWorkspa
         await handleReferenceAssetsStep();
         return;
       }
-      await handlePlanStep({ prompt: text, duration: 60, style: '电影感短剧' });
+      const durationSpec = parseVimaxDurationSpec(text);
+      await handlePlanStep({
+        prompt: text,
+        duration: durationSpec.duration,
+        segmentDuration: durationSpec.segmentDuration,
+        segmentCount: durationSpec.segmentCount,
+        style: '电影感短剧',
+      });
       return;
     }
 
@@ -498,18 +523,27 @@ function MessageBubble({ message, onQuickOption, hideQuickOptions }: { message: 
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             {agent.shots.map(shot => (
               <div key={shot.index} className="overflow-hidden rounded-xl border border-border/70 bg-accent/30">
-                {shot.referenceUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={shot.referenceUrl}
-                    alt={`Clip ${shot.index} · ${shot.title}`}
-                    className="aspect-video w-full object-cover"
+                {shot.videoUrl ? (
+                  <video
+                    src={shot.videoUrl}
+                    controls
+                    playsInline
+                    preload="metadata"
+                    className="aspect-video w-full bg-black object-cover"
                   />
+                ) : shot.referenceUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={shot.referenceUrl} alt={`Clip ${shot.index} · ${shot.title}`} className="aspect-video w-full object-cover" />
                 ) : null}
-                <div className="flex min-h-[44px] items-center gap-2 px-3 py-2 text-xs">
-                  <span className="shrink-0 font-medium text-[#70E0FF]">Clip {shot.index}</span>
-                  <span className="min-w-0 flex-1 truncate text-foreground/85">{shot.title}</span>
-                  <span className="shrink-0 text-muted-foreground">{shot.duration}s · {shot.camera}</span>
+                <div className="space-y-1 px-3 py-2 text-xs">
+                  <div className="flex min-h-[24px] items-center gap-2">
+                    <span className="shrink-0 font-medium text-[#70E0FF]">Clip {shot.index}</span>
+                    <span className="min-w-0 flex-1 truncate text-foreground/85">{shot.title}</span>
+                    <span className="shrink-0 text-muted-foreground">{shot.duration}s · {shot.camera}</span>
+                  </div>
+                  {shot.prompt ? (
+                    <p className="line-clamp-3 text-muted-foreground">{shot.prompt}</p>
+                  ) : null}
                 </div>
               </div>
             ))}

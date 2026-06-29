@@ -28,6 +28,7 @@ interface VimaxAgentStepBody {
   resolution?: string;
   duration?: number;
   segmentDuration?: number;
+  segmentCount?: number;
   sceneType?: string;
   style?: string;
   stream?: boolean;
@@ -103,7 +104,7 @@ const PLAN_SYSTEM_PROMPT = [
 function buildPlanMessages(prompt: string) {
   return [
     { role: 'system', content: PLAN_SYSTEM_PROMPT },
-    { role: 'user', content: `请基于这个 brief 生成 30-60 秒短剧制作计划，只返回符合上面 schema 的 JSON：\n${prompt}` },
+    { role: 'user', content: `请严格按 brief 指定的总时长、clip 数量和每段时长生成短剧制作计划；如果 brief 写了 30 秒、6 个 5 秒 clip，就必须返回 6 个 duration=5 的 shots。只返回符合上面 schema 的 JSON：\n${prompt}` },
   ];
 }
 
@@ -286,9 +287,35 @@ function inferDurationSeconds(prompt: string, explicit?: unknown) {
   return Math.max(5, Math.min(120, Math.floor(seconds || 30)));
 }
 
+function inferSegmentSpec(prompt: string, duration: number, body: VimaxAgentStepBody) {
+  const explicitDuration = Math.floor(Number(body.segmentDuration) || 0);
+  const explicitCount = Math.floor(Number(body.segmentCount) || 0);
+  const compact = prompt.replace(/\s+/g, '');
+  const countDurationMatch =
+    /(\d{1,2})(?:个|段|条)(\d{1,2})(?:秒|s|S)(?:clip|Clip|CLIP|镜头|分镜|片段)?/.exec(compact)
+    || /(\d{1,2})(?:个|段|条)?(?:clip|Clip|CLIP|镜头|分镜|片段)(?:，|,|、)?(?:每(?:个|段|条)?)?(\d{1,2})(?:秒|s|S)/.exec(compact);
+  const countOnlyMatch = /(\d{1,2})(?:个|段|条)(?:clip|Clip|CLIP|镜头|分镜|片段)/.exec(compact);
+  const perDurationMatch = /每(?:个|段|条)?(?:clip|Clip|CLIP|镜头|分镜|片段)?(\d{1,2})(?:秒|s|S)/.exec(compact);
+
+  const promptCount = countDurationMatch
+    ? Number(countDurationMatch[1])
+    : countOnlyMatch
+      ? Number(countOnlyMatch[1])
+      : 0;
+  const promptSegmentDuration = countDurationMatch
+    ? Number(countDurationMatch[2])
+    : perDurationMatch
+      ? Number(perDurationMatch[1])
+      : 0;
+
+  const segmentDuration = Math.max(3, Math.min(15, explicitDuration || promptSegmentDuration || (duration <= 30 ? 5 : 10)));
+  const segmentCount = Math.max(1, Math.min(12, explicitCount || promptCount || Math.ceil(duration / segmentDuration)));
+  return { segmentDuration, segmentCount };
+}
+
 function buildProductionBackedVimaxPlan(prompt: string, basePlan: VimaxAgentPlan, body: VimaxAgentStepBody): VimaxAgentPlan {
   const duration = inferDurationSeconds(prompt, body.duration);
-  const segmentDuration = Math.max(3, Math.min(15, Math.floor(Number(body.segmentDuration) || (duration <= 30 ? 5 : 10))));
+  const { segmentDuration, segmentCount: targetSegmentCount } = inferSegmentSpec(prompt, duration, body);
   const style = body.style || '电影感短剧';
   const sceneType = body.sceneType || 'drama';
   const ratio = body.ratio || '16:9';
@@ -319,6 +346,15 @@ function buildProductionBackedVimaxPlan(prompt: string, basePlan: VimaxAgentPlan
     productionProject,
     sourceTaskId: `${productionProject.id}-vimax-agent`,
   });
+  const normalizedSegments = Array.from({ length: targetSegmentCount }, (_, index) => {
+    const sourceIndex = assemblyPlan.segments[index]
+      ? index
+      : Math.min(assemblyPlan.segments.length - 1, Math.floor(index * assemblyPlan.segments.length / targetSegmentCount));
+    return assemblyPlan.segments[Math.max(0, sourceIndex)];
+  }).filter(Boolean);
+  const segmentCount = normalizedSegments.length || 1;
+  const baseDuration = Math.floor(duration / segmentCount);
+  const durationRemainder = duration - baseDuration * segmentCount;
 
   const productionAssets = productionProject.assets
     .filter(asset => ['script', 'character', 'scene', 'prop', 'storyboard'].includes(asset.kind))
@@ -333,13 +369,14 @@ function buildProductionBackedVimaxPlan(prompt: string, basePlan: VimaxAgentPlan
     title: basePlan.title || productionProject.title,
     summary: productionProject.narrativeSummary || basePlan.summary,
     assets: productionAssets.length ? productionAssets : basePlan.assets,
-    shots: assemblyPlan.segments.map((segment, index) => {
-      const projectShot = productionProject.storyboard.shots[index];
-      const sourceShot = basePlan.shots[index];
+    shots: normalizedSegments.map((segment, index) => {
+      const mappedIndex = Math.min(productionProject.storyboard.shots.length - 1, Math.floor(index * productionProject.storyboard.shots.length / segmentCount));
+      const projectShot = productionProject.storyboard.shots[index] || productionProject.storyboard.shots[Math.max(0, mappedIndex)];
+      const sourceShot = basePlan.shots[index] || basePlan.shots[Math.max(0, Math.min(basePlan.shots.length - 1, mappedIndex))];
       return {
         index: index + 1,
         title: sourceShot?.title || `${projectShot?.storyBeat || '镜头'} ${index + 1}`,
-        duration: segment.duration,
+        duration: baseDuration + (index < durationRemainder ? 1 : 0),
         camera: projectShot?.shotTypeLabel || sourceShot?.camera || 'ViMAX 分段镜头',
         prompt: [
           segment.prompt,

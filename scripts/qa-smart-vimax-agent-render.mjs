@@ -11,6 +11,7 @@ function check(name, pass, detail = '') {
 
 const panel = read('src/components/smart-assistant-panel.tsx');
 const workspace = read('src/components/smart/smart-assistant-chat-workspace.tsx');
+const generateWorkspace = read('src/components/generate/generate-workspace.tsx');
 const model = read('src/lib/smart-assistant-panel-model.ts');
 const route = read('src/app/api/smart/vimax-agent-step/route.ts');
 // ViMAX 已抽成 Agent 驱动的 skill；编排逻辑应在 skill 内，面板只负责唤起。
@@ -22,6 +23,7 @@ check('vimax-skill-is-extracted-from-panel', /useVimaxShortDramaSkill/.test(pane
 check('vimax-uses-real-vimax-agent-route', /\/api\/smart\/vimax-agent-step/.test(skill));
 check('vimax-does-not-use-old-director-chain', !/fetch\('\/api\/smart\/director-chain'/.test(panelAndSkill));
 check('vimax-has-seedream-confirm-step', /确认分镜，生成参考图/.test(panelAndSkill));
+check('vimax-generate-page-uses-user-duration', /parseVimaxDurationSpec/.test(generateWorkspace) && /segmentDuration: durationSpec\.segmentDuration/.test(generateWorkspace) && /segmentCount: durationSpec\.segmentCount/.test(generateWorkspace) && !/handlePlanStep\(\{\s*prompt:\s*text,\s*duration:\s*60/.test(generateWorkspace));
 check('workspace-renders-stage-card', /msg\.vimaxAgent/.test(workspace) && /真实 AgentPlan/.test(workspace) && /Seedream 参考素材/.test(workspace));
 check('route-calls-real-ark-text-model', /chat\/completions/.test(route) && /ARK_API_KEY/.test(route) && /usedRealKey:\s*true/.test(route));
 check('route-calls-real-seedream-image-model', /images\/generations/.test(route) && /doubao-seedream-5\.0-lite/.test(route));
@@ -37,6 +39,7 @@ check(
     && /ViMAX Variation/.test(route),
   'short-drama skill must not bypass the embedded ViMAX-style production artifacts',
 );
+check('route-honors-requested-vimax-segment-count', /segmentCount\?: number/.test(route) && /targetSegmentCount/.test(route) && /Array\.from\(\{ length: targetSegmentCount \}/.test(route));
 check(
   'route-uses-sequential-last-frame-handoff',
   /previousLastFrameUrl/.test(route)

@@ -29,6 +29,8 @@ export interface VimaxPlanContext {
   prompt: string;
   duration: number;
   style: string;
+  segmentDuration?: number;
+  segmentCount?: number;
   /** 可选模型覆盖；为空走服务端默认（env）。 */
   model?: string;
 }
@@ -149,6 +151,8 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
           phase: 'plan',
           prompt,
           duration: context.duration,
+          ...(context.segmentDuration ? { segmentDuration: context.segmentDuration } : {}),
+          ...(context.segmentCount ? { segmentCount: context.segmentCount } : {}),
           style: context.style,
           ratio: '16:9',
           stream: true,
