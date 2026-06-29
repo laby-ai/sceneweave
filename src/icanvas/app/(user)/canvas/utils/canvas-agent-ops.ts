@@ -92,9 +92,15 @@ export function applyCanvasAgentOps(snapshot: CanvasAgentSnapshot, ops?: CanvasA
         if (op.type === "select_nodes") selectedNodeIds = (op.ids || []).filter((id) => nodes.some((node) => node.id === id));
     });
 
-    if (!hasViewportOp && addedNodeIds.length >= 4) {
+    const normalized = normalizeShortDramaCanvas(nodes, connections, selectedNodeIds);
+    nodes = normalized.nodes;
+    connections = normalized.connections;
+    selectedNodeIds = normalized.selectedNodeIds;
+
+    const fitNodeIds = normalized.changed ? normalized.focusNodeIds : addedNodeIds;
+    if (!hasViewportOp && fitNodeIds.length >= 4) {
         viewport = fitViewportToNodes(
-            nodes.filter((node) => addedNodeIds.includes(node.id)),
+            nodes.filter((node) => fitNodeIds.includes(node.id)),
             viewportSize,
         ) || viewport;
     }
@@ -188,7 +194,7 @@ function numberedNodes(ops: Extract<CanvasAgentOp, { type: "add_node" }>[], kind
 
 function nodeNumber(op: Extract<CanvasAgentOp, { type: "add_node" }>, kind: "clip" | "reference") {
     const text = opText(op);
-    const pattern = kind === "clip" ? /(?:clip|镜头|分镜)\s*([1-6])|第\s*([1-6])\s*个\s*5\s*秒/i : /(?:参考图|参考|reference|prompt)\s*([1-6])/i;
+    const pattern = kind === "clip" ? /(?:clip|镜头|分镜)\D{0,12}([1-6])|第\s*([1-6])\s*个\s*5\s*秒/i : /(?:参考图|参考|reference|ref|prompt)\D{0,16}([1-6])/i;
     const match = text.match(pattern);
     return Number(match?.[1] || match?.[2] || 0) || null;
 }
@@ -229,6 +235,73 @@ function fitViewportToNodes(nodes: CanvasNodeData[], viewportSize?: CanvasAgentV
 
 function roundViewportNumber(value: number) {
     return Math.round(value * 100) / 100;
+}
+
+function normalizeShortDramaCanvas(nodes: CanvasNodeData[], connections: CanvasConnection[], selectedNodeIds: string[]) {
+    const clipNodes = numberedCanvasNodes(nodes, "clip");
+    const refNodes = numberedCanvasNodes(nodes, "reference");
+    const finalNode = nodes.find(isFinalPlanNode);
+    if (clipNodes.length !== 6 || refNodes.length !== 6 || finalNode) return { nodes, connections, selectedNodeIds, changed: false, focusNodeIds: [] };
+
+    const summaryNode = nodes.find((node) => !clipNodes.some((item) => item.id === node.id) && !refNodes.some((item) => item.id === node.id) && isSummaryNode(node));
+    const textSpec = getNodeSpec(CanvasNodeType.Text);
+    const anchor = clipNodes[5] || refNodes[5] || nodes[nodes.length - 1];
+    const finalId = nodes.some((node) => node.id === "final-video-plan") ? `final-video-plan-${nanoid(5)}` : "final-video-plan";
+    const finalPlan: CanvasNodeData = {
+        id: finalId,
+        type: CanvasNodeType.Text,
+        title: "最终视频合成规划",
+        position: { x: (anchor?.position.x || 0) + (anchor?.width || textSpec.width) + 80, y: anchor?.position.y || 0 },
+        width: textSpec.width,
+        height: textSpec.height,
+        metadata: {
+            ...textSpec.metadata,
+            content: "最终合成规划：6 个 5 秒 clip 按序拼接，统一雨夜科幻调色、glitch 转场、环境雨声与低频配乐，输出 30 秒成片。",
+            status: "success",
+            fontSize: 14,
+            autoCompleted: true,
+        },
+    };
+    const removedIds = new Set(summaryNode ? [summaryNode.id] : []);
+    const normalizedNodes = [...nodes.filter((node) => !removedIds.has(node.id)), finalPlan];
+    const linkedIds = new Set([...clipNodes.map((node) => node.id), ...refNodes.map((node) => node.id), finalId, ...removedIds]);
+    const normalizedConnections = connections.filter((conn) => !linkedIds.has(conn.fromNodeId) && !linkedIds.has(conn.toNodeId));
+    for (let index = 0; index < 6; index += 1) {
+        normalizedConnections.push({ id: nanoid(), fromNodeId: clipNodes[index].id, toNodeId: refNodes[index].id });
+        if (index < 5) normalizedConnections.push({ id: nanoid(), fromNodeId: clipNodes[index].id, toNodeId: clipNodes[index + 1].id });
+    }
+    normalizedConnections.push({ id: nanoid(), fromNodeId: clipNodes[5].id, toNodeId: finalId });
+
+    return { nodes: normalizedNodes, connections: normalizedConnections, selectedNodeIds: [finalId], changed: true, focusNodeIds: [...clipNodes.map((node) => node.id), ...refNodes.map((node) => node.id), finalId] };
+}
+
+function numberedCanvasNodes(nodes: CanvasNodeData[], kind: "clip" | "reference") {
+    return nodes
+        .map((node) => ({ node, number: canvasNodeNumber(node, kind) }))
+        .filter((item): item is { node: CanvasNodeData; number: number } => Boolean(item.number))
+        .sort((a, b) => a.number - b.number)
+        .filter((item, index, items) => items.findIndex((other) => other.number === item.number) === index)
+        .map((item) => item.node);
+}
+
+function canvasNodeNumber(node: CanvasNodeData, kind: "clip" | "reference") {
+    const text = canvasNodeText(node);
+    const pattern = kind === "clip" ? /(?:clip|镜头|分镜)\D{0,12}([1-6])|第\s*([1-6])\s*个\s*5\s*秒/i : /(?:参考图|参考|reference|ref|prompt)\D{0,16}([1-6])/i;
+    const match = text.match(pattern);
+    return Number(match?.[1] || match?.[2] || 0) || null;
+}
+
+function isFinalPlanNode(node: CanvasNodeData) {
+    return /final-video-plan|最终|合成|成片/i.test([node.id, canvasNodeText(node)].join(" "));
+}
+
+function isSummaryNode(node: CanvasNodeData) {
+    const text = canvasNodeText(node);
+    return /总纲|标题|项目|主题|结构|风格|摘要|说明/i.test(text) && !canvasNodeNumber(node, "clip") && !canvasNodeNumber(node, "reference");
+}
+
+function canvasNodeText(node: CanvasNodeData) {
+    return [node.id, node.title, node.metadata?.content, node.metadata?.prompt, node.metadata?.composerContent].filter((item): item is string => typeof item === "string").join(" ");
 }
 
 function opLabel(type: string) {
