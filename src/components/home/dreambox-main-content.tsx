@@ -6,9 +6,12 @@ import { ArrowLeft, Film } from 'lucide-react';
 import AIVideoCreationPanel from '@/components/ai-video-creation-panel';
 import { FilmCreationPanel } from '@/components/film-creation-panel';
 import { ImageCreationPanel } from '@/components/image-creation-panel';
-import { SmartAssistantPanel } from '@/components/smart-assistant-panel';
+import { GenerateWorkspace } from '@/components/generate/generate-workspace';
+import { AssetsLibrary } from '@/components/assets/assets-library';
+import { AvatarGenerator } from '@/components/avatar/AvatarGenerator';
+import { VoiceGenerator } from '@/components/voice/voice-generator';
 import { DreamboxHomeSection } from '@/components/home/dreambox-home-section';
-import { DreamboxMediaSection, type MediaSubSection } from '@/components/home/dreambox-media-section';
+import { type MediaSubSection } from '@/components/home/dreambox-media-section';
 import { DreamboxResultDialogs } from '@/components/home/dreambox-result-dialogs';
 import { DreamboxSettingsSection } from '@/components/home/dreambox-settings-section';
 import { DreamboxTasksSection } from '@/components/home/dreambox-tasks-section';
@@ -34,6 +37,7 @@ interface DreamboxMainContentProps {
   handleRegenerateImage: any;
   handleRemixImage: any;
   homeGalleryItems: any[];
+  onOpenWorkDetail?: (item: { title: string; type: string; videoSrc?: string; src: string; source?: string }) => void;
   imageInitialConfig: any;
   isDark: boolean;
   isGeneratingImage: boolean;
@@ -126,6 +130,7 @@ export function DreamboxMainContent(props: DreamboxMainContentProps) {
     handleRegenerateImage,
     handleRemixImage,
     homeGalleryItems,
+    onOpenWorkDetail,
     imageInitialConfig,
     isDark,
     isGeneratingImage,
@@ -200,13 +205,14 @@ export function DreamboxMainContent(props: DreamboxMainContentProps) {
   return (
     <>
       {/* 主内容区 */}
-      <main className="pt-[72px] transition-all duration-300 ml-16 min-h-screen">
+      <main className="transition-all duration-300 ml-16 min-h-screen">
         <div className="p-3 pb-16 sm:p-5 sm:pb-20">
           <DreamboxHomeSection
             activeSection={activeSection}
             homeGalleryItems={homeGalleryItems}
             setActiveSection={setActiveSection}
             setPendingPrompt={setPendingPrompt}
+            onOpenWorkDetail={onOpenWorkDetail}
           />
 
           {/* 影视创作 - 全屏三栏布局 */}
@@ -258,24 +264,15 @@ export function DreamboxMainContent(props: DreamboxMainContentProps) {
             </div>
           )}
 
-          {/* 绘影精灵 - 全屏三栏布局 */}
+          {/* 生成 - 即梦式万物对话框（Agent 模式 + 创作类型） */}
           {activeSection === 'smart' && (
             <div className="h-[calc(100vh-72px)] -m-6">
-              <SmartAssistantPanel
+              <GenerateWorkspace
                 initialPrompt={pendingPrompt}
-                autoGenerate={shouldAutoGenerate && activeSection === 'smart'}
-                onBack={() => { setActiveSection('home'); setPendingPrompt(undefined); setShouldAutoGenerate(false); setTargetService(undefined); setSmartAssistantTransfer(undefined); }}
-                onNavigate={(section, prompt, transferData) => {
-                  if (prompt) setEditingVideoPrompt(prompt);
-                  if (transferData) {
-                    setSmartAssistantTransfer(transferData);
-                    setShouldAutoGenerate(true);
-                  }
-                  if (section === 'video') setActiveSection('video');
-                  else if (section === 'image') setActiveSection('image');
-                  else if (section === 'film') setActiveSection('film');
-                  else if (section === 'media') setActiveSection('media');
-                  else if (section === 'smart') setActiveSection('smart');
+                onNavigate={(section, prompt) => {
+                  if (prompt) setPendingPrompt(prompt);
+                  setShouldAutoGenerate(true);
+                  setActiveSection(section);
                 }}
               />
             </div>
@@ -292,31 +289,60 @@ export function DreamboxMainContent(props: DreamboxMainContentProps) {
             </div>
           )}
 
-          <DreamboxMediaSection
-            activeSection={activeSection}
-            mediaSubSection={mediaSubSection}
-            setMediaSubSection={setMediaSubSection}
-            setActiveSection={setActiveSection}
-            finalVideoCaseAssets={finalVideoCaseAssets}
-            segmentCaseAssets={segmentCaseAssets}
-            productionCaseAssets={productionCaseAssets}
-            setPendingPrompt={setPendingPrompt}
-            setShouldAutoGenerate={setShouldAutoGenerate}
-            setCurrentImages={setCurrentImages}
-            setCurrentCopywriting={setCurrentCopywriting}
-            setShowCopywritingDialog={setShowCopywritingDialog}
-            isGeneratingImage={isGeneratingImage}
-            setIsGeneratingImage={setIsGeneratingImage}
-            handlePromptEnhanced={handlePromptEnhanced}
-            editingImagePrompt={editingImagePrompt}
-            imageInitialConfig={imageInitialConfig}
-            currentImages={currentImages}
-            handleRemixImage={handleRemixImage}
-            handleEditImage={handleEditImage}
-            handleRegenerateImage={handleRegenerateImage}
-            handlePosterGenerated={handlePosterGenerated}
-            handleCopywritingGenerated={handleCopywritingGenerated}
-          />
+          {/* 数字人（复用绘影既有 AvatarGenerator + /api/avatar 后端） */}
+          {activeSection === 'avatar' && (
+            <div className="h-[calc(100vh-1rem)] -m-6 overflow-y-auto">
+              <div className="flex items-center gap-3 border-b border-border/50 bg-card px-5 py-2.5">
+                <button
+                  onClick={() => { setActiveSection('smart'); setPendingPrompt(undefined); }}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+                  aria-label="返回生成"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
+                <h1 className="text-lg font-semibold text-foreground">数字人</h1>
+              </div>
+              <div className="mx-auto max-w-5xl p-5">
+                <AvatarGenerator
+                  onVideoGenerated={(url: string) => {
+                    setGeneratedVideos((prev) => [
+                      { id: `avatar-${Date.now()}`, videoUrl: url, prompt: '数字人', createdAt: Date.now() },
+                      ...prev,
+                    ]);
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* 配音生成（复用绘影 TTS 后端 /api/tts） */}
+          {activeSection === 'voice' && (
+            <div className="h-[calc(100vh-1rem)] -m-6 overflow-y-auto">
+              <div className="flex items-center gap-3 border-b border-border/50 bg-card px-5 py-2.5">
+                <button
+                  onClick={() => { setActiveSection('smart'); setPendingPrompt(undefined); }}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+                  aria-label="返回生成"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
+                <h1 className="text-lg font-semibold text-foreground">配音生成</h1>
+              </div>
+              <div className="p-5">
+                <VoiceGenerator />
+              </div>
+            </div>
+          )}
+
+          {/* 资产 - 即梦式全页资产库（生成历史 / 主体 / 画布），接真实历史 + 制作资产 */}
+          {activeSection === 'media' && (
+            <div className="h-[calc(100vh-0px)] -m-6">
+              <AssetsLibrary
+                finalVideoCaseAssets={finalVideoCaseAssets}
+                segmentCaseAssets={segmentCaseAssets}
+              />
+            </div>
+          )}
 
           <DreamboxTasksSection
             activeSection={activeSection}

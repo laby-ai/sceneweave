@@ -44,17 +44,20 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { voiceType } = body;
+    // 可选自定义文本：用于「配音生成」（用户任意文本）；不传则走音色试听短句。
+    const customText = typeof body.text === 'string' ? body.text.trim() : '';
+    const speechSpeed = typeof body.speechSpeed === 'number' ? body.speechSpeed : 1;
 
     if (!voiceType || typeof voiceType !== 'string') {
       return NextResponse.json({ error: '请提供音色名称(voiceType)' }, { status: 400 });
     }
 
     const speakerId = VOICE_TO_SPEAKER[voiceType] || DEFAULT_SPEAKER;
-    const previewText = PREVIEW_TEXT[voiceType] || DEFAULT_PREVIEW_TEXT;
+    const previewText = customText ? customText.slice(0, 1000) : (PREVIEW_TEXT[voiceType] || DEFAULT_PREVIEW_TEXT);
 
     try {
       const result = await ttsOrchestrate(previewText, voiceType, {
-        speechSpeed: 1,
+        speechSpeed,
       });
 
       if (result.success && result.audioBase64) {

@@ -211,6 +211,112 @@ export function SmartAssistantChatWorkspace(props: SmartAssistantChatWorkspacePr
                     )}
                   </div>
 
+                  {msg.vimaxAgent && (
+                    <div className="mt-3 ml-1 max-w-[720px] rounded-2xl border border-[#70E0FF]/25 bg-card/80 p-4 shadow-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-[#70E0FF]/12 px-2 py-1 text-[11px] font-medium text-[#70E0FF]">
+                              <Sparkles className="h-3 w-3" />
+                              {msg.vimaxAgent.phase === 'plan' ? '真实 AgentPlan' : msg.vimaxAgent.phase === 'reference_assets' ? 'Seedream 参考素材' : '视频费用确认'}
+                            </span>
+                            <span className={`rounded-full px-2 py-1 text-[11px] font-medium ${
+                              msg.vimaxAgent.costState === 'incurred'
+                                ? 'bg-amber-500/15 text-amber-500'
+                                : msg.vimaxAgent.costState === 'blocked'
+                                  ? 'bg-red-500/15 text-red-500'
+                                  : 'bg-foreground/10 text-muted-foreground'
+                            }`}>
+                              {msg.vimaxAgent.costState === 'incurred' ? '已触发真实模型' : msg.vimaxAgent.costState === 'blocked' ? '阶段阻塞' : '尚未触发费用'}
+                            </span>
+                          </div>
+                          <h3 className="mt-2 text-base font-semibold text-foreground">{msg.vimaxAgent.title}</h3>
+                          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{msg.vimaxAgent.summary}</p>
+                        </div>
+                        <div className="shrink-0 rounded-xl border border-border/60 bg-background/60 px-3 py-2 text-right">
+                          <div className="text-[10px] text-muted-foreground">模型</div>
+                          <div className="max-w-[160px] truncate text-xs font-medium text-foreground">{msg.vimaxAgent.model}</div>
+                        </div>
+                      </div>
+
+                      {msg.vimaxAgent.assets && msg.vimaxAgent.assets.filter(a => a.kind !== 'shot').length > 0 && (
+                        <div className="mt-4">
+                          <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                            <ImageIcon className="h-3.5 w-3.5" />
+                            角色 / 场景设定
+                          </div>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            {msg.vimaxAgent.assets.filter(a => a.kind !== 'shot').slice(0, 6).map((asset, assetIdx) => (
+                              <div key={`${asset.label}-${assetIdx}`} className="rounded-xl border border-border/50 bg-background/45 p-2.5">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="truncate text-sm font-medium text-foreground">{asset.label}</span>
+                                  <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] ${
+                                    asset.status === 'generated'
+                                      ? 'bg-green-500/15 text-green-500'
+                                      : asset.status === 'blocked'
+                                        ? 'bg-red-500/15 text-red-500'
+                                        : 'bg-foreground/10 text-muted-foreground'
+                                  }`}>
+                                    {asset.status === 'generated' ? '已生成' : asset.status === 'blocked' ? '失败' : '待确认'}
+                                  </span>
+                                </div>
+                                {asset.prompt && <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{asset.prompt}</p>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {msg.vimaxAgent.shots && msg.vimaxAgent.shots.length > 0 && (
+                        <div className="mt-4">
+                          <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                            <Clapperboard className="h-3.5 w-3.5" />
+                            分镜（参考图与成片挂在各自 Clip 下）
+                          </div>
+                          <div className="space-y-2">
+                            {msg.vimaxAgent.shots.map(shot => (
+                              <div key={shot.index} className="rounded-xl border border-border/50 bg-background/45 p-2.5">
+                                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                                  <span className="rounded-md bg-[#70E0FF]/12 px-1.5 py-0.5 text-[11px] text-[#70E0FF]">Clip {shot.index}</span>
+                                  <span className="truncate">{shot.title}</span>
+                                  {shot.status === 'video' && (
+                                    <span className="shrink-0 rounded-full bg-green-500/15 px-1.5 py-0.5 text-[10px] text-green-500">已出片</span>
+                                  )}
+                                  {shot.status === 'reference' && (
+                                    <span className="shrink-0 rounded-full bg-[#70E0FF]/15 px-1.5 py-0.5 text-[10px] text-[#70E0FF]">已出参考图</span>
+                                  )}
+                                  <span className="ml-auto shrink-0 text-xs text-muted-foreground">{shot.duration}s</span>
+                                </div>
+                                <div className="mt-1 text-xs text-muted-foreground">{shot.camera}</div>
+                                <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{shot.prompt}</p>
+                                {(shot.referenceUrl || shot.videoUrl) && (
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    {shot.referenceUrl && (
+                                      <div className="relative cursor-pointer overflow-hidden rounded-lg border border-border/40" onClick={() => setLightboxImage(shot.referenceUrl!)}>
+                                        <img src={shot.referenceUrl} alt={`Clip ${shot.index} 参考图`} className="h-24 w-auto object-cover" />
+                                        <span className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent px-1.5 py-0.5 text-[10px] text-white">参考首帧</span>
+                                      </div>
+                                    )}
+                                    {shot.videoUrl && (
+                                      <div className="relative overflow-hidden rounded-lg border border-border/40">
+                                        <video src={shot.videoUrl} controls className="h-24 w-auto object-cover" />
+                                        <span className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent px-1.5 py-0.5 text-[10px] text-white">成片</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="mt-4 rounded-xl border border-border/50 bg-background/45 px-3 py-2 text-xs text-muted-foreground">
+                        下一步：{msg.vimaxAgent.nextAction}
+                      </div>
+                    </div>
+                  )}
+
                   {/* AI消息操作按钮：复制/引用/修改 */}
                   {msg.role === 'assistant' && (
                     <div className="flex items-center gap-0.5 mt-1 ml-1 transition-opacity duration-200">
@@ -393,8 +499,8 @@ export function SmartAssistantChatWorkspace(props: SmartAssistantChatWorkspacePr
                     </div>
                   )}
 
-                  {/* 资产卡片 — 包裹生成结果 */}
-                  {msg.generatedImages && msg.generatedImages.length > 0 && msg.generationStatus === 'completed' && (
+                  {/* 资产卡片 — 包裹生成结果（ViMAX 消息的图片改为挂在各 Clip 下，这里不重复展示） */}
+                  {msg.generatedImages && msg.generatedImages.length > 0 && msg.generationStatus === 'completed' && !msg.vimaxAgent && (
                     <div className="mt-3 ml-1 rounded-xl border border-border/60 bg-card overflow-hidden max-w-[540px] shadow-sm">
                       {/* 卡片头部：类型标签+状态+操作 */}
                       <div className="flex items-center justify-between px-3 py-2 bg-accent/30 border-b border-border/40">
@@ -486,8 +592,8 @@ export function SmartAssistantChatWorkspace(props: SmartAssistantChatWorkspacePr
                       )}
                     </div>
                   )}
-                  {/* 生成中/失败的图片展示（未完成时用旧格式） */}
-                  {msg.generatedImages && msg.generatedImages.length > 0 && msg.generationStatus !== 'completed' && (
+                  {/* 生成中/失败的图片展示（未完成时用旧格式；ViMAX 消息走 Clip 内联展示） */}
+                  {msg.generatedImages && msg.generatedImages.length > 0 && msg.generationStatus !== 'completed' && !msg.vimaxAgent && (
                     <div className="mt-3 ml-1">
                       <div className="flex items-center gap-1.5 mb-2">
                         <ImageIcon className="w-4 h-4 text-[#70E0FF]" />
@@ -515,8 +621,8 @@ export function SmartAssistantChatWorkspace(props: SmartAssistantChatWorkspacePr
                     </div>
                   )}
 
-                  {/* 生成的视频内容 */}
-                  {msg.generatedVideo && (
+                  {/* 生成的视频内容（ViMAX 消息的成片挂在对应 Clip 下） */}
+                  {msg.generatedVideo && !msg.vimaxAgent && (
                     <div className="mt-3 ml-1">
                       <div className="flex items-center gap-1.5 mb-2">
                         <Video className="w-4 h-4 text-[#70E0FF]" />
