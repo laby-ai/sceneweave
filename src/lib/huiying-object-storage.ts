@@ -1,5 +1,3 @@
-import { S3Storage } from 'coze-coding-dev-sdk';
-
 export interface HuiyingObjectStorageRequirement {
   name: string;
   configured: boolean;
@@ -68,6 +66,9 @@ export function getHuiyingObjectStorageEnv(): HuiyingObjectStorageEnv {
 }
 
 export function createHuiyingObjectStorage() {
+  // Keep the SDK out of readiness/health routes; they only need env status.
+  // Load it only when an upload-capable path actually creates storage.
+  const { S3Storage } = require('coze-coding-dev-sdk') as typeof import('coze-coding-dev-sdk');
   const env = getHuiyingObjectStorageEnv();
   return new S3Storage({
     endpointUrl: env.endpointUrl,

@@ -35,7 +35,7 @@ export interface RunBYOKVideoSubmitResult {
 export function clampVideoSubmitDuration(duration: unknown) {
   const numericDuration = typeof duration === 'number' ? duration : Number(duration);
   if (!Number.isFinite(numericDuration)) return 5;
-  return Math.min(Math.max(numericDuration, 5), 10);
+  return Math.min(Math.max(numericDuration, 5), 40);
 }
 
 export function buildBYOKVideoSubmitParams(input: BuildBYOKVideoSubmitParamsInput): BYOKVideoParams {

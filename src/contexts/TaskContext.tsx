@@ -8,6 +8,8 @@ const TaskContext = createContext<TaskContextType | undefined>(undefined);
 const STORAGE_KEY = 'dreambox-background-tasks';
 const LOCAL_TERMINAL_RETENTION_MS = 24 * 60 * 60 * 1000;
 const LOCAL_OPTIMISTIC_TASK_GRACE_MS = 2 * 60 * 1000;
+const PERSISTED_TASK_LIMIT = 80;
+const PERSISTED_TASK_BYTES_LIMIT = 320_000;
 const SERVER_TASK_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const isTerminalTask = (task: BackgroundTask) =>
@@ -37,6 +39,41 @@ const shouldKeepLocalTaskAfterServerSync = (
   // 只给刚创建的乐观本地任务一个短暂宽限期。服务端同步成功后仍缺席、
   // 或事件流已重连失败的运行中任务，不能继续冒充真实后台任务。
   return !isDisconnectedLocalTask(task) && now - task.createdAt <= LOCAL_OPTIMISTIC_TASK_GRACE_MS;
+};
+
+const toPersistedTasks = (tasks: BackgroundTask[], limit = PERSISTED_TASK_LIMIT) =>
+  tasks
+    .map(task => ({
+      ...task,
+      abortController: undefined,
+    }))
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .slice(0, limit);
+
+const saveTasksBestEffort = (tasks: BackgroundTask[]) => {
+  if (typeof window === 'undefined') return;
+
+  const limits = [PERSISTED_TASK_LIMIT, 40, 12, 0];
+  for (const limit of limits) {
+    try {
+      if (limit === 0) {
+        window.localStorage.removeItem(STORAGE_KEY);
+        return;
+      }
+
+      const payload = JSON.stringify(toPersistedTasks(tasks, limit));
+      if (payload.length > PERSISTED_TASK_BYTES_LIMIT && limit > 12) {
+        continue;
+      }
+
+      window.localStorage.setItem(STORAGE_KEY, payload);
+      return;
+    } catch (error) {
+      if (limit <= 12) {
+        console.warn('[TaskContext] 任务本地缓存写入失败，已清理过大的本地缓存', error);
+      }
+    }
+  }
 };
 
 // 调试日志开关
@@ -212,7 +249,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           // 注意：这里不随意将 running 状态改为 failed，
           // 因为任务可能真的在服务端后台运行中！
           // 我们会在 syncFromServer 中从服务端获取真实状态
-          initialTasks = parsed.map((task: BackgroundTask) => ({
+          initialTasks = parsed.slice(0, PERSISTED_TASK_LIMIT).map((task: BackgroundTask) => ({
             ...task,
             abortController: undefined, // AbortController无法序列化
           }));
@@ -234,12 +271,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   // 保存到localStorage
   useEffect(() => {
     if (initialized && typeof window !== 'undefined') {
-      // 移除abortController后保存（因为无法序列化）
-      const serializable = tasks.map(task => ({
-        ...task,
-        abortController: undefined,
-      }));
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(serializable));
+      saveTasksBestEffort(tasks);
     }
   }, [tasks, initialized]);
 
@@ -302,7 +334,21 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const runningTasks = tasks.filter(task => task.status === 'running' || task.status === 'pending');
+    // 只为“真正活跃”的任务建立 SSE 流，保证前后端协同可控：
+    // - running：一直订阅；
+    // - pending：仅当最近创建（新提交，可能马上启动）才订阅；陈旧 pending 不再占用连接；
+    // - 总数封顶，避免占满浏览器同源连接（约 6 条）导致生成/对话请求挂起。
+    const ACTIVE_STREAM_LIMIT = 4;
+    const FRESH_PENDING_MS = 10 * 60 * 1000;
+    const now = Date.now();
+    const active = tasks.filter(task =>
+      task.status === 'running' ||
+      (task.status === 'pending' && typeof task.createdAt === 'number' && now - task.createdAt < FRESH_PENDING_MS),
+    );
+    const runningTasks = [
+      ...active.filter(task => task.status === 'running'),
+      ...active.filter(task => task.status === 'pending'),
+    ].slice(0, ACTIVE_STREAM_LIMIT);
     const runningIds = new Set(runningTasks.map(task => task.id));
 
     taskStreamsRef.current.forEach((source, taskId) => {

@@ -40,9 +40,25 @@ function parseRequestUrl(reqUrl: string, baseUrl: string): NonNullable<Parameter
   };
 }
 
+// ARK direct Volcano access: inject default BYOK headers when client didn't provide them.
+const ARK_KEY = (process.env.ARK_IMAGE_API_KEY || process.env.ARK_API_KEY || '').trim();
+const ARK_BASE = (process.env.ARK_API_BASE || 'https://ark.cn-beijing.volces.com/api/v3').replace('/api/plan/v3', '/api/v3').trim();
+const ARK_MODEL = (process.env.ARK_AGENT_MODEL || 'doubao-seed-1-6-250615').trim();
+const ARK_IMG = (process.env.ARK_IMAGE_MODEL || 'doubao-seedream-5-0-260128').trim();
+const ARK_VID = (process.env.ARK_VIDEO_MODEL || 'doubao-seedance-1-5-pro-251215').trim();
+
 app.prepare().then(() => {
   const server = createServer(async (req, res) => {
     try {
+      // Inject default ARK BYOK headers for direct Volcano access (not agentplan).
+      if (ARK_KEY && !req.headers['x-yh-api-key']) {
+        req.headers['x-yh-provider'] = 'ark-plan';
+        req.headers['x-yh-api-base'] = ARK_BASE;
+        req.headers['x-yh-api-key'] = ARK_KEY;
+        req.headers['x-yh-model'] = ARK_MODEL;
+        req.headers['x-yh-image-model'] = ARK_IMG;
+        req.headers['x-yh-video-model'] = ARK_VID;
+      }
       const parsedUrl = parseRequestUrl(req.url || '/', `http://${req.headers.host || `${hostname}:${port}`}`);
       await handle(req, res, parsedUrl);
     } catch (err) {

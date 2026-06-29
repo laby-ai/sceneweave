@@ -96,6 +96,11 @@ const PIPELINE_MODES = [
 const DURATION_OPTIONS = [5, 8, 10];
 const RATIO_OPTIONS = ['16:9', '9:16', '1:1'];
 const STYLE_OPTIONS = ['电影感', '动漫风格', '纪实风格', '奇幻风格'];
+const RESOLUTION_OPTIONS = [
+  { value: '480p', label: '480P 标清' },
+  { value: '720p', label: '720P 高清' },
+  { value: '1080p', label: '1080P 超清' },
+];
 
 const COMPOSITION_OPTIONS = [
   { value: 'panoramic', label: '全景', icon: '🏔️' },
@@ -210,6 +215,9 @@ export default function AIVideoCreationPanel({
   const [selectedComposition, setSelectedComposition] = useState('panoramic');
   const [pipelineMode, setPipelineMode] = useState<'t2v' | 't2i2v' | 'i2v' | 'flf2v'>('t2v');
   const [motionScore, setMotionScore] = useState(5);
+  const [selectedResolution, setSelectedResolution] = useState('720p');
+  const [generateAudio, setGenerateAudio] = useState(true);
+  const [watermark, setWatermark] = useState(false);
   const [promptRefined, setPromptRefined] = useState(false);
   const [refiningPrompt, setRefiningPrompt] = useState(false);
   const [bgmType, setBgmType] = useState<BgmTypeId>('cinematic');
@@ -365,6 +373,7 @@ export default function AIVideoCreationPanel({
           prompt: videoPrompt, model: selectedModel, duration: selectedDuration,
           ratio: selectedRatio, style: selectedStyle, composition: selectedComposition,
           pipelineMode, motionScore, promptRefined,
+          resolution: selectedResolution, generateAudio, watermark,
         }),
       });
       if (!res.ok || !res.body) throw new Error('视频生成请求失败');
@@ -688,6 +697,15 @@ export default function AIVideoCreationPanel({
                               <div><div className="text-[10px] text-foreground/40 mb-1">运动评分 (Motion Score: {motionScore})</div>
                                 <input type="range" min={1} max={15} value={motionScore} onChange={e => setMotionScore(Number(e.target.value))} className="w-full h-1.5 bg-border rounded-lg appearance-none cursor-pointer accent-[#70E0FF]" />
                                 <div className="flex justify-between text-[9px] text-foreground/30 mt-0.5"><span>静态</span><span>中等</span><span>剧烈</span></div>
+                              </div>
+                              <div><div className="text-[10px] text-foreground/40 mb-1">清晰度</div><div className="flex gap-1">{RESOLUTION_OPTIONS.map(r => (
+                                <button key={r.value} onClick={() => setSelectedResolution(r.value)} className={`flex-1 text-[11px] py-1 rounded transition-all ${selectedResolution === r.value ? 'bg-[#70E0FF]/10 text-[#70E0FF]' : 'text-foreground/50 hover:bg-accent/20'}`}>{r.label}</button>
+                              ))}</div></div>
+                              <div className="flex items-center justify-between"><span className="text-[11px] text-foreground/50">生成音效</span>
+                                <button onClick={() => setGenerateAudio(v => !v)} className={`relative w-8 h-4 rounded-full transition-colors ${generateAudio ? 'bg-[#70E0FF]' : 'bg-border'}`}><span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${generateAudio ? 'left-[18px]' : 'left-0.5'}`} /></button>
+                              </div>
+                              <div className="flex items-center justify-between"><span className="text-[11px] text-foreground/50">视频水印</span>
+                                <button onClick={() => setWatermark(v => !v)} className={`relative w-8 h-4 rounded-full transition-colors ${watermark ? 'bg-[#70E0FF]' : 'bg-border'}`}><span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${watermark ? 'left-[18px]' : 'left-0.5'}`} /></button>
                               </div>
                               <div><button onClick={handleRefinePrompt} disabled={refiningPrompt || !prompt} className="w-full text-[11px] px-2 py-1.5 rounded bg-[#70E0FF]/10 text-[#70E0FF] hover:bg-[#70E0FF]/20 disabled:opacity-40 flex items-center justify-center gap-1">
                                 {refiningPrompt ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}{promptRefined ? '提示词已增强 ✓' : '提示词增强'}

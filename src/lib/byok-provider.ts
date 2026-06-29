@@ -104,17 +104,26 @@ export function extractBYOKConnection(headers: Headers): BYOKConnection | undefi
   const imageModel = headers.get('x-yh-image-model')?.trim() || undefined;
   const videoModel = headers.get('x-yh-video-model')?.trim() || undefined;
 
-  if (!provider || !apiBase || !apiKey) return undefined;
-  if (provider !== 'openai-compatible' && provider !== 'ark-plan') return undefined;
+  if (provider && apiBase && apiKey && (provider === 'openai-compatible' || provider === 'ark-plan')) {
+    return { provider, apiBase: normalizeBYOKApiBase(apiBase), apiKey, model, imageModel, videoModel };
+  }
 
-  return {
-    provider,
-    apiBase: normalizeBYOKApiBase(apiBase),
-    apiKey,
-    model,
-    imageModel,
-    videoModel,
-  };
+  // 服务端默认连接：统一走 Agent Plan 端点（套餐内，避免 /api/v3 套餐外后付费）+ Agent Plan key + 套餐内模型。
+  const envKey = (process.env.HUIYING_REAL_ARK_API_KEY || process.env.ARK_API_KEY || '').trim();
+  const envBase = (process.env.HUIYING_REAL_ARK_API_BASE || process.env.ARK_API_BASE || 'https://ark.cn-beijing.volces.com/api/plan/v3').trim();
+  const planBase = envBase.includes('/plan/') ? envBase : 'https://ark.cn-beijing.volces.com/api/plan/v3';
+  if (envKey) {
+    return {
+      provider: 'ark-plan',
+      apiBase: planBase,
+      apiKey: envKey,
+      model: (process.env.ARK_AGENT_MODEL || 'minimax-m3').trim(),
+      imageModel: (process.env.ARK_IMAGE_MODEL || 'doubao-seedream-5.0-lite').trim(),
+      videoModel: (process.env.ARK_VIDEO_MODEL || 'doubao-seedance-1.5-pro').trim(),
+    };
+  }
+
+  return undefined;
 }
 
 export async function chatWithBYOK(
@@ -161,6 +170,34 @@ export async function chatWithBYOK(
   return { content, model, provider: 'byok' };
 }
 
+// Seedream 5.0 要求图像 >= 3,686,400 像素，1024x1024 等小尺寸会直接 400。
+// 这里在保持宽高比的前提下把过小尺寸放大到达标尺寸；非 seedream 模型保持原样，避免影响其它 BYOK 渠道。
+const SEEDREAM_MIN_PIXELS = 3_686_400;
+const SEEDREAM_RATIO_SIZE: Record<string, string> = {
+  '1:1': '2048x2048',
+  '16:9': '2560x1440',
+  '9:16': '1440x2560',
+  '4:3': '2304x1728',
+  '3:4': '1728x2304',
+  '3:2': '2496x1664',
+  '2:3': '1664x2496',
+  '21:9': '3024x1296',
+};
+
+function ensureSeedreamImageSize(size: string | undefined, model: string): string {
+  if (!/seedream/i.test(model)) return size || '1024x1024';
+  const raw = (size || '').trim();
+  const wh = /^(\d+)x(\d+)$/.exec(raw);
+  if (wh) {
+    const w = Number(wh[1]);
+    const h = Number(wh[2]);
+    if (w * h >= SEEDREAM_MIN_PIXELS) return `${w}x${h}`;
+    const scale = Math.sqrt(SEEDREAM_MIN_PIXELS / (w * h));
+    return `${Math.round(w * scale)}x${Math.round(h * scale)}`;
+  }
+  return SEEDREAM_RATIO_SIZE[raw] || '2048x2048';
+}
+
 export async function imageWithBYOK(
   connection: BYOKConnection,
   params: BYOKImageParams
@@ -180,7 +217,7 @@ export async function imageWithBYOK(
     body: JSON.stringify({
       model,
       prompt: params.prompt,
-      size: params.size || '1024x1024',
+      size: ensureSeedreamImageSize(params.size, model),
       n: params.n ?? 1,
     }),
   });
@@ -240,16 +277,31 @@ function findStringByKeys(value: unknown, keys: string[], depth = 0): string | u
   return undefined;
 }
 
+// Seedance 文本提示词安全上限（保守取值，避免超长触发 ARK Invalid content.text）。
+const ARK_VIDEO_PROMPT_MAX = 800;
+
 export function normalizeVideoPromptForArk(prompt: string): string {
-  const compact = String(prompt || '')
-    .replace(/【[^】]{1,28}】/g, ' ')
+  const raw = String(prompt || '')
+    // 去除控制字符与零宽字符，ARK 对这类字符会判定 content.text 非法。
+    .replace(/[\u0000-\u001F\u007F\u200B-\u200D\uFEFF]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-  if (compact.length <= 1200) return compact;
+  let compact = raw
+    .replace(/【[^】]{1,28}】/g, ' ')
+    // Seedance 会把 "--xxx" 当成命令参数解析，分镜文案里出现会导致 Invalid content.text；
+    // 把连续短横线降级为破折号，避免被误解析为参数。
+    .replace(/-{2,}/g, '—')
+    .replace(/\s+/g, ' ')
+    .trim();
+  // 去掉方括号标签后可能为空（例如某段分镜只剩「【镜头3】」之类标签），
+  // 此时回退到原始文案；仍为空再给安全默认，避免 ARK 报 Invalid content.text 导致整段失败。
+  if (!compact) compact = raw;
+  if (!compact) compact = '电影感画面，自然光影，连贯运镜。';
+  if (compact.length <= ARK_VIDEO_PROMPT_MAX) return compact;
 
-  const opening = compact.slice(0, 850);
+  const opening = compact.slice(0, ARK_VIDEO_PROMPT_MAX - 300);
   const ending = compact.slice(-280);
-  return `${opening} ... ${ending}`;
+  return `${opening} … ${ending}`;
 }
 
 function extractVideoStatus(payload: unknown): BYOKVideoStatus {

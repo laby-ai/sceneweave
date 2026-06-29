@@ -630,6 +630,7 @@ export function ImageCreationPanel({ onBack, initialPrompt, autoGenerate, initia
         cfgScale,
         steps,
         batchSize,
+        n: batchSize,
         referenceImages: imageRefs.map(r => r.url).filter(Boolean),
         referenceDocs: imageDocs.map(d => d.name),
         referenceLinks: imageLinks,
@@ -931,6 +932,7 @@ export function ImageCreationPanel({ onBack, initialPrompt, autoGenerate, initia
           style: selectedStyle,
           size: selectedSize,
           cfgScale, steps, batchSize,
+          n: batchSize,
         };
         // 传递参考图片给生成API
         // 重要：无论创作意图是reference还是reinterpret，都传参考图给生成模型
@@ -1808,6 +1810,12 @@ export function ImageCreationPanel({ onBack, initialPrompt, autoGenerate, initia
                 className="w-full text-xs bg-accent/10 border border-border rounded-lg px-3 py-2 text-foreground/80 outline-none resize-none min-h-[48px] max-h-[80px] placeholder:text-foreground/25 focus:border-primary/30 mt-1.5"
                 rows={2}
               />
+              <div className="mt-3">
+                <div className="text-[10px] text-foreground/40 mb-1">生成数量</div>
+                <div className="flex gap-1">{[1, 2, 3, 4].map(n => (
+                  <button key={n} onClick={() => setBatchSize(n)} className={`flex-1 text-[11px] py-1 rounded transition-all ${batchSize === n ? 'bg-primary/10 text-primary' : 'text-foreground/50 hover:bg-accent/20'}`}>{n} 张</button>
+                ))}</div>
+              </div>
             </div>
 
           </div>

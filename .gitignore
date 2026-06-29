@@ -116,3 +116,13 @@ playwright-cli/
 
 # Local provider/app workspace metadata
 .coze
+
+# Local backup snapshots (timestamped working copies, never source of truth)
+*.bak-*
+*.bak
+
+# Local-only ops helpers that embed server credentials — must never be committed
+scripts/_ssh.py
+scripts/_remote.sh
+scripts/_deploy_*.py
+scripts/_ssh_probe.py
