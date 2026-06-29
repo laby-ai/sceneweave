@@ -27,6 +27,9 @@ const SUPPORTED_EXTENSIONS = new Map<string, string>([
 ]);
 
 const CURATED_FILESYSTEM_ROOTS = [
+  path.resolve(process.cwd(), 'public', 'generated'),
+  path.resolve(process.cwd(), 'public', 'home'),
+  path.resolve(process.cwd(), 'public', 'samples'),
   'D:/C_Migrated/Users_16571_Documents_Codex/2026-06-15/files-mentioned-by-the-user-1/work/project/projects/public/generated',
   'D:/C_Migrated/Users_16571_Documents_Codex/2026-06-15/files-mentioned-by-the-user-gz/work/extracted/projects/public/generated',
 ].map(root => path.normalize(root));
@@ -58,6 +61,8 @@ const CURATED_SOURCE_TOKENS = [
   '/sceneweave-recovered-live/public/home/',
   '/sceneweave-recovered-live/public/samples/',
   '/sceneweave-recovered-live/public/generated/',
+  '/public/home/',
+  '/public/samples/',
   '/files-mentioned-by-the-user-1/work/project/projects/public/generated/',
   '/files-mentioned-by-the-user-gz/work/extracted/projects/public/generated/',
 ];
@@ -276,11 +281,21 @@ async function collectFilesystemMediaRows(maxFiles = 240): Promise<CsvRow[]> {
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const limit = Math.min(Math.max(Number(url.searchParams.get('limit') ?? 80), 1), 120);
+  const basePath = url.pathname.startsWith('/huiying/') ? '/huiying' : (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
 
-  let text: string;
+  let text = '';
+  let indexAvailable = true;
   try {
     text = await fs.readFile(MEDIA_INDEX_PATH, 'utf8');
   } catch (error) {
+    indexAvailable = false;
+  }
+
+  const csvRows = indexAvailable ? collectMediaRows(text, limit) : [];
+  const filesystemRows = await collectFilesystemMediaRows();
+  const rows = rankMediaRows([...csvRows, ...filesystemRows], limit);
+
+  if (!indexAvailable && rows.length === 0) {
     return NextResponse.json(
       {
         success: false,
@@ -291,15 +306,11 @@ export async function GET(request: Request) {
     );
   }
 
-  const csvRows = collectMediaRows(text, limit);
-  const filesystemRows = await collectFilesystemMediaRows();
-  const rows = rankMediaRows([...csvRows, ...filesystemRows], limit);
-
   const assets = rows.map((row, index) => {
-    const mediaUrl = `/api/assets/media-file?path=${encodeURIComponent(row.full_path)}`;
+    const mediaUrl = `${basePath}/api/assets/media-file?path=${encodeURIComponent(row.full_path)}`;
     const posterUrl =
       row.type === 'video' && path.extname(row.full_path).toLowerCase() === '.mp4'
-        ? `/api/assets/video-poster?path=${encodeURIComponent(row.full_path)}`
+        ? `${basePath}/api/assets/video-poster?path=${encodeURIComponent(row.full_path)}`
         : undefined;
     return {
       id: `historical-${index}-${path.basename(row.full_path)}`,
@@ -318,6 +329,7 @@ export async function GET(request: Request) {
   return NextResponse.json({
     success: true,
     indexPath: MEDIA_INDEX_PATH,
+    indexAvailable,
     count: assets.length,
     assets,
   });

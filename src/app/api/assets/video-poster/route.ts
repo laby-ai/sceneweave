@@ -12,6 +12,7 @@ export const runtime = 'nodejs';
 const execFileAsync = promisify(execFile);
 
 const ALLOWED_ROOTS = [
+  path.resolve(process.cwd(), 'public'),
   'C:\\Users\\16571\\Documents\\Codex',
   'D:\\C_Migrated\\Users_16571_Documents_Codex',
 ].map(root => path.resolve(root).toLowerCase());
