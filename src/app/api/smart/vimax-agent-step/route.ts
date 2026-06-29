@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { mergeVideosWithLocalFfmpeg } from '@/lib/local-video-merge';
+import { buildProductionAssemblyPlan } from '@/lib/production-assembly-plan';
+import { buildProductionProject } from '@/lib/production-project';
+import { generateShotsFromUserPrompt } from '@/lib/storyboard-generator';
+import { extractLastFrameForHandoff } from '@/lib/video-frame-extraction';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -22,6 +26,10 @@ interface VimaxAgentStepBody {
   model?: string;
   ratio?: string;
   resolution?: string;
+  duration?: number;
+  segmentDuration?: number;
+  sceneType?: string;
+  style?: string;
   stream?: boolean;
   /** 视频阶段必须显式确认，避免误触发计费。 */
   confirm?: boolean;
@@ -270,6 +278,82 @@ async function callArkText(prompt: string, modelOverride?: string): Promise<{ mo
   return { model, plan: extractJsonObject(text), rawText: text };
 }
 
+function inferDurationSeconds(prompt: string, explicit?: unknown) {
+  const configured = Number(explicit);
+  if (Number.isFinite(configured) && configured > 0) return Math.max(5, Math.min(120, Math.floor(configured)));
+  const match = /(\d{1,3})\s*(秒|s|S)/.exec(prompt);
+  const seconds = match ? Number(match[1]) : 30;
+  return Math.max(5, Math.min(120, Math.floor(seconds || 30)));
+}
+
+function buildProductionBackedVimaxPlan(prompt: string, basePlan: VimaxAgentPlan, body: VimaxAgentStepBody): VimaxAgentPlan {
+  const duration = inferDurationSeconds(prompt, body.duration);
+  const segmentDuration = Math.max(3, Math.min(15, Math.floor(Number(body.segmentDuration) || (duration <= 30 ? 5 : 10))));
+  const style = body.style || '电影感短剧';
+  const sceneType = body.sceneType || 'drama';
+  const ratio = body.ratio || '16:9';
+  const generated = generateShotsFromUserPrompt(prompt, duration, {
+    maxShotDuration: segmentDuration,
+    preferredSceneType: sceneType,
+  });
+  const productionProject = buildProductionProject({
+    taskId: `vimax-agent-${Date.now()}`,
+    prompt,
+    duration,
+    segmentDuration,
+    style,
+    sceneType,
+    ratio,
+    entities: generated.entities,
+    visualAnchors: generated.visualAnchors as Array<{ element: string; category: string }>,
+    narrativeSummary: generated.narrativeSummary,
+    subtitleSuggestion: generated.subtitleSuggestion,
+    narrationSuggestion: generated.narrationSuggestion,
+    shots: generated.shots.map((shot, index) => ({
+      ...shot,
+      index: index + 1,
+      status: 'planned',
+    })),
+  });
+  const assemblyPlan = buildProductionAssemblyPlan({
+    productionProject,
+    sourceTaskId: `${productionProject.id}-vimax-agent`,
+  });
+
+  const productionAssets = productionProject.assets
+    .filter(asset => ['script', 'character', 'scene', 'prop', 'storyboard'].includes(asset.kind))
+    .slice(0, 8)
+    .map(asset => ({
+      kind: asset.kind === 'storyboard' ? 'shot' as const : asset.kind as VimaxAgentPlan['assets'][number]['kind'],
+      label: asset.name,
+      prompt: asset.summary,
+    }));
+
+  return {
+    title: basePlan.title || productionProject.title,
+    summary: productionProject.narrativeSummary || basePlan.summary,
+    assets: productionAssets.length ? productionAssets : basePlan.assets,
+    shots: assemblyPlan.segments.map((segment, index) => {
+      const projectShot = productionProject.storyboard.shots[index];
+      const sourceShot = basePlan.shots[index];
+      return {
+        index: index + 1,
+        title: sourceShot?.title || `${projectShot?.storyBeat || '镜头'} ${index + 1}`,
+        duration: segment.duration,
+        camera: projectShot?.shotTypeLabel || sourceShot?.camera || 'ViMAX 分段镜头',
+        prompt: [
+          segment.prompt,
+          `【ViMAX ShotFrameContract】首帧=${segment.shotFrameContract.firstFrame.description}；尾帧=${segment.shotFrameContract.lastFrame.description}`,
+          `【ViMAX Variation】${segment.shotFrameContract.variationType}: ${segment.shotFrameContract.variationReason}`,
+          `【ViMAX Motion】${segment.shotFrameContract.motionDescription}`,
+          segment.expectedInputs.boundaryBridgePrompt ? `【BoundaryBridge】${segment.expectedInputs.boundaryBridgePrompt}` : '',
+        ].filter(Boolean).join('\n'),
+      };
+    }),
+    nextAction: assemblyPlan.nextAction || '确认分镜后进入参考图和真实视频生成。',
+  };
+}
+
 // 流式 plan：原生 fetch + SSE，逐 token 把 delta 透传给前端
 async function callArkTextStream(prompt: string, modelOverride: string | undefined, writer: (delta: string) => void): Promise<{ model: string; plan: VimaxAgentPlan; rawText: string }> {
   const { apiKey, apiBase, textModel } = getArkConfig();
@@ -461,10 +545,17 @@ function referenceForShot(assets: VimaxAgentReferenceAsset[], shot: VimaxAgentPl
     || validAssets[0];
 }
 
-function buildSeedancePrompt(plan: VimaxAgentPlan, shot: VimaxAgentPlan['shots'][number]) {
+function buildSeedancePrompt(
+  plan: VimaxAgentPlan,
+  shot: VimaxAgentPlan['shots'][number],
+  opts: { handoffFromPrevious?: boolean } = {},
+) {
   return [
     shot.prompt || `${shot.title}，${plan.summary || plan.title}`,
     shot.camera ? `运镜：${shot.camera}` : '',
+    opts.handoffFromPrevious
+      ? '本段第一帧已绑定上一段尾帧；先严格承接上一段末尾的人物姿态、空间方向、光线和道具位置，再推进本段剧情。'
+      : '',
     '保持同一部短剧的角色、场景、雨夜氛围和电影感光影，镜头之间连续，不要字幕，不要水印。',
   ].filter(Boolean).join(' ').trim();
 }
@@ -474,22 +565,23 @@ async function submitSeedanceShotTask(
   shot: VimaxAgentPlan['shots'][number],
   index: number,
   assets: VimaxAgentReferenceAsset[],
-  opts: { ratio?: string; resolution?: string },
+  opts: { ratio?: string; resolution?: string; previousLastFrameUrl?: string },
 ) {
   const { imageApiKey, imageApiBase, videoModel } = getArkConfig();
   if (!imageApiKey) {
     throw new Error('缺少视频模型 API Key，无法进入 Seedance 视频生成阶段。');
   }
 
-  const promptText = buildSeedancePrompt(plan, shot);
+  const promptText = buildSeedancePrompt(plan, shot, { handoffFromPrevious: Boolean(opts.previousLastFrameUrl) });
   if (!promptText) {
     throw new Error(`缺少可用于视频生成的镜头提示词：Clip ${shot.index}`);
   }
 
   const frame = referenceForShot(assets, shot, index);
+  const firstFrameUrl = opts.previousLastFrameUrl || frame?.url;
   const content: Array<Record<string, unknown>> = [{ type: 'text', text: promptText }];
-  if (frame?.url) {
-    content.push({ type: 'image_url', image_url: { url: frame.url }, role: 'first_frame' });
+  if (firstFrameUrl) {
+    content.push({ type: 'image_url', image_url: { url: firstFrameUrl }, role: 'first_frame' });
   }
 
   const duration = clampVideoDuration(shot.duration);
@@ -526,6 +618,16 @@ async function submitSeedanceShotTask(
     shotIndex: shot.index,
     shotTitle: shot.title || `Clip ${shot.index}`,
     duration,
+  };
+}
+
+async function ensureSeedanceLastFrame(segment: SeedanceShotSegment): Promise<SeedanceShotSegment> {
+  if (segment.lastFrameUrl) return segment;
+  const extracted = await extractLastFrameForHandoff(segment.videoUrl);
+  if (!extracted.lastFrameUrl) return segment;
+  return {
+    ...segment,
+    lastFrameUrl: extracted.lastFrameUrl,
   };
 }
 
@@ -583,12 +685,17 @@ async function callSeedanceVideo(
     throw new Error('缺少可用于视频生成的分镜。');
   }
 
-  const submitted = [];
+  const segments: SeedanceShotSegment[] = [];
+  let previousLastFrameUrl: string | undefined;
   for (let index = 0; index < shots.length; index += 1) {
-    submitted.push(await submitSeedanceShotTask(plan, shots[index], index, assets, opts));
+    const task = await submitSeedanceShotTask(plan, shots[index], index, assets, {
+      ...opts,
+      previousLastFrameUrl,
+    });
+    const segment = await ensureSeedanceLastFrame(await pollSeedanceShotTask(task));
+    segments.push(segment);
+    previousLastFrameUrl = segment.lastFrameUrl;
   }
-  const segments = (await Promise.all(submitted.map(task => pollSeedanceShotTask(task))))
-    .sort((a, b) => a.shotIndex - b.shotIndex);
   const totalDuration = segments.reduce((sum, segment) => sum + segment.duration, 0);
 
   let videoUrl = segments[0]?.videoUrl;
@@ -632,7 +739,8 @@ export async function POST(request: NextRequest) {
               const result = await callArkTextStream(prompt, body.model, (delta) => {
                 send('plan.delta', { delta });
               });
-              send('plan.complete', { success: true, phase: 'plan', model: result.model, plan: result.plan });
+              const productionBackedPlan = buildProductionBackedVimaxPlan(prompt, result.plan, body);
+              send('plan.complete', { success: true, phase: 'plan', model: result.model, plan: productionBackedPlan });
             } catch (error) {
               send('plan.error', { error: error instanceof Error ? error.message : 'unknown' });
             } finally {
@@ -650,7 +758,7 @@ export async function POST(request: NextRequest) {
         usedRealKey: true,
         incurredCost: true,
         model: result.model,
-        plan: result.plan,
+        plan: buildProductionBackedVimaxPlan(prompt, result.plan, body),
       });
     }
 

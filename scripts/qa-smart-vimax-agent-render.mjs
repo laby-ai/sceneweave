@@ -27,6 +27,24 @@ check('route-calls-real-ark-text-model', /chat\/completions/.test(route) && /ARK
 check('route-calls-real-seedream-image-model', /images\/generations/.test(route) && /doubao-seedream-5\.0-lite/.test(route));
 check('route-does-not-return-free-fake-result', !/usedRealKey:\s*false|incurredCost:\s*false|dry-run|不产生费用/.test(route));
 check('route-fails-explicitly-before-video-cost', /视频生成阶段需要用户在界面显式确认费用/.test(route));
+check(
+  'route-uses-embedded-vimax-production-pipeline',
+  /buildProductionProject/.test(route)
+    && /buildProductionAssemblyPlan/.test(route)
+    && /generateShotsFromUserPrompt/.test(route)
+    && /buildProductionBackedVimaxPlan/.test(route)
+    && /ViMAX ShotFrameContract/.test(route)
+    && /ViMAX Variation/.test(route),
+  'short-drama skill must not bypass the embedded ViMAX-style production artifacts',
+);
+check(
+  'route-uses-sequential-last-frame-handoff',
+  /previousLastFrameUrl/.test(route)
+    && /ensureSeedanceLastFrame/.test(route)
+    && /extractLastFrameForHandoff/.test(route)
+    && !/Promise\.all\(submitted\.map\(task => pollSeedanceShotTask/.test(route),
+  'video stage must not submit all shots before previous tail frames exist',
+);
 
 const failed = checks.filter(item => !item.pass);
 const result = {
