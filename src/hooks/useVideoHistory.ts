@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import type { VideoTextSegment } from '@/constants/subtitles';
 
 interface VideoHistoryItem {
   id: string;
@@ -14,7 +15,7 @@ interface VideoHistoryItem {
   status: 'pending' | 'generating' | 'completed' | 'failed';
   createdAt: number;
   completedAt?: number;
-  materials?: any[];
+  materials?: unknown[];
   enableSubtitle?: boolean;
   subtitleText?: string;
   subtitlePosition?: string;
@@ -29,7 +30,7 @@ interface VideoHistoryItem {
   videoTextPosition?: 'top' | 'middle' | 'bottom';
   videoTextStartTime?: number;
   videoTextEndTime?: number;
-  videoTextSegments?: any[];
+  videoTextSegments?: VideoTextSegment[];
 }
 
 interface ImageHistoryItem {
@@ -43,12 +44,10 @@ interface ImageHistoryItem {
   status: 'pending' | 'generating' | 'completed' | 'failed';
   createdAt: number;
   completedAt?: number;
-  materials?: any[];
+  materials?: unknown[];
   enableImageText?: boolean;
   imageText?: string;
 }
-
-type HistoryItem = VideoHistoryItem | ImageHistoryItem;
 
 interface PromptHistoryItem {
   id: string;
