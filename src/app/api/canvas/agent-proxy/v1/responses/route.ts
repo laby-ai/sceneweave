@@ -8,6 +8,8 @@ import { NextRequest } from 'next/server';
 const ARK_BASE = (process.env.HUIYING_REAL_ARK_API_BASE || process.env.ARK_API_BASE || 'https://ark.cn-beijing.volces.com/api/v3').replace(/\/$/, '');
 const ARK_KEY = process.env.HUIYING_REAL_ARK_API_KEY || process.env.ARK_API_KEY || '';
 const ARK_MODEL = process.env.ARK_AGENT_MODEL || process.env.ARK_TEXT_MODEL || 'minimax-m3';
+const AGENT_PROXY_TIMEOUT_MS = Math.max(10_000, Number(process.env.HUIYING_AGENT_PROXY_TIMEOUT_MS || 60_000));
+const EVENT_STREAM_HEADERS = { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' };
 
 type ResponseInputItem =
   | { role: 'system' | 'user' | 'assistant'; content: unknown }
@@ -15,7 +17,24 @@ type ResponseInputItem =
   | { type: 'function_call'; call_id: string; name: string; arguments: string }
   | { type: string; [k: string]: unknown };
 
-type ResponseTool = { type: 'function'; name?: string; description?: string; parameters?: unknown; strict?: boolean };
+type ResponseTool = {
+  type: 'function';
+  name?: string;
+  description?: string;
+  parameters?: unknown;
+  strict?: boolean;
+  function?: { name?: string; description?: string; parameters?: unknown; strict?: boolean };
+};
+type ChatCompletionToolCall = { id?: string; function?: { name?: string; arguments?: string } };
+type ChatCompletionResponse = {
+  id?: string;
+  choices?: Array<{
+    message?: {
+      content?: string;
+      tool_calls?: ChatCompletionToolCall[];
+    };
+  }>;
+};
 
 // Responses input -> chat/completions messages
 function toChatMessages(input: ResponseInputItem[]): Array<Record<string, unknown>> {
@@ -44,56 +63,121 @@ function toChatMessages(input: ResponseInputItem[]): Array<Record<string, unknow
 
 function toChatTools(tools?: ResponseTool[]) {
   if (!tools?.length) return undefined;
-  return tools.map(t => ({ type: 'function' as const, function: { name: t.name || 'tool', description: t.description || '', parameters: t.parameters || { type: 'object', properties: {} } } }));
+  return tools.flatMap(t => {
+    const fn = t.function || t;
+    const name = typeof fn.name === 'string' ? fn.name.trim() : '';
+    if (!name) return [];
+    return [{
+      type: 'function' as const,
+      function: {
+        name,
+        description: typeof fn.description === 'string' ? fn.description : '',
+        parameters: fn.parameters || { type: 'object', properties: {} },
+        ...(typeof fn.strict === 'boolean' ? { strict: fn.strict } : {}),
+      },
+    }];
+  });
 }
 
-function toChatToolChoice(choice?: string) {
-  // "required" is not supported by all ARK models (e.g. kimi-k2.7-code returns 400).
-  // Downgrade to "auto" for compatibility.
+function latestFunctionCallName(input: ResponseInputItem[]) {
+  for (let i = input.length - 1; i >= 0; i--) {
+    const item = input[i];
+    if ('type' in item && item.type === 'function_call') return typeof item.name === 'string' ? item.name : '';
+  }
+  return '';
+}
+
+function namedToolChoice(tools: ReturnType<typeof toChatTools>, name: string) {
+  const tool = tools?.find(t => t.function.name === name);
+  return tool ? { type: 'function', function: { name: tool.function.name } } : null;
+}
+
+function toChatToolChoice(choice: unknown, tools: ReturnType<typeof toChatTools>, input: ResponseInputItem[]) {
   if (choice === 'none') return 'none';
+  if (choice === 'required') {
+    const preferred = namedToolChoice(tools, 'canvas_get_state') || (tools?.[0] ? { type: 'function', function: { name: tools[0].function.name } } : null);
+    if (preferred) return { type: 'function', function: { name: preferred.function.name } };
+  }
+  if (choice === 'auto' && latestFunctionCallName(input) === 'canvas_get_state') {
+    const applyOps = namedToolChoice(tools, 'canvas_apply_ops');
+    if (applyOps) return applyOps;
+  }
   return 'auto';
+}
+
+function toResponsePayload(data: ChatCompletionResponse) {
+  const choice = data.choices?.[0];
+  const msg = choice?.message || {};
+  const output: unknown[] = [];
+  if (msg.content) output.push({ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: msg.content }] });
+  if (msg.tool_calls?.length) for (let i = 0; i < msg.tool_calls.length; i++) {
+    const tc = msg.tool_calls[i];
+    output.push({ type: 'function_call', id: `fc_${i}`, call_id: tc.id || `call_${i}`, name: tc.function?.name || '', arguments: tc.function?.arguments || '{}' });
+  }
+  return { id: data.id || `resp_${Date.now()}`, object: 'response', output, output_text: msg.content || '', status: 'completed' };
+}
+
+function eventStreamResponse(payload: Record<string, unknown>) {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    start(controller) {
+      const send = (event: string, data: unknown) => controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+      const text = typeof payload.output_text === 'string' ? payload.output_text : '';
+      if (text) send('response.output_text.delta', { type: 'response.output_text.delta', delta: text });
+      send('response.completed', { type: 'response.completed', response: payload });
+      controller.close();
+    },
+  });
+  return new Response(stream, { headers: EVENT_STREAM_HEADERS });
 }
 
 export async function POST(request: NextRequest) {
   if (!ARK_KEY) {
+    return new Response(JSON.stringify({ error: 'canvas agent proxy is missing ARK key' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
   }
   let body: { model?: string; input?: ResponseInputItem[]; tools?: ResponseTool[]; tool_choice?: string; stream?: boolean };
   try { body = await request.json(); } catch { return new Response('invalid json', { status: 400 }); }
 
   const model = (body.model && String(body.model).trim()) || ARK_MODEL;
 
-  console.error("[agent-proxy] model=", model, " input_len=", JSON.stringify(body.input || []).length, " tools=", (body.tools || []).length, " stream=", body.stream);
   const messages = toChatMessages(body.input || []);
   const tools = toChatTools(body.tools);
-  const toolChoice = toChatToolChoice(body.tool_choice);
-  const wantStream = body.stream !== false;
+  const wantClientStream = body.stream !== false;
+  const useArkStream = wantClientStream && !(tools?.length);
+  console.error("[agent-proxy] model=", model, " input_len=", JSON.stringify(body.input || []).length, " tools=", (body.tools || []).length, " chat_tools=", (tools || []).length, " client_stream=", wantClientStream, " ark_stream=", useArkStream);
+  const toolChoice = toChatToolChoice(body.tool_choice, tools, body.input || []);
 
-  const arkBody: Record<string, unknown> = { model, messages, stream: wantStream };
+  const arkBody: Record<string, unknown> = { model, messages, stream: useArkStream };
   if (tools) { arkBody.tools = tools; arkBody.tool_choice = toolChoice; }
 
-  const arkRes = await fetch(`${ARK_BASE}/chat/completions`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${ARK_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(arkBody),
-  });
+  const abortController = new AbortController();
+  const timeout = setTimeout(() => abortController.abort(), AGENT_PROXY_TIMEOUT_MS);
+  let arkRes: Response;
+  try {
+    arkRes = await fetch(`${ARK_BASE}/chat/completions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${ARK_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(arkBody),
+      signal: abortController.signal,
+    });
+  } catch (error) {
+    clearTimeout(timeout);
+    const message = error instanceof Error && error.name === 'AbortError' ? `canvas agent upstream timed out after ${AGENT_PROXY_TIMEOUT_MS}ms` : error instanceof Error ? error.message : 'canvas agent upstream request failed';
+    return new Response(JSON.stringify({ error: message }), { status: 504, headers: { 'Content-Type': 'application/json' } });
+  }
 
   if (!arkRes.ok) {
+    clearTimeout(timeout);
     const errText = await arkRes.text().catch(() => '');
     return new Response(JSON.stringify({ error: `ark ${arkRes.status}: ${errText.slice(0, 300)}` }), { status: arkRes.status, headers: { 'Content-Type': 'application/json' } });
   }
 
   // 非流式：直接转成 Responses payload
-  if (!wantStream || !arkRes.body) {
+  if (!useArkStream || !arkRes.body) {
     const data = await arkRes.json();
-    const choice = data.choices?.[0];
-    const msg = choice?.message || {};
-    const output: unknown[] = [];
-    if (msg.content) output.push({ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: msg.content }] });
-    if (msg.tool_calls?.length) for (let i = 0; i < msg.tool_calls.length; i++) {
-      const tc = msg.tool_calls[i];
-      output.push({ type: 'function_call', id: `fc_${i}`, call_id: tc.id || `call_${i}`, name: tc.function?.name || '', arguments: tc.function?.arguments || '{}' });
-    }
-    return Response.json({ id: data.id || `resp_${Date.now()}`, object: 'response', output, output_text: msg.content || '', status: 'completed' });
+    clearTimeout(timeout);
+    const payload = toResponsePayload(data);
+    return wantClientStream ? eventStreamResponse(payload) : Response.json(payload);
   }
 
   // 流式：icanvas 的 consumeResponseStreamBlock 只认 response.output_text.delta 和 response.completed(带 output 数组)。
@@ -110,50 +194,62 @@ export async function POST(request: NextRequest) {
     async start(controller) {
       const send = (event: string, data: unknown) => controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
       send('response.created', { type: 'response.created', response: { id: `resp_${Date.now()}`, status: 'in_progress' } });
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const blocks = buffer.split('\n\n');
-        buffer = blocks.pop() || '';
-        for (const block of blocks) {
-          const dataLines = block.split('\n').filter(l => l.startsWith('data:')).map(l => l.slice(5).trim());
-          const payload = dataLines.join('\n').trim();
-          if (!payload || payload === '[DONE]') continue;
-          try {
-            const chunk = JSON.parse(payload);
-            const delta = chunk.choices?.[0]?.delta;
-            if (!delta) continue;
-            if (typeof delta.content === 'string' && delta.content) {
-              textAccum += delta.content;
-              send('response.output_text.delta', { type: 'response.output_text.delta', delta: delta.content });
-            }
-            if (Array.isArray(delta.tool_calls)) {
-              for (const tc of delta.tool_calls) {
-                const idx = tc.index ?? (calls.length > 0 ? calls.length - 1 : 0);
-                if (idx >= calls.length) {
-                  calls.push({ id: tc.id || `call_${idx}`, name: tc.function?.name || '', arguments: '' });
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const blocks = buffer.split('\n\n');
+          buffer = blocks.pop() || '';
+          for (const block of blocks) {
+            const dataLines = block.split('\n').filter(l => l.startsWith('data:')).map(l => l.slice(5).trim());
+            const payload = dataLines.join('\n').trim();
+            if (!payload || payload === '[DONE]') continue;
+            try {
+              const chunk = JSON.parse(payload);
+              const delta = chunk.choices?.[0]?.delta;
+              if (!delta) continue;
+              if (typeof delta.content === 'string' && delta.content) {
+                textAccum += delta.content;
+                send('response.output_text.delta', { type: 'response.output_text.delta', delta: delta.content });
+              }
+              if (Array.isArray(delta.tool_calls)) {
+                for (const tc of delta.tool_calls) {
+                  const idx = tc.index ?? (calls.length > 0 ? calls.length - 1 : 0);
+                  if (idx >= calls.length) {
+                    calls.push({ id: tc.id || `call_${idx}`, name: tc.function?.name || '', arguments: '' });
+                    callIdx = idx;
+                  }
+                  // Always accumulate name and arguments into the current call slot
+                  if (tc.function?.name) calls[idx].name = tc.function.name;
+                  if (tc.function?.arguments) calls[idx].arguments += tc.function.arguments;
+                  if (tc.id) calls[idx].id = tc.id;
                   callIdx = idx;
                 }
-                // Always accumulate name and arguments into the current call slot
-                if (tc.function?.name) calls[idx].name = tc.function.name;
-                if (tc.function?.arguments) calls[idx].arguments += tc.function.arguments;
-                if (tc.id) calls[idx].id = tc.id;
-                callIdx = idx;
               }
-            }
-          } catch { /* skip */ }
+            } catch { /* skip */ }
+          }
+        }
+        // 结束：发 response.completed 带 output 数组，icanivas 据此 parseToolResponse 提取 message + function_call
+        const output: unknown[] = [];
+        if (textAccum) output.push({ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: textAccum }] });
+        for (let i = 0; i < calls.length; i++) {
+          output.push({ type: 'function_call', id: `fc_${i}`, call_id: calls[i].id, name: calls[i].name, arguments: calls[i].arguments || '{}' });
+        }
+        send('response.completed', { type: 'response.completed', response: { id: `resp_${Date.now()}`, object: 'response', output, output_text: textAccum, status: 'completed' } });
+      } catch (error) {
+        const message = error instanceof Error && error.name === 'AbortError' ? `画布 Agent 上游请求超过 ${AGENT_PROXY_TIMEOUT_MS / 1000} 秒未完成。` : error instanceof Error ? error.message : '画布 Agent 上游请求失败。';
+        send('response.failed', { type: 'response.failed', error: { message } });
+      } finally {
+        clearTimeout(timeout);
+        controller.close();
+        try {
+          reader.releaseLock();
+        } catch {
+          /* ignore */
         }
       }
-      // 结束：发 response.completed 带 output 数组，icanivas 据此 parseToolResponse 提取 message + function_call
-      const output: unknown[] = [];
-      if (textAccum) output.push({ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: textAccum }] });
-      for (let i = 0; i < calls.length; i++) {
-        output.push({ type: 'function_call', id: `fc_${i}`, call_id: calls[i].id, name: calls[i].name, arguments: calls[i].arguments || '{}' });
-      }
-      send('response.completed', { type: 'response.completed', response: { id: `resp_${Date.now()}`, object: 'response', output, output_text: textAccum, status: 'completed' } });
-      controller.close();
     },
   });
-  return new Response(stream, { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' } });
+  return new Response(stream, { headers: EVENT_STREAM_HEADERS });
 }
