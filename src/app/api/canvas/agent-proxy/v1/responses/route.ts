@@ -8,7 +8,7 @@ import { NextRequest } from 'next/server';
 const ARK_BASE = (process.env.HUIYING_REAL_ARK_API_BASE || process.env.ARK_API_BASE || 'https://ark.cn-beijing.volces.com/api/v3').replace(/\/$/, '');
 const ARK_KEY = process.env.HUIYING_REAL_ARK_API_KEY || process.env.ARK_API_KEY || '';
 const ARK_MODEL = process.env.ARK_AGENT_MODEL || process.env.ARK_TEXT_MODEL || 'minimax-m3';
-const AGENT_PROXY_TIMEOUT_MS = Math.max(10_000, Number(process.env.HUIYING_AGENT_PROXY_TIMEOUT_MS || 60_000));
+const AGENT_PROXY_TIMEOUT_MS = Math.max(10_000, Number(process.env.HUIYING_AGENT_PROXY_TIMEOUT_MS || 120_000));
 const EVENT_STREAM_HEADERS = { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' };
 
 type ResponseInputItem =
@@ -105,6 +105,25 @@ function toChatToolChoice(choice: unknown, tools: ReturnType<typeof toChatTools>
   return 'auto';
 }
 
+function forcedToolName(choice: unknown) {
+  if (choice && typeof choice === 'object') {
+    const fn = (choice as { function?: { name?: unknown } }).function;
+    return typeof fn?.name === 'string' ? fn.name : '';
+  }
+  return '';
+}
+
+function toolsForChoice(tools: ReturnType<typeof toChatTools>, choice: unknown) {
+  const name = forcedToolName(choice);
+  if (!name) return tools;
+  const selected = tools?.filter(t => t.function.name === name);
+  return selected?.length ? selected : tools;
+}
+
+function errorSummary(text: string) {
+  return text.replace(/\s+/g, ' ').slice(0, 500);
+}
+
 function toResponsePayload(data: ChatCompletionResponse) {
   const choice = data.choices?.[0];
   const msg = choice?.message || {};
@@ -144,11 +163,13 @@ export async function POST(request: NextRequest) {
   const tools = toChatTools(body.tools);
   const wantClientStream = body.stream !== false;
   const useArkStream = wantClientStream && !(tools?.length);
-  console.error("[agent-proxy] model=", model, " input_len=", JSON.stringify(body.input || []).length, " tools=", (body.tools || []).length, " chat_tools=", (tools || []).length, " client_stream=", wantClientStream, " ark_stream=", useArkStream);
   const toolChoice = toChatToolChoice(body.tool_choice, tools, body.input || []);
+  const arkTools = toolsForChoice(tools, toolChoice);
+  const startedAt = Date.now();
+  console.error("[agent-proxy] model=", model, " input_len=", JSON.stringify(body.input || []).length, " tools=", (body.tools || []).length, " chat_tools=", (tools || []).length, " ark_tools=", (arkTools || []).length, " tool_choice=", JSON.stringify(toolChoice), " client_stream=", wantClientStream, " ark_stream=", useArkStream);
 
   const arkBody: Record<string, unknown> = { model, messages, stream: useArkStream };
-  if (tools) { arkBody.tools = tools; arkBody.tool_choice = toolChoice; }
+  if (arkTools) { arkBody.tools = arkTools; arkBody.tool_choice = toolChoice; }
 
   const abortController = new AbortController();
   const timeout = setTimeout(() => abortController.abort(), AGENT_PROXY_TIMEOUT_MS);
@@ -163,12 +184,14 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     clearTimeout(timeout);
     const message = error instanceof Error && error.name === 'AbortError' ? `canvas agent upstream timed out after ${AGENT_PROXY_TIMEOUT_MS}ms` : error instanceof Error ? error.message : 'canvas agent upstream request failed';
+    console.error("[agent-proxy] upstream_error duration_ms=", Date.now() - startedAt, " message=", message);
     return new Response(JSON.stringify({ error: message }), { status: 504, headers: { 'Content-Type': 'application/json' } });
   }
 
   if (!arkRes.ok) {
     clearTimeout(timeout);
     const errText = await arkRes.text().catch(() => '');
+    console.error("[agent-proxy] upstream_bad_status duration_ms=", Date.now() - startedAt, " status=", arkRes.status, " body=", errorSummary(errText));
     return new Response(JSON.stringify({ error: `ark ${arkRes.status}: ${errText.slice(0, 300)}` }), { status: arkRes.status, headers: { 'Content-Type': 'application/json' } });
   }
 
@@ -176,6 +199,7 @@ export async function POST(request: NextRequest) {
   if (!useArkStream || !arkRes.body) {
     const data = await arkRes.json();
     clearTimeout(timeout);
+    console.error("[agent-proxy] upstream_ok duration_ms=", Date.now() - startedAt, " status=", arkRes.status);
     const payload = toResponsePayload(data);
     return wantClientStream ? eventStreamResponse(payload) : Response.json(payload);
   }

@@ -29,7 +29,7 @@ export const CANVAS_AGENT_PANEL_MOTION_MS = 500;
 const PANEL_MOTION_SECONDS = CANVAS_AGENT_PANEL_MOTION_MS / 1000;
 const ONLINE_AGENT_MAX_STEPS = 4;
 const ONLINE_AGENT_PROMPT =
-    "你是 Infinite Canvas 网页内置在线画布助手。当前画布 JSON 会随用户消息提供。首轮必须调用工具：只读问题调用 canvas_get_state，需要改动画布时调用和本地 Agent 一致的 infinite-canvas 工具。需要生成内容时直接调用 canvas_generate_text、canvas_generate_image、canvas_generate_video、canvas_generate_audio 或 canvas_create_generation_flow；需要精确批量操作时调用 canvas_apply_ops。不要输出 JSON ops，不要编造执行结果。工具参数涉及已有节点时必须使用当前画布 JSON 中真实存在的 id；缺少必要 id 或用户意图不明确时直接说明需要用户明确选择或说明，不要猜测。工具返回结果后，再根据真实结果回答用户。";
+    "你是 Infinite Canvas 网页内置在线画布助手。当前画布 JSON 会随用户消息提供。首轮必须调用工具：只读问题调用 canvas_get_state，需要改动画布时调用和本地 Agent 一致的 infinite-canvas 工具。需要生成内容时直接调用 canvas_generate_text、canvas_generate_image、canvas_generate_video、canvas_generate_audio 或 canvas_create_generation_flow；需要精确批量操作时调用 canvas_apply_ops。不要输出 JSON ops，不要编造执行结果。创建短剧规划时，按用户要求的数量创建独立节点，例如 6 个 Clip + 6 个参考图提示词 + 1 个最终合成规划必须是 13 个节点，不要合并压缩；每个文本节点先写 12-30 个中文字的简短可读内容，避免长段落；文本节点内容写入 metadata.content，也可以用 content 或 text 字段。工具参数涉及已有节点时必须使用当前画布 JSON 中真实存在的 id；缺少必要 id 或用户意图不明确时直接说明需要用户明确选择或说明，不要猜测。工具返回结果后，再根据真实结果回答用户。";
 const JSON_RECORD_SCHEMA = { type: "object", additionalProperties: true };
 const POSITION_SCHEMA = { type: "object", properties: { x: { type: "number" }, y: { type: "number" } }, required: ["x", "y"], additionalProperties: false };
 const VIEWPORT_SCHEMA = { type: "object", properties: { x: { type: "number" }, y: { type: "number" }, k: { type: "number" } }, required: ["x", "y", "k"], additionalProperties: false };
@@ -61,6 +61,8 @@ const CANVAS_OP_SCHEMA = {
         y: { type: "number" },
         width: { type: "number" },
         height: { type: "number" },
+        content: { type: "string" },
+        text: { type: "string" },
         position: POSITION_SCHEMA,
         metadata: JSON_RECORD_SCHEMA,
         patch: JSON_RECORD_SCHEMA,
@@ -94,7 +96,7 @@ const ONLINE_AGENT_TOOLS: ResponseFunctionTool[] = [
     toolDefinition("canvas_get_state", "读取当前网页画布的节点、连线、选区和视口。", {}),
     toolDefinition("canvas_get_selection", "读取当前网页画布选中的节点。", {}),
     toolDefinition("canvas_export_snapshot", "导出当前画布快照，用于理解布局。", {}),
-    toolDefinition("canvas_apply_ops", "批量操作当前网页画布。ops 支持 add_node、update_node、delete_node、delete_connections、connect_nodes、set_viewport、select_nodes、run_generation。", { ops: { type: "array", items: CANVAS_OP_SCHEMA } }, ["ops"], false),
+    toolDefinition("canvas_apply_ops", "批量操作当前网页画布。ops 支持 add_node、update_node、delete_node、delete_connections、connect_nodes、set_viewport、select_nodes、run_generation。add_node 文本内容必须放到 metadata.content，也可放 content/text，系统会写入文本节点内容。短剧规划不要合并节点：6 Clip + 6 参考图提示词 + 1 最终合成规划 = 13 个独立节点。每个节点内容先控制在 12-30 个中文字，避免长段落导致工具调用超时。", { ops: { type: "array", items: CANVAS_OP_SCHEMA } }, ["ops"], false),
     toolDefinition("canvas_create_node", "创建任意类型节点：text、image、config、video、audio。适合创建占位图、媒体占位、配置节点或自定义 metadata 节点。", { nodeType: NODE_TYPE_SCHEMA, title: { type: "string" }, x: { type: "number" }, y: { type: "number" }, width: { type: "number" }, height: { type: "number" }, metadata: JSON_RECORD_SCHEMA }, ["nodeType"]),
     toolDefinition("canvas_create_text_node", "在当前画布创建单个文本节点。", { text: { type: "string" }, x: { type: "number" }, y: { type: "number" }, title: { type: "string" }, width: { type: "number" }, height: { type: "number" } }),
     toolDefinition("canvas_create_text_nodes", "批量创建文本节点，适合生成标题、段落、脚本、说明等内容块。", { items: { type: "array", minItems: 1, items: { type: "object", properties: { text: { type: "string" }, title: { type: "string" }, x: { type: "number" }, y: { type: "number" }, width: { type: "number" }, height: { type: "number" } }, required: ["text"], additionalProperties: false } }, x: { type: "number" }, y: { type: "number" }, gap: { type: "number" }, direction: { type: "string", enum: ["row", "column"] } }, ["items"]),
@@ -1136,29 +1138,53 @@ function requireOps(value: unknown): CanvasAgentOp[] {
 
 function toCanvasAgentOp(value: unknown): CanvasAgentOp {
     const item = objectDetail(value);
-    const type = item.type;
+    const type = normalizeCanvasOpType(item);
     if (type === "add_node") {
+        const metadata = recordOptional(item.metadata) as CanvasNodeData["metadata"] | undefined;
+        const inlineContent = stringOptional(item.content) || stringOptional(item.text) || stringOptional(item.prompt);
+        const nextMetadata = inlineContent ? { ...metadata, content: inlineContent, status: metadata?.status || "success", fontSize: metadata?.fontSize || 14 } : metadata;
         return {
             type,
             id: stringOptional(item.id),
-            nodeType: item.nodeType ? requireNodeType(item.nodeType) : undefined,
+            nodeType: normalizeNodeType(item.nodeType || item.type),
             title: stringOptional(item.title),
             position: recordOptional(item.position) ? { x: requireNumber(objectDetail(item.position).x, "position.x"), y: requireNumber(objectDetail(item.position).y, "position.y") } : undefined,
             x: numberOptional(item.x),
             y: numberOptional(item.y),
             width: numberOptional(item.width),
             height: numberOptional(item.height),
-            metadata: recordOptional(item.metadata) as CanvasNodeData["metadata"],
+            metadata: nextMetadata,
         };
     }
     if (type === "update_node") return { type, id: requireString(item.id, "id"), patch: recordOptional(item.patch) as Partial<CanvasNodeData> | undefined, metadata: recordOptional(item.metadata) as CanvasNodeData["metadata"] };
     if (type === "delete_node") return { type, id: stringOptional(item.id), ids: Array.isArray(item.ids) ? requireStringArray(item.ids, "ids") : undefined };
     if (type === "delete_connections") return { type, id: stringOptional(item.id), ids: Array.isArray(item.ids) ? requireStringArray(item.ids, "ids") : undefined, all: typeof item.all === "boolean" ? item.all : undefined };
-    if (type === "connect_nodes") return { type, id: stringOptional(item.id), fromNodeId: requireString(item.fromNodeId, "fromNodeId"), toNodeId: requireString(item.toNodeId, "toNodeId") };
+    if (type === "connect_nodes") return { type, id: stringOptional(item.id), fromNodeId: requireString(item.fromNodeId || item.from || item.source || item.sourceId, "fromNodeId"), toNodeId: requireString(item.toNodeId || item.to || item.target || item.targetId, "toNodeId") };
     if (type === "set_viewport") return { type, viewport: requireViewport(item.viewport) };
     if (type === "select_nodes") return { type, ids: requireStringArray(item.ids, "ids") };
     if (type === "run_generation") return { type, nodeId: requireString(item.nodeId, "nodeId"), mode: generationMode(item.mode), prompt: stringOptional(item.prompt) };
     throw new Error("不支持的画布操作类型");
+}
+
+function normalizeCanvasOpType(item: Record<string, unknown>) {
+    const rawType = stringOptional(item.type);
+    if (["add_node", "update_node", "delete_node", "delete_connections", "connect_nodes", "set_viewport", "select_nodes", "run_generation"].includes(rawType)) return rawType;
+    const op = stringOptional(item.op);
+    if (op === "connect" || op === "add_connection") return "connect_nodes";
+    if (op === "delete_connection") return "delete_connections";
+    if (["add_node", "update_node", "delete_node", "delete_connections", "connect_nodes", "set_viewport", "select_nodes", "run_generation"].includes(op)) return op;
+    return rawType;
+}
+
+function normalizeNodeType(value: unknown): CanvasNodeType | undefined {
+    if (Object.values(CanvasNodeType).includes(value as CanvasNodeType)) return value as CanvasNodeType;
+    const raw = stringOptional(value).toLowerCase();
+    if (!raw) return undefined;
+    if (raw.includes("image") || raw.includes("reference")) return CanvasNodeType.Text;
+    if (raw.includes("video") || raw.includes("final")) return CanvasNodeType.Text;
+    if (raw.includes("audio")) return CanvasNodeType.Audio;
+    if (raw.includes("config")) return CanvasNodeType.Config;
+    return CanvasNodeType.Text;
 }
 
 function requireRecordArray(value: unknown, field: string): Record<string, unknown>[] {
@@ -1176,8 +1202,9 @@ function requireString(value: unknown, field: string) {
 }
 
 function requireNumber(value: unknown, field: string) {
-    if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`${field} 必须是数字`);
-    return value;
+    const numeric = typeof value === "string" && value.trim() ? Number(value) : value;
+    if (typeof numeric !== "number" || !Number.isFinite(numeric)) throw new Error(`${field} 必须是数字`);
+    return numeric;
 }
 
 function requireNodeType(value: unknown): CanvasNodeType {
@@ -1199,7 +1226,8 @@ function stringOptional(value: unknown) {
 }
 
 function numberOptional(value: unknown) {
-    return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+    const numeric = typeof value === "string" && value.trim() ? Number(value) : value;
+    return typeof numeric === "number" && Number.isFinite(numeric) ? numeric : undefined;
 }
 
 function numberOr(value: unknown, fallback: number) {
