@@ -21,8 +21,15 @@ import {
 // 早期这里自己写了一份 localStorage["canvas-projects"]，导致新建的项目 id 在编辑器里
 // openProject 找不到、被 router.replace("/canvas") 弹回首页（即“点不开”）。现在统一用 store。
 import { useCanvasStore } from "../../icanvas/app/(user)/canvas/stores/use-canvas-store";
+import type { CanvasConnection, CanvasNodeData } from "../../icanvas/app/(user)/canvas/types";
 
-interface CanvasProjectMeta { id: string; title: string; }
+interface CanvasProjectMeta {
+  id: string;
+  title: string;
+  updatedAt?: string;
+  nodes: CanvasNodeData[];
+  connections: CanvasConnection[];
+}
 
 const BASE_PATH = (process.env.NEXT_PUBLIC_BASE_PATH || "").replace(/\/$/, "");
 
@@ -67,6 +74,65 @@ const BROWSE_ITEMS = [
     src: "/home/huiying-workflow-canvas.png",
   },
 ];
+
+function nodePreviewText(node: CanvasNodeData) {
+  return (node.metadata?.content || node.metadata?.prompt || node.metadata?.composerContent || node.title || node.type).toString().replace(/\s+/g, " ").trim();
+}
+
+function projectStats(project: CanvasProjectMeta) {
+  const clips = project.nodes.filter((node) => /clip|镜头|分镜/i.test(`${node.title} ${nodePreviewText(node)}`)).length;
+  const refs = project.nodes.filter((node) => /参考|prompt|图/i.test(`${node.title} ${nodePreviewText(node)}`)).length;
+  return { clips, refs };
+}
+
+function CanvasProjectPreview({ project }: { project: CanvasProjectMeta }) {
+  const previewNodes = project.nodes.slice(0, 6);
+  const hasNodes = previewNodes.length > 0;
+  const stats = projectStats(project);
+
+  if (!hasNodes) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-2 text-white/34">
+        <Film className="h-8 w-8" />
+        <span className="text-xs">还未落节点</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative h-full overflow-hidden rounded-lg bg-[#0B101A] p-2">
+      <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.05)_1px,transparent_1px)] bg-[size:18px_18px]" />
+      <div className="relative grid h-full grid-cols-3 gap-1.5">
+        {previewNodes.map((node, index) => {
+          const text = nodePreviewText(node);
+          const imageUrl = node.type === "image" && typeof node.metadata?.content === "string" && node.metadata.content.startsWith("data:image") ? node.metadata.content : "";
+          return (
+            <div key={node.id} className="overflow-hidden rounded-md border border-white/10 bg-white/[0.08]">
+              {imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={imageUrl} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full flex-col justify-between p-2">
+                  <span className="truncate text-[10px] font-semibold text-[#70E0FF]">{node.title || `节点 ${index + 1}`}</span>
+                  <span className="line-clamp-3 text-[10px] leading-3 text-white/62">{text || node.type}</span>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between text-[10px] text-white/72">
+        <span className="rounded-full bg-black/55 px-2 py-0.5">{project.nodes.length} 节点</span>
+        <span className="rounded-full bg-black/55 px-2 py-0.5">{project.connections.length} 连线</span>
+      </div>
+      {stats.clips || stats.refs ? (
+        <div className="absolute left-2 top-2 rounded-full bg-[#4F6CFF]/70 px-2 py-0.5 text-[10px] text-white">
+          {stats.clips ? `${stats.clips} Clip` : ""}{stats.clips && stats.refs ? " · " : ""}{stats.refs ? `${stats.refs} 参考` : ""}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 export default function CanvasHome() {
   const router = useRouter();
@@ -203,10 +269,14 @@ export default function CanvasHome() {
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-6">
               {projects.slice(0, 12).map((p: CanvasProjectMeta) => (
                 <button key={p.id} onClick={() => enterProject(p.id)} className="group rounded-xl border border-white/10 bg-white/[0.04] p-4 text-left transition-all hover:-translate-y-0.5 hover:border-[#70E0FF]/40">
-                  <div className="mb-2 flex aspect-video items-center justify-center rounded-lg bg-white/5">
-                    <Film className="h-8 w-8 text-white/30" />
+                  <div className="mb-3 aspect-video overflow-hidden rounded-lg bg-white/5">
+                    <CanvasProjectPreview project={p} />
                   </div>
                   <h3 className="truncate text-sm font-medium text-white/90">{p.title}</h3>
+                  <p className="mt-1 text-xs text-white/42">
+                    {p.nodes.length} 个节点 · {p.connections.length} 条连线
+                    {p.updatedAt ? ` · ${new Date(p.updatedAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}` : ""}
+                  </p>
                 </button>
               ))}
             </div>
