@@ -37,6 +37,11 @@ import {
   type SmartAssistantPanelProps,
   type TaskItem,
 } from '@/lib/smart-assistant-panel-model';
+import {
+  useVimaxShortDramaSkill,
+  VIMAX_REFERENCE_CONFIRM_REGEX,
+  VIMAX_VIDEO_CONFIRM_REGEX,
+} from '@/lib/skills/vimax-short-drama/use-vimax-short-drama-skill';
 
 // 引导式创作步骤
 const CREATION_STEPS = [
@@ -1318,14 +1323,59 @@ export function SmartAssistantPanel({ onBack, onNavigate, initialPrompt, autoGen
     ));
   }, []);
 
+  // ViMAX 短剧制作 skill：分阶段真实模型链路已抽到 use-vimax-short-drama-skill。
+  // 面板只负责唤起，不再承载短剧编排逻辑（保持本文件可控、通过 spaghetti 守卫）。
+  const {
+    handlePlanStep: runVimaxPlanStep,
+    handleReferenceAssetsStep: handleVimaxReferenceAssetsStep,
+    handleVideoStep: handleVimaxVideoStep,
+  } = useVimaxShortDramaSkill({
+    messagesRef,
+    setMessages,
+    setIsLoading,
+    setInputValue,
+    setCurrentStep,
+  });
+
   // 发送消息（SSE 流式）
   const handleSend = useCallback(async () => {
     const hasMedia = attachedMedia && attachedMedia.length > 0;
     if ((!inputValue.trim() && !hasMedia) || isLoading) return;
+    const trimmedInput = inputValue.trim();
+
+    const isVimaxReferenceConfirm = VIMAX_REFERENCE_CONFIRM_REGEX.test(trimmedInput);
+    if (isVimaxReferenceConfirm) {
+      setMessages(prev => [...prev, {
+        id: genId(),
+        role: 'user' as const,
+        content: trimmedInput,
+        timestamp: Date.now(),
+      }]);
+      setInputValue('');
+      await handleVimaxReferenceAssetsStep();
+      return;
+    }
+
+    // ViMAX 视频确认：仅当已有带真实参考图 URL 的 ViMAX 消息时，才路由到真实 Seedance 视频阶段，
+    // 否则交回导演链路 / 普通对话，避免和泛化「生成视频」建议冲突。
+    const hasVimaxReferenceAssets = messagesRef.current.some(
+      message => (message.vimaxAgent?.assets || []).some(asset => Boolean(asset.url)),
+    );
+    if (hasVimaxReferenceAssets && VIMAX_VIDEO_CONFIRM_REGEX.test(trimmedInput)) {
+      setMessages(prev => [...prev, {
+        id: genId(),
+        role: 'user' as const,
+        content: trimmedInput,
+        timestamp: Date.now(),
+      }]);
+      setInputValue('');
+      await handleVimaxVideoStep();
+      return;
+    }
 
     // ===== 生成中继续选项检测 =====
-    const isAdjustDirection = /^调整方向$/.test(inputValue.trim());
-    const isRegenerateMore = /^再生成一组$/.test(inputValue.trim());
+    const isAdjustDirection = /^调整方向$/.test(trimmedInput);
+    const isRegenerateMore = /^再生成一组$/.test(trimmedInput);
 
     if (isAdjustDirection) {
       // 调整方向：取消正在生成的消息
@@ -1946,7 +1996,7 @@ export function SmartAssistantPanel({ onBack, onNavigate, initialPrompt, autoGen
         return prev;
       });
     }
-  }, [inputValue, isLoading, messages, attachedMedia, analysisType]);
+  }, [inputValue, isLoading, messages, attachedMedia, analysisType, handleVimaxReferenceAssetsStep, handleVimaxVideoStep]);
 
   // 自动触发发送（从控制台跳转时 autoGenerate=true）
   const triggerAutoSendRef = useRef(false);
@@ -2095,106 +2145,12 @@ export function SmartAssistantPanel({ onBack, onNavigate, initialPrompt, autoGen
       || recentUserText.trim()
       || '帮我规划一个一分钟短片，输出导演、编剧、制片和镜头设计链路';
 
-    const userMsgId = genId();
-    const progressMsgId = `director-chain-${Date.now()}`;
-    setIsLoading(true);
-    setInputValue('');
-    setMessages(prev => [
-      ...prev,
-      {
-        id: userMsgId,
-        role: 'user',
-        content: prompt,
-        timestamp: Date.now(),
-      },
-      {
-        id: progressMsgId,
-        role: 'assistant',
-        content: '正在组织导演链路：导演定调、编剧拆镜、制片建档、镜头设计...',
-        timestamp: Date.now(),
-        generationStatus: 'generating',
-        generationProgress: 18,
-        generationStepInfo: {
-          step: 'director-chain',
-          progress: 18,
-          totalSteps: 4,
-          currentStepLabel: '导演读本',
-        },
-      },
-    ]);
-
-    try {
-      const response = await fetch('/api/smart/director-chain', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt,
-          duration: creationParams.duration || creationParams.targetDuration || 60,
-          segmentDuration: 10,
-          style: creationParams.visualStyle || creationParams.mood || '电影感短剧',
-          sceneType: 'drama',
-          ratio: '16:9',
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || '导演链路规划失败');
-      }
-
-      const agents = Array.isArray(data.directorChain?.agents) ? data.directorChain.agents : [];
-      const agentSummary = agents.map((agent: { title?: string; decisions?: string[] }) => {
-        const decisions = Array.isArray(agent.decisions) ? agent.decisions.slice(0, 2).join('；') : '已完成结构化输出';
-        return `- **${agent.title || '协作角色'}**：${decisions}`;
-      }).join('\n');
-      const assetCount = data.productionProject?.assets?.length ?? 0;
-      const shotCount = data.productionProject?.storyboard?.shotCount ?? data.shots?.length ?? 0;
-      const totalDuration = data.productionProject?.storyboard?.totalDuration ?? data.flow?.totalDuration ?? 0;
-
-      setMessages(prev => prev.map(message => message.id === progressMsgId ? {
-        ...message,
-        content: [
-          '## 导演链路已建档',
-          '',
-          `已按 ViMAX 式协作链把创意拆成 **${agents.length} 个角色产物**，并写入任务中心。`,
-          '',
-          agentSummary,
-          '',
-          `- **任务 ID**：${data.taskId}`,
-          `- **项目资产**：${assetCount} 个`,
-          `- **镜头计划**：${shotCount} 个，约 ${totalDuration} 秒`,
-          '',
-          data.directorChain?.handoff?.nextAction || '下一步可进入影视创作页确认角色、场景和分镜。',
-        ].join('\n'),
-        resultType: 'film',
-        generationStatus: 'completed',
-        generationProgress: 100,
-        generationStepInfo: {
-          step: 'director-chain',
-          progress: 100,
-          totalSteps: 4,
-          currentStepLabel: '已写入任务中心',
-        },
-        quickOptions: ['去影视创作', '查看任务中心', '继续细化角色', '生成分镜图'],
-        actions: ['复制', '引用', '修改'],
-      } : message));
-      setCurrentStep(5);
-    } catch (error) {
-      setMessages(prev => prev.map(message => message.id === progressMsgId ? {
-        ...message,
-        content: `导演链路规划失败：${error instanceof Error ? error.message : '未知错误'}\n\n可以先缩短创意描述，或进入影视创作页手动确认剧本、角色和分镜。`,
-        generationStatus: 'failed',
-        generationProgress: 100,
-        generationStepInfo: {
-          step: 'director-chain',
-          progress: 100,
-          totalSteps: 4,
-          currentStepLabel: '规划失败',
-        },
-      } : message));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [creationParams, inputValue, messages]);
+    await runVimaxPlanStep({
+      prompt,
+      duration: creationParams.duration || creationParams.targetDuration || 60,
+      style: creationParams.visualStyle || creationParams.mood || '电影感短剧',
+    });
+  }, [creationParams, inputValue, messages, runVimaxPlanStep]);
 
   // 工具点击 - 导航到对应区域
   const handleToolClick = useCallback((tool: SmartQuickTool) => {

@@ -12,7 +12,15 @@ interface HomeGalleryItem {
   target: string;
   href?: string;
   duration?: string;
-  source?: 'static' | 'production-case-asset';
+  source?: 'static' | 'production-case-asset' | 'historical';
+}
+
+const BASE_PATH = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
+
+function withBasePath(url?: string) {
+  if (!url) return url;
+  if (!BASE_PATH || !url.startsWith('/') || url.startsWith(`${BASE_PATH}/`)) return url;
+  return `${BASE_PATH}${url}`;
 }
 
 export function DreamboxHomeSection({
@@ -20,11 +28,13 @@ export function DreamboxHomeSection({
   homeGalleryItems,
   setActiveSection,
   setPendingPrompt,
+  onOpenWorkDetail,
 }: {
   activeSection: string;
   homeGalleryItems: HomeGalleryItem[];
   setActiveSection: (section: string) => void;
   setPendingPrompt: (prompt: string | undefined) => void;
+  onOpenWorkDetail?: (item: { title: string; type: string; videoSrc?: string; src: string; source?: string }) => void;
 }) {
   const router = useRouter();
   return (
@@ -32,10 +42,10 @@ export function DreamboxHomeSection({
           {/* 首页 - 画廊化黑色创作入口 */}
           {activeSection === 'home' && (
             <div className="-mx-3 -mt-3 min-h-[calc(100vh-72px)] bg-black text-white sm:-mx-5 sm:-mt-5">
-              <section className="mx-auto w-full max-w-[1800px] px-3 pt-4 sm:px-5">
+              <section className="mx-auto w-full max-w-none px-3 pt-4 sm:px-5 xl:px-8 2xl:px-10">
                 <div className="relative min-h-[500px] overflow-hidden rounded-none border border-white/10 bg-[#03050a] md:min-h-[58vh] xl:min-h-[640px]">
                   <img
-                    src="/home/huiying-hero-cosmic-reel-v2.png"
+                    src={withBasePath("/home/huiying-hero-cosmic-reel-v2.png")}
                     alt="绘影宇宙胶卷制作流"
                     className="absolute inset-0 h-full w-full object-cover object-center"
                     draggable={false}
@@ -107,7 +117,7 @@ export function DreamboxHomeSection({
                 </div>
               </section>
 
-              <section className="mx-auto w-full max-w-[1800px] px-3 py-4 sm:px-5">
+              <section className="mx-auto w-full max-w-none px-3 py-4 sm:px-5 xl:px-8 2xl:px-10">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                   <div className="flex gap-2 overflow-x-auto">
                     {['发现', '广告营销', '剧场', '美学', '工作流'].map((tab, index) => (
@@ -131,11 +141,15 @@ export function DreamboxHomeSection({
                   </button>
                 </div>
 
-                <div className="grid grid-flow-dense auto-rows-[118px] grid-cols-2 gap-2 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:auto-rows-[132px]">
+                <div className="grid grid-flow-dense auto-rows-[118px] grid-cols-2 gap-2 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 2xl:auto-rows-[140px]">
                   {homeGalleryItems.map((item) => (
                     <button
                       key={`${item.title}-${item.type}`}
                       onClick={() => {
+                        if (item.source === 'historical' && onOpenWorkDetail) {
+                          onOpenWorkDetail(item);
+                          return;
+                        }
                         setPendingPrompt(item.title);
                         if (item.href) {
                           router.push(item.href);
@@ -151,17 +165,17 @@ export function DreamboxHomeSection({
                     >
                       {item.videoSrc ? (
                         <video
-                          src={item.videoSrc}
-                          poster={item.src}
+                          src={`${withBasePath(item.videoSrc)}#t=0.5`}
+                          poster={withBasePath(item.src)}
                           autoPlay
                           muted
                           loop
                           playsInline
-                          preload="metadata"
+                          preload="auto"
                           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                         />
                       ) : (
-                        <img src={item.src} alt={item.title} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                        <img src={withBasePath(item.src)} alt={item.title} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
                       )}
                       {Boolean(item.videoSrc || ['短片', '短片概念', '真实视频', '视频', '镜头', '广告', '真实片段资产'].includes(item.type)) && (
                         <>

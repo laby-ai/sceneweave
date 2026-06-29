@@ -567,6 +567,9 @@ export function cleanupExpiredTasks(): number {
   const store = getTaskStore();
   const expiredTasks: string[] = [];
   const zombieTasks: string[] = [];
+  // 长期处于 pending 但从未真正启动的任务：视为失效。
+  // 否则前端会持续把它们当成“活跃任务”并为每个建立 SSE 流，占满浏览器连接、拖垮整体协同。
+  const stalePending: string[] = [];
 
   store.forEach((task, taskId) => {
     // 清理已完成/失败/取消超过24小时的任务
@@ -578,6 +581,12 @@ export function cleanupExpiredTasks(): number {
       const lastUpdate = task.lastUpdatedAt || task.startedAt || task.createdAt;
       if (lastUpdate && (now - lastUpdate) > 30 * 60 * 1000) {
         zombieTasks.push(taskId);
+      }
+    }
+    // pending 超过 15 分钟仍未启动，判定为失效任务
+    else if (task.status === 'pending') {
+      if (task.createdAt && (now - task.createdAt) > 15 * 60 * 1000) {
+        stalePending.push(taskId);
       }
     }
   });
@@ -602,12 +611,28 @@ export function cleanupExpiredTasks(): number {
     }
   });
 
-  if (expiredTasks.length > 0 || zombieTasks.length > 0) {
+  // 标记长期未启动的 pending 任务为失败
+  stalePending.forEach(taskId => {
+    const task = store.get(taskId);
+    if (task) {
+      store.set(taskId, {
+        ...task,
+        status: 'failed',
+        stage: '任务失效',
+        error: '任务长时间未开始，已自动失效',
+        completedAt: now,
+        abortController: undefined,
+      });
+    }
+  });
+
+  const changed = expiredTasks.length + zombieTasks.length + stalePending.length;
+  if (changed > 0) {
     saveTasksToFile(store);
-    console.log(`[TaskManager] 清理了 ${expiredTasks.length} 个过期任务，标记了 ${zombieTasks.length} 个僵尸任务`);
+    console.log(`[TaskManager] 清理 ${expiredTasks.length} 过期 / ${zombieTasks.length} 僵尸 / ${stalePending.length} 失效pending`);
   }
 
-  return expiredTasks.length + zombieTasks.length;
+  return changed;
 }
 
 // 定期清理过期任务（每30分钟）

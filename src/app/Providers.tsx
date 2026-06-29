@@ -9,6 +9,7 @@ import { CommunityProvider } from '@/contexts/CommunityContext';
 import { TaskProvider } from '@/contexts/TaskContext';
 import { ColorModeProvider } from '@/contexts/ColorModeContext';
 import { GlobalStyles } from '@/components/global-styles';
+import { BasePathFetchShim } from '@/components/base-path-fetch-shim';
 
 export function Providers({ children }: { children: ReactNode }) {
   return (
@@ -19,6 +20,7 @@ export function Providers({ children }: { children: ReactNode }) {
             <CommunityProvider>
               <TaskProvider>
                 <AuthProvider>
+                  <BasePathFetchShim />
                   <GlobalStyles />
                   {children}
                 </AuthProvider>

@@ -18,7 +18,8 @@ export interface LocalVideoMergeResult {
 
 function toPublicVideoUrl(fileName: string) {
   const baseUrl = process.env.COZE_PROJECT_DOMAIN_DEFAULT || process.env.NEXT_PUBLIC_BASE_URL || '';
-  const publicPath = `/generated/videos/${fileName}`;
+  const basePath = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
+  const publicPath = `${basePath}/generated/videos/${fileName}`;
   return baseUrl ? `${baseUrl.replace(/\/+$/, '')}${publicPath}` : publicPath;
 }
 

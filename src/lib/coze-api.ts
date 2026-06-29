@@ -3,19 +3,11 @@
  * 统一封装 coze-coding-dev-sdk 的 LLM / 图像 / 视频 / TTS 能力
  */
 
-import {
-  Config,
-  LLMClient,
-  ImageGenerationClient,
-  VideoGenerationClient,
-  TTSClient,
-} from 'coze-coding-dev-sdk';
 import type { LLMConfig, Message, LLMResponse } from 'coze-coding-dev-sdk';
 import type {
   ImageGenerationRequest,
   ImageGenerationResponse,
 } from 'coze-coding-dev-sdk';
-import { ImageGenerationResponseHelper } from 'coze-coding-dev-sdk';
 import type {
   Content as VideoContent,
   Resolution,
@@ -24,22 +16,44 @@ import type {
 } from 'coze-coding-dev-sdk';
 import type { TTSRequest, TTSResponse } from 'coze-coding-dev-sdk';
 
-// 初始化配置
-// coze-coding-dev-sdk 标准环境变量: COZE_WORKLOAD_IDENTITY_API_KEY + COZE_INTEGRATION_BASE_URL
-// 同时兼容 COZE_API_KEY / COZE_API_BASE_URL（自定义代码引用）
-const config = new Config({
-  apiKey: process.env.COZE_WORKLOAD_IDENTITY_API_KEY || process.env.COZE_API_KEY,
-  baseUrl: process.env.COZE_INTEGRATION_BASE_URL || process.env.COZE_API_BASE_URL || 'https://api.coze.cn',
-  retryTimes: 2,
-  retryDelay: 1000,
-  timeout: 60000,
-});
+type CozeSdk = typeof import('coze-coding-dev-sdk');
 
-// 客户端单例
-const llmClient = new LLMClient(config);
-const imageClient = new ImageGenerationClient(config);
-const videoClient = new VideoGenerationClient(config);
-const ttsClient = new TTSClient(config);
+type CozeClients = {
+  llmClient: InstanceType<CozeSdk['LLMClient']>;
+  imageClient: InstanceType<CozeSdk['ImageGenerationClient']>;
+  videoClient: InstanceType<CozeSdk['VideoGenerationClient']>;
+  ttsClient: InstanceType<CozeSdk['TTSClient']>;
+};
+
+let sdkPromise: Promise<CozeSdk> | null = null;
+let clientsPromise: Promise<CozeClients> | null = null;
+
+function loadCozeSdk(): Promise<CozeSdk> {
+  sdkPromise ??= import('coze-coding-dev-sdk');
+  return sdkPromise;
+}
+
+function getCozeClients(): Promise<CozeClients> {
+  clientsPromise ??= loadCozeSdk().then(({ Config, LLMClient, ImageGenerationClient, VideoGenerationClient, TTSClient }) => {
+    // coze-coding-dev-sdk 标准环境变量: COZE_WORKLOAD_IDENTITY_API_KEY + COZE_INTEGRATION_BASE_URL
+    // 同时兼容 COZE_API_KEY / COZE_API_BASE_URL（自定义代码引用）
+    const config = new Config({
+      apiKey: process.env.COZE_WORKLOAD_IDENTITY_API_KEY || process.env.COZE_API_KEY,
+      baseUrl: process.env.COZE_INTEGRATION_BASE_URL || process.env.COZE_API_BASE_URL || 'https://api.coze.cn',
+      retryTimes: 2,
+      retryDelay: 1000,
+      timeout: 60000,
+    });
+
+    return {
+      llmClient: new LLMClient(config),
+      imageClient: new ImageGenerationClient(config),
+      videoClient: new VideoGenerationClient(config),
+      ttsClient: new TTSClient(config),
+    };
+  });
+  return clientsPromise;
+}
 
 // ==================== 多模态内容类型 ====================
 
@@ -113,6 +127,7 @@ export async function cozeChat(
   };
 
   // 通过流式收集完整结果（绕过 invoke 兼容性问题）
+  const { llmClient } = await getCozeClients();
   const stream = llmClient.stream(llmMessages, llmConfig);
   let content = '';
   for await (const chunk of stream) {
@@ -151,6 +166,7 @@ export async function cozeVisionChat(
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         console.info(`[CozeVisionChat] 尝试模型=${model}, 第${attempt}次`);
+        const { llmClient } = await getCozeClients();
         const response = await llmClient.invoke(llmMessages, llmConfig);
         const content = response?.content ?? '';
 
@@ -206,7 +222,8 @@ export function cozeChatStream(
   return new ReadableStream({
     async start(controller) {
       try {
-        const stream = llmClient.stream(llmMessages, llmConfig);
+        const { llmClient } = await getCozeClients();
+  const stream = llmClient.stream(llmMessages, llmConfig);
 
         for await (const chunk of stream) {
           if (chunk?.content) {
@@ -247,6 +264,10 @@ export async function cozeGenerateImage(
     image: options?.image,  // 角色参考图，确保人物视觉一致性
   };
 
+  const [{ imageClient }, { ImageGenerationResponseHelper }] = await Promise.all([
+    getCozeClients(),
+    loadCozeSdk(),
+  ]);
   const response: ImageGenerationResponse = await imageClient.generate(request);
   const helper = new ImageGenerationResponseHelper(response);
 
@@ -300,6 +321,7 @@ export async function cozeGenerateVideo(
     videoOpts.resolution = options.resolution as Resolution;
   }
 
+  const { videoClient } = await getCozeClients();
   const response: VideoGenerationResponse = await videoClient.videoGeneration(
     contentItems,
     videoOpts
@@ -347,6 +369,7 @@ export async function cozeGenerateVideoAsync(
     asyncVideoOpts.resolution = options.resolution as Resolution;
   }
 
+  const { videoClient } = await getCozeClients();
   const response: VideoGenerationResponse = await videoClient.videoGenerationAsync(
     contentItems,
     asyncVideoOpts
@@ -381,6 +404,7 @@ export async function cozeTTS(
     sampleRate: options?.sampleRate as 8000 | 16000 | 22050 | 24000 | 32000 | 44100 | 48000,
   };
 
+  const { ttsClient } = await getCozeClients();
   const response: TTSResponse = await ttsClient.synthesize(request);
 
   return {

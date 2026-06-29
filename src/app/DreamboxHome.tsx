@@ -80,6 +80,16 @@ interface ProductionCaseAsset {
   source: 'productionProject.assets.videoSegment' | 'productionProject.assets.finalVideo';
 }
 
+interface HistoricalMediaAsset {
+  id: string;
+  kind: 'image' | 'video';
+  title: string;
+  url: string;
+  poster?: string;
+  createdAt: number;
+  source: 'historical';
+}
+
 interface HomeGalleryItem {
   title: string;
   src: string;
@@ -89,7 +99,42 @@ interface HomeGalleryItem {
   target: string;
   href?: string;
   duration?: string;
-  source?: 'static' | 'production-case-asset';
+  source?: 'static' | 'production-case-asset' | 'historical';
+}
+
+function historicalHomeCategory(title: string): string {
+  const normalized = title.toLowerCase();
+  if (normalized.includes('enterprise-ai')) return 'enterprise-ai';
+  if (normalized.includes('five-dynasties')) return 'five-dynasties';
+  if (normalized.includes('liming') || normalized.includes('zhibing')) return 'liming-zhibing';
+  if (normalized.includes('rainline')) return 'rainline';
+  if (normalized.includes('kill-line')) return 'kill-line';
+  if (normalized.includes('vimax')) return 'vimax';
+  if (normalized.includes('marketing')) return 'marketing';
+  if (normalized.includes('anime')) return 'anime';
+  if (normalized.includes('videotape')) return 'videotape';
+  if (normalized.includes('cyber')) return 'cyber';
+  return normalized.replace(/-\d{6,}.*/, '').replace(/[a-f0-9-]{12,}/, '');
+}
+
+function pickHomeHistoricalAssets(assets: HistoricalMediaAsset[]): HistoricalMediaAsset[] {
+  const picked = new Map<string, HistoricalMediaAsset>();
+  const videos = assets.filter(asset => asset.kind === 'video');
+  const images = assets.filter(asset => asset.kind === 'image');
+
+  for (const asset of videos) {
+    const category = historicalHomeCategory(asset.title);
+    if (!picked.has(category)) picked.set(category, asset);
+    if (picked.size >= 10) break;
+  }
+
+  for (const asset of images) {
+    const category = historicalHomeCategory(asset.title);
+    if (!picked.has(category)) picked.set(category, asset);
+    if (picked.size >= 14) break;
+  }
+
+  return Array.from(picked.values());
 }
 
 export function DreamboxHome() {
@@ -171,6 +216,7 @@ export function DreamboxHome() {
   const [showStoryboardDialog, setShowStoryboardDialog] = useState(false);
   const [currentStoryboardTask, setCurrentStoryboardTask] = useState<any>(null);
   const [productionCaseAssets, setProductionCaseAssets] = useState<ProductionCaseAsset[]>([]);
+  const [homeHistoricalAssets, setHomeHistoricalAssets] = useState<HistoricalMediaAsset[]>([]);
   const storyboardVideoRef = useRef<HTMLVideoElement>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
@@ -388,7 +434,7 @@ export function DreamboxHome() {
     }
   }, [searchParams]);
 
-  // 从真实制作项目资产中拉取首页/素材候选案例；失败时保留静态真实案例兜底。
+  // 从真实制作项目资产中拉取首页/素材候选案例。
   useEffect(() => {
     let cancelled = false;
 
@@ -405,6 +451,27 @@ export function DreamboxHome() {
     }
 
     loadProductionCaseAssets();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadHomeHistoricalAssets() {
+      try {
+        const response = await fetch('/api/assets/media-library?limit=32', { cache: 'no-store' });
+        const data = await response.json();
+        if (!cancelled && response.ok && Array.isArray(data.assets)) {
+          setHomeHistoricalAssets(data.assets);
+        }
+      } catch (error) {
+        console.warn('[DreamboxHome] 加载首页历史精选资产失败:', error);
+      }
+    }
+
+    loadHomeHistoricalAssets();
     return () => {
       cancelled = true;
     };
@@ -735,13 +802,7 @@ export function DreamboxHome() {
 
   const homeGalleryItems = useMemo<HomeGalleryItem[]>(() => {
     const staticItems: HomeGalleryItem[] = [
-      { title: '最后一班列车 60s', src: '/home/huiying-last-train-60s-poster.jpg', videoSrc: '/generated/videos/huiying-merge-1781840204419-c85e763a3e8628.mp4', span: 'col-span-2 row-span-2', type: '真实画布', target: 'canvas', href: '/node-editor?taskId=6433ac17-4cb2-4f28-9f36-dee20acaba6e&case=last-train-60s', duration: '01:00', source: 'static' },
-      { title: '便利店录像带 60s', src: '/home/huiying-story-aware-10s-poster.jpg', videoSrc: '/generated/videos/huiying-case-videotape-60s.mp4', span: 'col-span-2 row-span-2', type: '真实短剧', target: 'video', duration: '01:00', source: 'static' },
-      { title: '营销增长小样', src: '/home/huiying-ad-perfume.png', videoSrc: '/generated/videos/huiying-case-marketing-30s.mp4', span: 'col-span-2 row-span-2', type: '数字营销', target: 'video', duration: '00:30', source: 'static' },
-      { title: '调律者海蚀废墟', src: '/home/huiying-hero-cosmic-reel-v2.png', videoSrc: '/generated/videos/huiying-case-anime-adventure-30s.mp4', span: 'row-span-3', type: '原创二次元', target: 'video', duration: '00:30', source: 'static' },
-      { title: '便利店录像带 30s', src: '/home/huiying-story-aware-10s-poster.jpg', videoSrc: '/generated/videos/huiying-case-videotape-30s.mp4', span: 'row-span-2', type: '剧场', target: 'film', duration: '00:30', source: 'static' },
       { title: '角色导演', src: '/home/huiying-character-director.png', span: 'row-span-2', type: '角色', target: 'media', source: 'static' },
-      { title: '森林推进', src: '/samples/forest-video-thumb.jpg', span: '', type: '镜头', target: 'film', duration: '00:06', source: 'static' },
       { title: '霓虹雨城', src: '/samples/cyber-city.jpg', span: 'row-span-2', type: '场景', target: 'image', source: 'static' },
       { title: '黑玫瑰', src: '/samples/butterfly-rose.jpg', span: 'row-span-2', type: '图像', target: 'image', source: 'static' },
       { title: '海边日落', src: '/samples/sunset-beach.jpg', span: '', type: '场景', target: 'image', source: 'static' },
@@ -749,6 +810,16 @@ export function DreamboxHome() {
       { title: '分镜资产', src: '/home/huiying-hero-production-console.png', span: '', type: '资产', target: 'media', source: 'static' },
       { title: '片段队列', src: '/home/huiying-hero-cinematic-flow.png', span: 'col-span-2 row-span-2', type: '流程', target: 'film', source: 'static' },
     ];
+    const historicalItems: HomeGalleryItem[] = pickHomeHistoricalAssets(homeHistoricalAssets).map((asset, index) => ({
+      title: asset.title,
+      src: asset.kind === 'video' ? (asset.poster || asset.url) : asset.url,
+      videoSrc: asset.kind === 'video' ? asset.url : undefined,
+      span: index < 4 ? 'col-span-2 row-span-2' : index < 8 ? 'row-span-2' : '',
+      type: asset.kind === 'video' ? '真实视频' : '图像',
+      target: asset.kind === 'video' ? 'video' : 'image',
+      duration: asset.kind === 'video' ? '真实素材' : undefined,
+      source: 'historical',
+    }));
     const dynamicItems: HomeGalleryItem[] = productionCaseAssets.map((asset, index) => ({
       title: asset.title,
       src: asset.posterUrl,
@@ -760,13 +831,13 @@ export function DreamboxHome() {
       source: 'production-case-asset',
     }));
     const seen = new Set<string>();
-    return [...dynamicItems, ...staticItems].filter(item => {
+    return [...dynamicItems, ...historicalItems, ...staticItems].filter(item => {
       const key = item.videoSrc || `${item.type}:${item.title}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });
-  }, [productionCaseAssets]);
+  }, [homeHistoricalAssets, productionCaseAssets]);
 
   const finalVideoCaseAssets = useMemo(
     () => productionCaseAssets.filter(asset => asset.source === 'productionProject.assets.finalVideo'),
@@ -823,6 +894,15 @@ export function DreamboxHome() {
         handleRegenerateImage={handleRegenerateImage}
         handleRemixImage={handleRemixImage}
         homeGalleryItems={homeGalleryItems}
+        onOpenWorkDetail={(item) => {
+          setWorkDetailData({
+            id: item.title,
+            type: item.videoSrc ? 'video' : 'image',
+            mediaUrls: [item.videoSrc || item.src],
+            prompt: item.title,
+            provider: 'historical',
+          });
+        }}
         imageInitialConfig={imageInitialConfig}
         isDark={isDark}
         isGeneratingImage={isGeneratingImage}

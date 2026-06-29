@@ -104,17 +104,27 @@ export function extractBYOKConnection(headers: Headers): BYOKConnection | undefi
   const imageModel = headers.get('x-yh-image-model')?.trim() || undefined;
   const videoModel = headers.get('x-yh-video-model')?.trim() || undefined;
 
-  if (!provider || !apiBase || !apiKey) return undefined;
-  if (provider !== 'openai-compatible' && provider !== 'ark-plan') return undefined;
+  if (provider && apiBase && apiKey && (provider === 'openai-compatible' || provider === 'ark-plan')) {
+    return { provider, apiBase: normalizeBYOKApiBase(apiBase), apiKey, model, imageModel, videoModel };
+  }
 
-  return {
-    provider,
-    apiBase: normalizeBYOKApiBase(apiBase),
-    apiKey,
-    model,
-    imageModel,
-    videoModel,
-  };
+  // Server-side default ARK fallback: use env-configured ARK key for direct Volcano access.
+  const envKey = (process.env.ARK_IMAGE_API_KEY || process.env.ARK_API_KEY || '').trim();
+  const envBase = (process.env.ARK_API_BASE || 'https://ark.cn-beijing.volces.com/api/v3').trim();
+  // Use direct /api/v3 instead of /api/plan/v3 for direct Volcano access (not agentplan).
+  const directBase = envBase.replace('/api/plan/v3', '/api/v3');
+  if (envKey) {
+    return {
+      provider: 'ark-plan',
+      apiBase: directBase,
+      apiKey: envKey,
+      model: (process.env.ARK_AGENT_MODEL || 'doubao-seed-1-6-250615').trim(),
+      imageModel: (process.env.ARK_IMAGE_MODEL || 'doubao-seedream-5-0-260128').trim(),
+      videoModel: (process.env.ARK_VIDEO_MODEL || 'doubao-seedance-1-5-pro-251215').trim(),
+    };
+  }
+
+  return undefined;
 }
 
 export async function chatWithBYOK(

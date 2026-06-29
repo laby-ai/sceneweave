@@ -104,6 +104,37 @@ export interface ChatMessage {
     characterName: string;
   };
   actions?: string[];
+  vimaxAgent?: {
+    phase: 'plan' | 'reference_assets' | 'video_cost_confirm' | 'video';
+    title: string;
+    summary: string;
+    model: string;
+    costState: 'incurred' | 'not-yet' | 'blocked';
+    nextAction: string;
+    taskId?: string;
+    assets?: Array<{
+      kind: 'script' | 'character' | 'scene' | 'prop' | 'shot' | 'reference';
+      label: string;
+      prompt?: string;
+      url?: string;
+      /** 关联到的分镜序号；用于把参考图归位到对应 Clip 下。 */
+      shotIndex?: number;
+      status: 'planned' | 'generated' | 'blocked';
+    }>;
+    shots?: Array<{
+      index: number;
+      title: string;
+      duration: number;
+      camera: string;
+      prompt: string;
+      /** 该 Clip 的参考首帧图（reference_assets 阶段回填）。 */
+      referenceUrl?: string;
+      /** 该 Clip 的成片视频（video 阶段回填）。 */
+      videoUrl?: string;
+      /** 该 Clip 的生成状态，驱动逐条渲染。 */
+      status?: 'planned' | 'reference' | 'video' | 'blocked';
+    }>;
+  };
 }
 
 export interface TaskItem {
@@ -158,7 +189,9 @@ export function saveChatHistory(history: ChatHistoryEntry[]) {
         generationType: message.generationType,
         generationStatus: message.generationStatus,
         generationProgress: message.generationProgress,
-        generatedImages: message.generatedImages?.map(image => ({ url: image.url, label: image.label })),
+        generatedImages: message.generatedImages?.map(image => ({ url: image.url, label: image.label, prompt: image.prompt })),
+        generatedVideo: message.generatedVideo,
+        vimaxAgent: message.vimaxAgent,
       })),
     }));
     localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(slimHistory.slice(0, 20)));

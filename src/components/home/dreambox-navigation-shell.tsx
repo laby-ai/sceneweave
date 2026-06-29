@@ -3,7 +3,6 @@
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import Link from 'next/link';
 import {
-  BarChart3,
   FileText,
   Film,
   FolderOpen,
@@ -12,32 +11,30 @@ import {
   Home,
   Image as ImageIcon,
   Layers,
-  ListTodo,
-  MessageSquare,
   Music,
   Settings,
   Smartphone,
   Sparkles,
   TrendingUp,
   Type,
+  User,
   Zap,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import ThemeSwitch from '@/components/ThemeSwitch';
 import type { UserSettings } from '@/constants/themes';
 import type { MediaSubSection } from '@/components/home/dreambox-media-section';
 
+const BASE_PATH = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
+const withBasePath = (url: string) => BASE_PATH && url.startsWith('/') && !url.startsWith(`${BASE_PATH}/`) ? `${BASE_PATH}${url}` : url;
+
+// 即梦式四导航收敛：首页 / 资产 / 生成 / 画布。
+// 创作类型（图片 / 视频 / 影视 / 导演）不在导航栏暴露，而是“生成”内的创作模式，能力仍然保留。
 const navItemDefs = [
-  { id: 'home', label: '首页', fullLabel: '创作工作台', icon: <Home className="w-5 h-5" />, section: 'home' },
-  { id: 'media', label: '素材', fullLabel: '图文与素材', icon: <FolderOpen className="w-5 h-5" />, section: 'media' },
-  { id: 'video', label: '视频', fullLabel: 'AI 视频创作', icon: <Sparkles className="w-5 h-5" />, section: 'video' },
-  { id: 'subtitle-chat', label: '精灵', fullLabel: '绘影精灵', icon: <MessageSquare className="w-5 h-5" />, section: 'smart' },
-  { id: 'film', label: '影视', fullLabel: '影视创作', icon: <Film className="w-5 h-5" />, section: 'film' },
-  { id: 'canvas', label: '画布', fullLabel: '工作流画布', icon: <GitBranch className="w-5 h-5" />, section: 'canvas', isLink: true, href: '/node-editor' },
-  { id: 'research', label: '研究', fullLabel: '平台研究', icon: <BarChart3 className="w-5 h-5" />, section: 'research', isLink: true, href: '/research' },
-  { id: 'tasks', label: '任务', fullLabel: '任务中心', icon: <ListTodo className="w-5 h-5" />, section: 'tasks' },
-  { id: 'settings', label: '设置', fullLabel: '设置与 BYOK', icon: <Settings className="w-5 h-5" />, section: 'settings' },
+  { id: 'home', label: '首页', fullLabel: '首页', icon: <Home className="w-5 h-5" />, section: 'home' },
+  { id: 'assets', label: '资产', fullLabel: '资产库', icon: <FolderOpen className="w-5 h-5" />, section: 'media', sub: 'assets' as const },
+  { id: 'generate', label: '生成', fullLabel: '生成创作', icon: <Sparkles className="w-5 h-5" />, section: 'smart' },
+  { id: 'canvas', label: '画布', fullLabel: '无限画布', icon: <GitBranch className="w-5 h-5" />, section: 'canvas', isLink: true, href: '/canvas' },
 ];
 
 const fontGroups = [
@@ -156,112 +153,20 @@ export function DreamboxNavigationShell({
 }: DreamboxNavigationShellProps) {
   return (
     <>
-      <div className="fixed top-0 left-16 right-0 z-50 h-[72px] bg-[var(--nav-bg)] backdrop-blur-2xl border-b border-white/10 shadow-[0_1px_0_rgba(255,255,255,0.04)]">
-        <div className="flex h-full items-center justify-end px-3 sm:px-6">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setActiveSection('tasks')}
-              aria-label={`查看任务中心，当前 ${backgroundTaskCount} 个任务`}
-              className="hidden items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-medium text-foreground/80 transition-all hover:border-[#4F6CFF]/50 hover:bg-[#4F6CFF]/10 hover:text-foreground sm:flex"
-            >
-              <Zap className="h-4 w-4 text-[#70E0FF]" />
-              任务 {backgroundTaskCount}
-            </button>
-
-            <div className="relative group">
-              <Button variant="ghost" size="sm" className="text-foreground/70 hover:text-foreground hover:bg-accent/50 h-8 px-2" title="字体设置">
-                <Type className="w-4 h-4" />
-              </Button>
-              <div className="absolute right-0 top-full mt-1 w-56 bg-card border border-border rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 p-2 max-h-[70vh] overflow-y-auto">
-                {fontGroups.map((cat) => (
-                  <div key={cat.label}>
-                    <p className="text-[10px] font-semibold text-muted-foreground px-2 pt-1.5 pb-0.5">{cat.label}</p>
-                    {cat.fonts.map((font) => (
-                      <button
-                        key={font.id}
-                        onClick={() => setSettingsFontStyle(font.id)}
-                        className={`w-full text-left px-3 py-1 rounded-lg text-xs transition-colors ${
-                          settingsFontStyle === font.id ? 'bg-[#70E0FF]/10 text-[#70E0FF]' : 'text-foreground hover:bg-accent/50'
-                        }`}
-                      >
-                        {font.name}
-                      </button>
-                    ))}
-                  </div>
-                ))}
-                <div className="border-t border-border my-1" />
-                <div className="px-2 py-1">
-                  <p className="text-xs text-muted-foreground mb-1">字号: {settingsFontSize}px</p>
-                  <input
-                    type="range"
-                    min={12}
-                    max={20}
-                    step={1}
-                    value={settingsFontSize}
-                    onChange={(event) => setSettingsFontSize(Number(event.target.value))}
-                    className="w-full h-1.5 rounded-full appearance-none bg-accent cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#70E0FF]"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="relative group">
-              <Button variant="ghost" size="sm" className="text-foreground/70 hover:text-foreground hover:bg-accent/50 h-8 px-2" title="语言设置">
-                <Globe className="w-4 h-4" />
-              </Button>
-              <div className="absolute right-0 top-full mt-1 w-52 bg-card border border-border rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 p-2 max-h-[70vh] overflow-y-auto">
-                {languageGroups.map((cat) => (
-                  <div key={cat.label}>
-                    <p className="text-[10px] font-semibold text-muted-foreground px-2 pt-1.5 pb-0.5">{cat.label}</p>
-                    {cat.langs.map((lang) => (
-                      <button
-                        key={lang.id}
-                        onClick={() => {
-                          setSettingsLanguage(lang.id);
-                          updateUserSettings({ language: lang.id as UserSettings['language'] });
-                        }}
-                        className={`w-full text-left px-3 py-1 rounded-lg text-xs flex items-center gap-2 transition-colors ${
-                          settingsLanguage === lang.id ? 'bg-[#70E0FF]/10 text-[#70E0FF]' : 'text-foreground hover:bg-accent/50'
-                        }`}
-                      >
-                        <span>{lang.flag}</span>
-                        <span>{lang.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <ThemeSwitch />
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setActiveSection('settings')}
-              className="text-foreground/70 hover:text-foreground hover:bg-accent/50"
-              aria-label="打开设置"
-            >
-              <Settings className="w-4 h-4 sm:mr-2" />
-              <span className="hidden sm:inline">设置</span>
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      <div className="fixed top-0 left-0 bottom-0 z-40 transition-all duration-300 bg-black/70 border-r border-white/10 overflow-hidden w-16 backdrop-blur-2xl">
-        <nav className="flex h-full flex-col px-1.5 py-2">
+      <div className="fixed top-0 left-0 bottom-0 z-40 w-16 border-r border-white/10 bg-black/70 backdrop-blur-2xl">
+        <nav className="flex h-full flex-col items-center px-1.5 py-3">
           <button
             onClick={() => {
               setActiveSection('home');
               setIsMediaExpanded(false);
             }}
-            className="mb-3 flex h-14 w-full items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] transition-all hover:border-[#70E0FF]/45 hover:bg-white/[0.07]"
+            className="mb-1 flex h-11 w-11 items-center justify-center rounded-xl transition-all hover:bg-white/[0.06]"
             aria-label="回到绘影首页"
             title="绘影"
           >
-            <img src="/logo-icon-galaxy.png" alt="绘影" className="h-10 w-10 rounded-xl object-cover shadow-[0_0_24px_rgba(68,172,255,0.28)]" />
+            <img src={withBasePath("/logo-icon-galaxy.png")} alt="绘影" className="h-9 w-9 object-contain" />
           </button>
-          <div className="min-h-0 flex-1 space-y-1 overflow-y-auto">
+          <div className="flex w-full flex-1 flex-col items-center justify-center gap-1">
             {navItemDefs.map((item) => {
               if ('isLink' in item && item.isLink) {
                 const isLinkActive = pathname === item.href;
@@ -316,6 +221,7 @@ export function DreamboxNavigationShell({
                   aria-label={item.fullLabel}
                   onClick={() => {
                     if (item.section) setActiveSection(item.section);
+                    if ('sub' in item && item.sub) setMediaSubSection(item.sub);
                     setIsMediaExpanded(false);
                   }}
                   className={`flex h-14 w-full flex-col items-center justify-center rounded-2xl transition-all ${
@@ -329,6 +235,45 @@ export function DreamboxNavigationShell({
                 </button>
               );
             })}
+          </div>
+
+          <div className="flex w-full flex-col items-center gap-1 pt-2">
+            <button
+              onClick={() => setActiveSection('tasks')}
+              aria-label={`任务中心，当前 ${backgroundTaskCount} 个任务`}
+              title="任务中心"
+              className="relative flex h-12 w-full flex-col items-center justify-center rounded-2xl text-foreground/60 transition-all hover:bg-white/[0.06] hover:text-foreground"
+            >
+              <Zap className="h-5 w-5" />
+              <span className="mt-0.5 text-[10px] leading-tight">任务</span>
+              {backgroundTaskCount > 0 && (
+                <span className="absolute right-2 top-1 rounded-full bg-[#4F6CFF] px-1 text-[9px] font-semibold text-white">{backgroundTaskCount}</span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveSection('settings')}
+              aria-label="设置"
+              title="设置"
+              className={`flex h-12 w-full flex-col items-center justify-center rounded-2xl transition-all ${
+                activeSection === 'settings'
+                  ? 'bg-[#4F6CFF]/20 text-white ring-1 ring-[#4F6CFF]/40'
+                  : 'text-foreground/60 hover:bg-white/[0.06] hover:text-foreground'
+              }`}
+            >
+              <Settings className="h-5 w-5" />
+              <span className="mt-0.5 text-[10px] leading-tight">设置</span>
+            </button>
+            <a
+              href="http://39.97.246.33/account?next=%2F"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="登录"
+              title="登录账号"
+              className="flex h-12 w-full flex-col items-center justify-center rounded-2xl text-foreground/60 transition-all hover:bg-white/[0.06] hover:text-foreground"
+            >
+              <User className="h-5 w-5" />
+              <span className="mt-0.5 text-[10px] leading-tight">登录</span>
+            </a>
           </div>
         </nav>
       </div>
