@@ -749,7 +749,8 @@ function InfiniteCanvasPage() {
             const safeOps = Array.isArray(ops) ? ops.filter((op) => op?.type) : [];
             const before = { projectId, title: currentProject?.title || "未命名画布", nodes: nodesRef.current, connections: connectionsRef.current, selectedNodeIds: Array.from(selectedNodeIdsRef.current), viewport: viewportRef.current };
             const generationOps = safeOps.filter((op): op is Extract<CanvasAgentOp, { type: "run_generation" }> => op.type === "run_generation" && Boolean(op.nodeId));
-            const next = applyCanvasAgentOps(before, safeOps.filter((op) => op.type !== "run_generation"), { width: size.width, height: size.height });
+            const fitWidth = assistantMounted && !assistantCollapsed ? Math.max(360, Math.min(size.width - 560, size.width * 0.42)) : size.width;
+            const next = applyCanvasAgentOps(before, safeOps.filter((op) => op.type !== "run_generation"), { width: fitWidth, height: size.height });
             nodesRef.current = next.nodes;
             connectionsRef.current = next.connections;
             selectedNodeIdsRef.current = new Set(next.selectedNodeIds);

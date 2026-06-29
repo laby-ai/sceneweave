@@ -318,11 +318,12 @@ export function CanvasAssistantPanel({ nodes, selectedNodeIds, snapshot, session
     const continueOnlineToolLoop = async (sessionId: string, assistantId: string, messages: ResponseInputMessage[], result: { content: string; toolCalls: ResponseToolCall[] }, step: number) => {
         const toolResults = executeOnlineToolCalls(result.toolCalls);
         addOnlineLog("工具执行结果", toolResults);
+        const readOnlyState = toolResults.length > 0 && toolResults.every((item) => ONLINE_READ_TOOLS.has(item.name));
         appendMessage(sessionId, {
             id: nanoid(),
             role: "tool",
-            title: "工具自动执行完成",
-            text: toolResults.map((item) => toolResultText(item.result)).join("\n"),
+            title: readOnlyState ? "已读取画布状态" : "工具自动执行完成",
+            text: toolResults.map(toolExecutionText).join("\n"),
             detail: { status: "completed", step, toolCalls: result.toolCalls, results: toolResults },
         });
         await continueOnlineToolLoopAfterResults(sessionId, assistantId, messages, result.toolCalls, toolResults, step);
@@ -433,7 +434,7 @@ export function CanvasAssistantPanel({ nodes, selectedNodeIds, snapshot, session
             setIsRunning(true);
             const results = executeOnlineToolCalls(toolCalls);
             addOnlineLog("工具执行结果", results);
-            upsertMessage(session.id, { id: messageId, role: "tool", title: "工具执行完成", text: results.map((item) => toolResultText(item.result)).join("\n"), detail: { ...detail, results, status: "completed" } });
+            upsertMessage(session.id, { id: messageId, role: "tool", title: "工具执行完成", text: results.map(toolExecutionText).join("\n"), detail: { ...detail, results, status: "completed" } });
             pendingToolContextRef.current.delete(messageId);
             await continueOnlineToolLoopAfterResults(session.id, assistantId, previousMessages, toolCalls, results, pendingContext?.step || Number(detail.step) || 1);
         } catch (error) {
@@ -1132,6 +1133,11 @@ function toolCallLabel(name: string) {
 
 function toolResultText(result: OnlineToolResult) {
     return result.message;
+}
+
+function toolExecutionText(item: OnlineExecutedToolCall) {
+    if (item.name === "canvas_get_state" && item.result.ok) return "已读取当前画布状态，正在继续规划下一步。";
+    return toolResultText(item.result);
 }
 
 function requireStringArray(value: unknown, field: string): string[] {
