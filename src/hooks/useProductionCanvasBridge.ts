@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Edge, Node } from 'reactflow';
+import type { Edge, Node, ReactFlowInstance } from 'reactflow';
 import { MarkerType } from 'reactflow';
 import type { CustomNodeData } from '@/components/node-editor/node-editor-shared';
 
@@ -26,7 +26,7 @@ type UseProductionCanvasBridgeInput = {
   setEdges: (edges: Edge[]) => void;
   saveToHistory: (nodes: Node<CustomNodeData>[], edges: Edge[]) => void;
   updateNodeData: (nodeId: string, data: Partial<CustomNodeData>) => void;
-  reactFlowInstance: any;
+  reactFlowInstance: ReactFlowInstance<CustomNodeData> | null;
   setIsGenerating: (value: boolean) => void;
 };
 

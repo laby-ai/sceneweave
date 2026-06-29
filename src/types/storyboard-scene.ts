@@ -57,8 +57,8 @@ export interface EnhancedStoryboard {
   
   // 节点模式：节点工作流数据（新功能）
   nodeWorkflow?: {
-    nodes: any[];
-    edges: any[];
+    nodes: unknown[];
+    edges: unknown[];
   };
   
   status: 'draft' | 'generating' | 'completed' | 'failed';
