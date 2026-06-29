@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowUp,
@@ -8,10 +8,9 @@ import {
   Clock,
   Film,
   Image as ImageIcon,
-  MessageSquare,
+  Loader2,
   Music,
   Plus,
-  Search,
   Sparkles,
   Video,
   Wand2,
@@ -95,19 +94,46 @@ function CanvasProjectPreview({ project }: { project: CanvasProjectMeta }) {
 export default function CanvasHome() {
   const router = useRouter();
   const [prompt, setPrompt] = useState("");
+  const [busy, setBusy] = useState(false);
   const hydrated = useCanvasStore((s: { hydrated: boolean }) => s.hydrated) as boolean;
   const projects = useCanvasStore((s: { projects: CanvasProjectMeta[] }) => s.projects) as CanvasProjectMeta[];
   const createProject = useCanvasStore((s: { createProject: (title?: string) => string }) => s.createProject) as (title?: string) => string;
 
-  // 用真实 store 创建项目并进入；store 未水合完成前先不创建，避免被 rehydrate 覆盖丢失。
-  const createAndEnter = (title?: string, agentPrompt?: string) => {
-    if (!hydrated) return;
+  // 点击时如果 store 还没水合完成，先记下意图，水合后立刻执行；这样点击永远有反馈，
+  // 不再出现“点了没反应”（之前 disabled 直接吞掉点击）。
+  const pendingRef = useRef<{ title?: string; prompt?: string } | null>(null);
+
+  const runCreate = (title?: string, agentPrompt?: string) => {
     const cleanTitle = title?.trim();
     const id = createProject(cleanTitle || `画布 ${projects.length + 1}`);
     const cleanPrompt = agentPrompt?.trim();
     router.push(cleanPrompt ? `/canvas/${id}?agentPrompt=${encodeURIComponent(cleanPrompt)}` : `/canvas/${id}`);
   };
-  const enterProject = (id: string) => router.push(`/canvas/${id}`);
+
+  const createAndEnter = (title?: string, agentPrompt?: string) => {
+    if (busy) return;
+    setBusy(true);
+    if (!hydrated) {
+      pendingRef.current = { title, prompt: agentPrompt };
+      return;
+    }
+    runCreate(title, agentPrompt);
+  };
+
+  useEffect(() => {
+    if (hydrated && pendingRef.current) {
+      const { title, prompt: agentPrompt } = pendingRef.current;
+      pendingRef.current = null;
+      runCreate(title, agentPrompt);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated]);
+
+  const enterProject = (id: string) => {
+    if (busy) return;
+    setBusy(true);
+    router.push(`/canvas/${id}`);
+  };
   const submitAgentPrompt = () => createAndEnter(prompt || "30 秒短剧画布智能体", prompt || "30 秒短剧画布智能体");
 
   return (
@@ -150,29 +176,20 @@ export default function CanvasHome() {
               />
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <button type="button" className="inline-flex items-center gap-1.5 rounded-lg bg-[#4F6CFF]/15 px-2.5 py-1.5 text-xs font-medium text-[#70E0FF] ring-1 ring-[#4F6CFF]/30">
+              <span className="inline-flex items-center gap-1.5 rounded-lg bg-[#4F6CFF]/15 px-2.5 py-1.5 text-xs font-medium text-[#70E0FF] ring-1 ring-[#4F6CFF]/30">
                 <Sparkles className="h-3.5 w-3.5" /> Agent 模式
-              </button>
-              <button type="button" className="inline-flex items-center gap-1.5 rounded-lg border border-white/12 px-2.5 py-1.5 text-xs text-white/64 hover:text-white">
-                <MessageSquare className="h-3.5 w-3.5" /> 自动
-              </button>
-              <button type="button" className="inline-flex items-center gap-1.5 rounded-lg border border-white/12 px-2.5 py-1.5 text-xs text-white/64 hover:text-white">
-                <Search className="h-3.5 w-3.5" /> 灵感搜索
-              </button>
-              <button type="button" className="inline-flex items-center gap-1.5 rounded-lg border border-white/12 px-2.5 py-1.5 text-xs text-white/64 hover:text-white">
-                <Wand2 className="h-3.5 w-3.5" /> 创意设计
-              </button>
+              </span>
               <button type="button" className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/12 text-white/64 hover:text-white" title="添加主体">
                 <AtSign className="h-4 w-4" />
               </button>
               <button
                 type="button"
                 onClick={submitAgentPrompt}
-                disabled={!hydrated}
-                className="ml-auto flex h-9 w-9 items-center justify-center rounded-xl bg-[#4F6CFF] text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                disabled={busy}
+                className="ml-auto flex h-9 w-9 items-center justify-center rounded-xl bg-[#4F6CFF] text-white transition-opacity hover:opacity-90 disabled:opacity-60"
                 title="创建画布"
               >
-                <ArrowUp className="h-4 w-4" />
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
               </button>
             </div>
           </div>
@@ -181,13 +198,13 @@ export default function CanvasHome() {
         <section className="mx-auto w-full max-w-none">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-sm font-medium text-white/74">快速开始</h2>
-            <button type="button" onClick={() => createAndEnter()} disabled={!hydrated} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-white/10 px-3 text-xs font-medium text-white/78 hover:bg-white/15 disabled:opacity-40">
-              <Plus className="h-4 w-4" /> 新建项目
+            <button type="button" onClick={() => createAndEnter()} disabled={busy} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-white/10 px-3 text-xs font-medium text-white/78 hover:bg-white/15 disabled:opacity-50">
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} 新建项目
             </button>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
             {TEMPLATES.map((tpl) => (
-              <button key={tpl.id} onClick={() => createAndEnter(tpl.title)} disabled={!hydrated} className="group relative overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] text-left transition-all hover:-translate-y-0.5 hover:border-[#70E0FF]/45 disabled:opacity-50">
+              <button key={tpl.id} onClick={() => createAndEnter(tpl.title)} disabled={busy} className="group relative overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] text-left transition-all hover:-translate-y-0.5 hover:border-[#70E0FF]/45 disabled:opacity-60">
                 <div className="aspect-[16/9] overflow-hidden bg-white/5">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={withBasePath(tpl.src)} alt={tpl.title} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
@@ -208,21 +225,30 @@ export default function CanvasHome() {
           <h2 className="mb-4 flex items-center gap-2 text-sm font-medium text-white/74">
             <Clock className="h-4 w-4" /> 最近项目
           </h2>
-          {hydrated && projects.length > 0 ? (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-6">
-              {projects.slice(0, 12).map((p: CanvasProjectMeta) => (
-                <button key={p.id} type="button" title={p.title} aria-label={`打开画布：${p.title}`} onClick={() => enterProject(p.id)} className="group relative overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] text-left transition-all hover:-translate-y-0.5 hover:border-[#70E0FF]/40">
-                  <div className="aspect-[16/10] overflow-hidden bg-white/5">
-                    <CanvasProjectPreview project={p} />
-                  </div>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-xl border border-dashed border-white/12 bg-white/[0.03] px-4 py-10 text-center text-sm text-white/42">
-              还没有画布项目，点击上方“新建项目”或输入需求开始创作。
-            </div>
-          )}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-6">
+            <button
+              type="button"
+              onClick={() => createAndEnter()}
+              disabled={busy}
+              aria-label="新建画布"
+              title="新建画布"
+              className="group flex aspect-[16/10] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-white/15 bg-white/[0.03] text-white/55 transition-all hover:-translate-y-0.5 hover:border-[#70E0FF]/55 hover:text-white disabled:opacity-60"
+            >
+              <span className="flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/[0.04] transition-colors group-hover:border-[#70E0FF]/55 group-hover:text-[#70E0FF]">
+                {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Plus className="h-5 w-5" />}
+              </span>
+              <span className="text-xs font-medium">新建画布</span>
+            </button>
+            {hydrated
+              ? projects.slice(0, 11).map((p: CanvasProjectMeta) => (
+                  <button key={p.id} type="button" title={p.title} aria-label={`打开画布：${p.title}`} onClick={() => enterProject(p.id)} disabled={busy} className="group relative overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] text-left transition-all hover:-translate-y-0.5 hover:border-[#70E0FF]/40 disabled:opacity-60">
+                    <div className="aspect-[16/10] overflow-hidden bg-white/5">
+                      <CanvasProjectPreview project={p} />
+                    </div>
+                  </button>
+                ))
+              : null}
+          </div>
         </section>
       </div>
     </main>

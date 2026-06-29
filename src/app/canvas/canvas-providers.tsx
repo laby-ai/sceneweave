@@ -62,29 +62,69 @@ export function CanvasProviders({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  // 隐藏画布 Agent 面板中不需要对外暴露的控件 + 替换品牌名
+  // 隐藏画布 Agent 面板中不需要对外暴露的控件：用一次性注入的 CSS 处理，
+  // 不再在每次 DOM 变动时全文档 querySelectorAll（那是之前卡死/点击无反应的主因）。
   useEffect(() => {
-    const hide = () => {
-      // 隐藏 Select trigger（模型名/渠道选择器）
-      document.querySelectorAll('[data-slot="select-trigger"]').forEach(el => { (el as HTMLElement).style.display = 'none'; });
-      // 隐藏网站/本机切换按钮组
-      document.querySelectorAll('.ant-drawer-content, .infinite-canvas-dark').forEach(container => {
-        container.querySelectorAll('.inline-flex.rounded-lg.border').forEach(el => { if ((el.className || '').includes('p-0')) (el as HTMLElement).style.display = 'none'; });
-      });
-      // 替换 "Infinite Canvas" 为 "绘影画布"
-      document.querySelectorAll('span, div, p, button').forEach(el => {
-        if (el.children.length === 0) {
-          const text = el.textContent;
-          if (text && text.includes('Infinite Canvas')) {
-            el.textContent = text.replace(/Infinite Canvas/g, '绘影画布');
-          }
+    const STYLE_ID = 'huiying-canvas-hide-style';
+    if (!document.getElementById(STYLE_ID)) {
+      const style = document.createElement('style');
+      style.id = STYLE_ID;
+      style.textContent = [
+        '[data-slot="select-trigger"]{display:none !important;}',
+        '.ant-drawer-content .inline-flex.rounded-lg.border.p-0,',
+        '.infinite-canvas-dark .inline-flex.rounded-lg.border.p-0{display:none !important;}',
+      ].join('\n');
+      document.head.appendChild(style);
+    }
+  }, []);
+
+  // 品牌名替换 "Infinite Canvas" → "绘影画布"：用 TreeWalker 只扫文本节点，
+  // 仅处理 MutationObserver 报告的新增子树，并做尾部防抖，避免高频全量扫描。
+  useEffect(() => {
+    const BRAND_FROM = /Infinite Canvas/g;
+    const BRAND_TO = '绘影画布';
+
+    const replaceIn = (root: Node) => {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      let node: Node | null = walker.nextNode();
+      while (node) {
+        const value = node.nodeValue;
+        if (value && value.includes('Infinite Canvas')) {
+          node.nodeValue = value.replace(BRAND_FROM, BRAND_TO);
         }
-      });
+        node = walker.nextNode();
+      }
     };
-    hide();
-    const observer = new MutationObserver(() => hide());
+
+    replaceIn(document.body);
+
+    let scheduled = 0;
+    const pending: Node[] = [];
+    const flush = () => {
+      scheduled = 0;
+      const roots = pending.splice(0, pending.length);
+      for (const root of roots) {
+        if (root.isConnected) replaceIn(root);
+      }
+    };
+
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        mutation.addedNodes.forEach((added) => {
+          if (added.nodeType === Node.ELEMENT_NODE || added.nodeType === Node.TEXT_NODE) {
+            pending.push(added);
+          }
+        });
+      }
+      if (pending.length && !scheduled) {
+        scheduled = window.setTimeout(flush, 300);
+      }
+    });
     observer.observe(document.body, { childList: true, subtree: true });
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (scheduled) window.clearTimeout(scheduled);
+    };
   }, []);
 
   return (

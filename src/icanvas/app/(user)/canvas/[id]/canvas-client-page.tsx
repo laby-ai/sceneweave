@@ -436,11 +436,8 @@ function InfiniteCanvasPage() {
     useEffect(() => {
         if (!projectLoaded || !["new", "recent", "choose"].includes(searchParams.get("mode") || "")) return;
         if (searchParams.has("agentPrompt")) return;
-        if (searchParams.has("agentUrl")) {
-            setAgentMode("local");
-            return;
-        }
-        openAgent("local");
+        // 本地 Agent 已下线，所有自动连接统一打开开源自带的在线画布助手。
+        openAgent("online");
     }, [projectLoaded, searchParams]);
 
     useEffect(() => {

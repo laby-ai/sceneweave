@@ -658,7 +658,7 @@ export function CanvasAssistantPanel({ nodes, selectedNodeIds, snapshot, session
                         </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
-                        <AgentModeSwitch value={agentMode} theme={theme} onChange={onAgentModeChange} />
+                        {/* 已统一为开源项目自带的在线画布助手，移除本地 Agent 切换入口。 */}
                         <label className="flex items-center gap-1.5 text-xs" style={{ color: theme.node.muted }}>
                             <Switch size="small" checked={confirmTools} onChange={(confirmTools) => setAgentState({ confirmTools })} />
                             工具确认
@@ -668,18 +668,7 @@ export function CanvasAssistantPanel({ nodes, selectedNodeIds, snapshot, session
                         </Tooltip>
                     </div>
                 </header>
-                {agentMode === "local" ? (
-                    <CanvasLocalAgentPanel
-                        embedded
-                        snapshot={snapshot}
-                        canUndoOps={canUndoOps}
-                        onApplyOps={onApplyOps}
-                        onUndoOps={onUndoOps}
-                        autoConnect={autoConnectLocal}
-                    />
-                ) : (
-                    onlineContent
-                )}
+                {onlineContent}
             </motion.aside>
         </motion.div>
     );
