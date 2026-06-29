@@ -22,6 +22,11 @@ export type CanvasAgentSnapshot = {
     viewport: ViewportTransform;
 };
 
+export type CanvasAgentViewportSize = {
+    width: number;
+    height: number;
+};
+
 export function summarizeCanvasAgentOps(ops?: CanvasAgentOp[]) {
     const counts = (Array.isArray(ops) ? ops : []).reduce<Record<string, number>>((acc, op) => {
         if (!op?.type) return acc;
@@ -33,11 +38,13 @@ export function summarizeCanvasAgentOps(ops?: CanvasAgentOp[]) {
         .join("，");
 }
 
-export function applyCanvasAgentOps(snapshot: CanvasAgentSnapshot, ops?: CanvasAgentOp[]) {
+export function applyCanvasAgentOps(snapshot: CanvasAgentSnapshot, ops?: CanvasAgentOp[], viewportSize?: CanvasAgentViewportSize) {
     let nodes = snapshot.nodes;
     let connections = snapshot.connections;
     let selectedNodeIds = snapshot.selectedNodeIds;
     let viewport = snapshot.viewport;
+    const addedNodeIds: string[] = [];
+    let hasViewportOp = false;
 
     (Array.isArray(ops) ? ops : []).forEach((op, index) => {
         if (!op?.type) return;
@@ -55,6 +62,7 @@ export function applyCanvasAgentOps(snapshot: CanvasAgentSnapshot, ops?: CanvasA
             };
             nodes = [...nodes, node];
             selectedNodeIds = [node.id];
+            addedNodeIds.push(node.id);
         }
         if (op.type === "update_node") {
             if (!op.id) return;
@@ -76,11 +84,48 @@ export function applyCanvasAgentOps(snapshot: CanvasAgentSnapshot, ops?: CanvasA
             const hasNodes = nodes.some((node) => node.id === op.fromNodeId) && nodes.some((node) => node.id === op.toNodeId);
             if (!exists && hasNodes) connections = [...connections, { id: op.id || nanoid(), fromNodeId: op.fromNodeId, toNodeId: op.toNodeId }];
         }
-        if (op.type === "set_viewport" && op.viewport) viewport = op.viewport;
+        if (op.type === "set_viewport" && op.viewport) {
+            viewport = op.viewport;
+            hasViewportOp = true;
+        }
         if (op.type === "select_nodes") selectedNodeIds = (op.ids || []).filter((id) => nodes.some((node) => node.id === id));
     });
 
+    if (!hasViewportOp && addedNodeIds.length >= 4) {
+        viewport = fitViewportToNodes(
+            nodes.filter((node) => addedNodeIds.includes(node.id)),
+            viewportSize,
+        ) || viewport;
+    }
+
     return { ...snapshot, nodes, connections, selectedNodeIds, viewport };
+}
+
+function fitViewportToNodes(nodes: CanvasNodeData[], viewportSize?: CanvasAgentViewportSize): ViewportTransform | null {
+    if (!nodes.length || !viewportSize || viewportSize.width < 320 || viewportSize.height < 240) return null;
+
+    const minX = Math.min(...nodes.map((node) => node.position.x));
+    const minY = Math.min(...nodes.map((node) => node.position.y));
+    const maxX = Math.max(...nodes.map((node) => node.position.x + node.width));
+    const maxY = Math.max(...nodes.map((node) => node.position.y + node.height));
+    const boundsWidth = Math.max(1, maxX - minX);
+    const boundsHeight = Math.max(1, maxY - minY);
+    const centerX = minX + boundsWidth / 2;
+    const centerY = minY + boundsHeight / 2;
+    const padding = 96;
+    const availableWidth = Math.max(160, viewportSize.width - padding * 2);
+    const availableHeight = Math.max(160, viewportSize.height - padding * 2);
+    const scale = Math.min(1, Math.max(0.22, Math.min(availableWidth / boundsWidth, availableHeight / boundsHeight)));
+
+    return {
+        x: roundViewportNumber(viewportSize.width / 2 - centerX * scale),
+        y: roundViewportNumber(viewportSize.height / 2 - centerY * scale),
+        k: roundViewportNumber(scale),
+    };
+}
+
+function roundViewportNumber(value: number) {
+    return Math.round(value * 100) / 100;
 }
 
 function opLabel(type: string) {
