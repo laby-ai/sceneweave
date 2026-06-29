@@ -10,6 +10,7 @@ import { TaskProvider } from '@/contexts/TaskContext';
 import { ColorModeProvider } from '@/contexts/ColorModeContext';
 import { GlobalStyles } from '@/components/global-styles';
 import { BasePathFetchShim } from '@/components/base-path-fetch-shim';
+import { AccountProductAuthGuard } from '@/components/account-product-auth-guard';
 
 export function Providers({ children }: { children: ReactNode }) {
   return (
@@ -22,7 +23,7 @@ export function Providers({ children }: { children: ReactNode }) {
                 <AuthProvider>
                   <BasePathFetchShim />
                   <GlobalStyles />
-                  {children}
+                  <AccountProductAuthGuard>{children}</AccountProductAuthGuard>
                 </AuthProvider>
               </TaskProvider>
             </CommunityProvider>

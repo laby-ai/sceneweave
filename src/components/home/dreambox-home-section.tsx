@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { BarChart3, Film, GitBranch, Image as ImageIcon, KeyRound, ListTodo, Play, Video } from 'lucide-react';
+import { Film, GitBranch, Image as ImageIcon, Play, Video } from 'lucide-react';
 
 interface HomeGalleryItem {
   title: string;
@@ -63,30 +63,6 @@ export function DreamboxHomeSection({
                         <p className="mt-3 max-w-2xl text-sm leading-7 text-white/66 sm:text-base">
                           面向短剧与短片生产，把创意、剧本、角色、分镜、素材、任务和成片收束到同一张制作台。
                         </p>
-                      </div>
-                      <div className="flex shrink-0 gap-2">
-                        <button
-                          onClick={() => setActiveSection('settings')}
-                          className="inline-flex h-9 items-center gap-2 rounded-lg border border-white/15 bg-black/35 px-3 text-xs font-medium text-white/85 backdrop-blur-md transition-colors hover:border-[#70E0FF]/70 hover:text-white"
-                        >
-                          <KeyRound className="h-4 w-4 text-[#70E0FF]" />
-                          API 设置
-                        </button>
-                        <button
-                          onClick={() => setActiveSection('tasks')}
-                          aria-label="打开任务中心"
-                          className="hidden h-9 items-center gap-2 rounded-lg border border-white/15 bg-black/35 px-3 text-xs font-medium text-white/85 backdrop-blur-md transition-colors hover:border-[#70E0FF]/70 hover:text-white sm:inline-flex"
-                        >
-                          <ListTodo className="h-4 w-4 text-[#70E0FF]" />
-                          任务
-                        </button>
-                        <button
-                          onClick={() => router.push('/research')}
-                          className="hidden h-9 items-center gap-2 rounded-lg border border-white/15 bg-black/35 px-3 text-xs font-medium text-white/85 backdrop-blur-md transition-colors hover:border-[#70E0FF]/70 hover:text-white md:inline-flex"
-                        >
-                          <BarChart3 className="h-4 w-4 text-[#70E0FF]" />
-                          研究
-                        </button>
                       </div>
                     </div>
                     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
