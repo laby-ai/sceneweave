@@ -23,7 +23,7 @@ interface UserTemplate {
   likesCount?: number;
   sharesCount?: number;
   collaborators?: string[];
-  config?: Record<string, any>;
+  config?: Record<string, unknown>;
 }
 
 interface TemplateContextType {

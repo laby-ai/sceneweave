@@ -20,6 +20,9 @@ export interface VoicePrintRecording {
   startTime: number;
 }
 
+export type VoicePrintMeta = Omit<VoicePrint, 'audioBlob' | 'audioUrl' | 'isProcessing'> &
+  Partial<Pick<VoicePrint, 'audioBlob' | 'audioUrl' | 'isProcessing'>>;
+
 export const VOICE_PRINTS_STORAGE_KEY = 'voice_prints';
 
 export const DEFAULT_RECORDING_DURATION = 10; // 默认录制时长（秒）
@@ -67,13 +70,13 @@ export function validateAudio(blob: Blob): { valid: boolean; error?: string } {
 }
 
 // 从localStorage加载声纹
-export function loadVoicePrints(): VoicePrint[] {
+export function loadVoicePrints(): VoicePrintMeta[] {
   try {
     const saved = localStorage.getItem(VOICE_PRINTS_STORAGE_KEY);
     if (saved) {
-      const data = JSON.parse(saved);
+      const data = JSON.parse(saved) as VoicePrintMeta[];
       // 注意：音频数据无法直接存储在localStorage中，这里只存储元数据
-      return data.map((item: any) => ({
+      return data.map((item) => ({
         ...item,
         // audioBlob和audioUrl需要从其他地方恢复
       }));
