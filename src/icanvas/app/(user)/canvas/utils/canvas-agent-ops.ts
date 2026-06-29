@@ -28,7 +28,7 @@ export type CanvasAgentViewportSize = {
 };
 
 export function summarizeCanvasAgentOps(ops?: CanvasAgentOp[]) {
-    const counts = (Array.isArray(ops) ? ops : []).reduce<Record<string, number>>((acc, op) => {
+    const counts = completeShortDramaPlanOps(Array.isArray(ops) ? ops : []).reduce<Record<string, number>>((acc, op) => {
         if (!op?.type) return acc;
         acc[op.type] = (acc[op.type] || 0) + 1;
         return acc;
@@ -45,8 +45,9 @@ export function applyCanvasAgentOps(snapshot: CanvasAgentSnapshot, ops?: CanvasA
     let viewport = snapshot.viewport;
     const addedNodeIds: string[] = [];
     let hasViewportOp = false;
+    const safeOps = completeShortDramaPlanOps(Array.isArray(ops) ? ops : []);
 
-    (Array.isArray(ops) ? ops : []).forEach((op, index) => {
+    safeOps.forEach((op, index) => {
         if (!op?.type) return;
         if (op.type === "add_node") {
             const nodeType = Object.values(CanvasNodeType).includes(op.nodeType as CanvasNodeType) ? op.nodeType! : CanvasNodeType.Text;
@@ -99,6 +100,108 @@ export function applyCanvasAgentOps(snapshot: CanvasAgentSnapshot, ops?: CanvasA
     }
 
     return { ...snapshot, nodes, connections, selectedNodeIds, viewport };
+}
+
+function completeShortDramaPlanOps(ops: CanvasAgentOp[]) {
+    const addNodes = ops.filter((op): op is Extract<CanvasAgentOp, { type: "add_node" }> => op.type === "add_node");
+    if (addNodes.length < 8 || !looksLikeThirtySecondDrama(addNodes)) return ops;
+
+    const clipNumbers = numberedNodes(addNodes, "clip");
+    const refNumbers = numberedNodes(addNodes, "reference");
+    const finalNode = addNodes.find((op) => /合成|成片|最终|final/i.test(opText(op)));
+    const hasFinal = Boolean(finalNode);
+    if (!hasFinal) return ops;
+
+    const { x, y } = nextShortDramaPosition(addNodes);
+    const selectedOps: CanvasAgentOp[] = [];
+    const meaningfulNodes = addNodes.filter((op) => !/^\s*(双击编辑文字|文本)?\s*$/i.test(opText(op)));
+    const finalPlan = meaningfulNodes.find((op) => /合成|成片|最终|final/i.test(opText(op))) || finalNode || addNodes[addNodes.length - 1];
+    const clipCandidates = meaningfulNodes.filter((op) => op !== finalPlan && !/参考|reference|prompt|图/i.test(opText(op)));
+    const refCandidates = meaningfulNodes.filter((op) => /参考|reference|prompt|图/i.test(opText(op)));
+    const clipWidth = addNodes.find((op) => clipNumbers.has(nodeNumber(op, "clip") || 0))?.width || 220;
+    const clipHeight = addNodes.find((op) => clipNumbers.has(nodeNumber(op, "clip") || 0))?.height || 140;
+    const refWidth = addNodes.find((op) => refNumbers.has(nodeNumber(op, "reference") || 0))?.width || 220;
+    const refHeight = addNodes.find((op) => refNumbers.has(nodeNumber(op, "reference") || 0))?.height || 140;
+
+    for (let index = 1; index <= 6; index += 1) {
+        const clipId = `clip-${index}`;
+        const refId = `ref-${index}`;
+        const colX = x + (index - 1) * 260;
+        const existingClip = addNodes.find((op) => nodeNumber(op, "clip") === index) || clipCandidates[index - 1];
+        const existingRef = addNodes.find((op) => nodeNumber(op, "reference") === index) || refCandidates[index - 1];
+        selectedOps.push(
+            existingClip
+                ? { ...existingClip, id: clipId, title: existingClip.title || `Clip ${index}`, position: existingClip.position || { x: colX, y } }
+                : {
+                type: "add_node",
+                id: clipId,
+                nodeType: CanvasNodeType.Text,
+                title: `Clip ${index}`,
+                position: { x: colX, y },
+                width: clipWidth,
+                height: clipHeight,
+                metadata: { content: `第 ${index} 个 5 秒镜头：补齐短剧节奏，延续前序剧情并完成 30 秒结构。`, status: "success", fontSize: 14, autoCompleted: true },
+            },
+        );
+        selectedOps.push(
+            existingRef
+                ? { ...existingRef, id: refId, title: existingRef.title || `参考图 ${index}`, position: existingRef.position || { x: colX, y: y + clipHeight + 36 } }
+                : {
+                type: "add_node",
+                id: refId,
+                nodeType: CanvasNodeType.Text,
+                title: `参考图 ${index}`,
+                position: { x: colX, y: y + clipHeight + 36 },
+                width: refWidth,
+                height: refHeight,
+                metadata: { content: `参考图 ${index}：延续全片视觉风格，服务 Clip ${index} 的关键画面。`, status: "success", fontSize: 14, autoCompleted: true },
+            },
+        );
+    }
+
+    selectedOps.push({ ...finalPlan, id: "final-video-plan", title: finalPlan.title || "最终视频合成规划", position: finalPlan.position || { x: x + 6 * 260, y } });
+
+    const normalizedIds = new Set(selectedOps.filter((op): op is Extract<CanvasAgentOp, { type: "add_node" }> => op.type === "add_node").map((op) => op.id).filter((id): id is string => Boolean(id)));
+    const connections: CanvasAgentOp[] = [];
+    for (let index = 1; index <= 6; index += 1) {
+        connections.push({ type: "connect_nodes", fromNodeId: `clip-${index}`, toNodeId: `ref-${index}` });
+        if (index < 6) connections.push({ type: "connect_nodes", fromNodeId: `clip-${index}`, toNodeId: `clip-${index + 1}` });
+    }
+    connections.push({ type: "connect_nodes", fromNodeId: "clip-6", toNodeId: "final-video-plan" });
+
+    return [...ops.filter((op) => op.type !== "add_node" && op.type !== "connect_nodes" && op.type !== "select_nodes"), ...selectedOps, ...connections.filter((op) => op.type === "connect_nodes" && normalizedIds.has(op.fromNodeId) && normalizedIds.has(op.toNodeId)), { type: "select_nodes", ids: ["final-video-plan"] }];
+}
+
+function looksLikeThirtySecondDrama(ops: Extract<CanvasAgentOp, { type: "add_node" }>[]) {
+    const text = ops.map(opText).join(" ");
+    return /(30\s*秒|30s|三十秒)/i.test(text) && /(clip|镜头|分镜|短剧)/i.test(text) && /(参考|reference|prompt|图)/i.test(text);
+}
+
+function numberedNodes(ops: Extract<CanvasAgentOp, { type: "add_node" }>[], kind: "clip" | "reference") {
+    const numbers = new Set<number>();
+    ops.forEach((op) => {
+        const value = nodeNumber(op, kind);
+        if (value) numbers.add(value);
+    });
+    return numbers;
+}
+
+function nodeNumber(op: Extract<CanvasAgentOp, { type: "add_node" }>, kind: "clip" | "reference") {
+    const text = opText(op);
+    const pattern = kind === "clip" ? /(?:clip|镜头|分镜)\s*([1-6])|第\s*([1-6])\s*个\s*5\s*秒/i : /(?:参考图|参考|reference|prompt)\s*([1-6])/i;
+    const match = text.match(pattern);
+    return Number(match?.[1] || match?.[2] || 0) || null;
+}
+
+function opText(op: Extract<CanvasAgentOp, { type: "add_node" }>) {
+    return [op.title, op.metadata?.content, op.metadata?.prompt, op.metadata?.composerContent].filter((item): item is string => typeof item === "string").join(" ");
+}
+
+function nextShortDramaPosition(ops: Extract<CanvasAgentOp, { type: "add_node" }>[]) {
+    const positions = ops.map((op) => op.position || { x: op.x || 0, y: op.y || 0 });
+    const minX = positions.length ? Math.min(...positions.map((pos) => pos.x)) : 80;
+    const minY = positions.length ? Math.min(...positions.map((pos) => pos.y)) : 80;
+    return { x: minX, y: minY };
 }
 
 function fitViewportToNodes(nodes: CanvasNodeData[], viewportSize?: CanvasAgentViewportSize): ViewportTransform | null {
