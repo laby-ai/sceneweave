@@ -2,8 +2,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { ProductionAssemblyPlan, ProductionSegmentAudioState, ProductionSegmentPlan } from '../src/lib/production-assembly-plan';
-import type { ProductionProject } from '../src/lib/production-project';
+import type { ProductionProject, ProductionSemanticPlan } from '../src/lib/production-project';
 import type { ShotFrameContract } from '../src/lib/production-shot-frame-contract';
+import type { TaskResult } from '../src/lib/task-manager';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -129,11 +130,11 @@ function makeProductionProject(parentTaskId: string): ProductionProject {
       version: 'yh-production-semantic-plan-v1',
       source: 'video-production-v3-merged',
       reference: { primary: 'ViMax', secondary: ['Toonflow-app', 'ArcReel'], adaptedIdeas: ['artifact DAG readiness', 'FlowData writeback', 'dependency claim gate'] },
-      writerOutput: {} as any,
-      directorOutput: {} as any,
+      writerOutput: {} as unknown as ProductionSemanticPlan['writerOutput'],
+      directorOutput: {} as unknown as ProductionSemanticPlan['directorOutput'],
       characterBibles: [],
       sceneBibles: [{ id: 'scene-platform', name: '暴雨站台', version: 1 }],
-      shotList: {} as any,
+      shotList: {} as unknown as ProductionSemanticPlan['shotList'],
       dag: { nodes: [] },
       assetLinks: { characterAssetIds: ['character-protagonist'], sceneAssetIds: ['scene-platform'], storyboardAssetId: 'storyboard-1', deliverableAssetId: 'deliverable-1' },
     },
@@ -148,7 +149,10 @@ function makeProductionProject(parentTaskId: string): ProductionProject {
     graph: { nodes: [], edges: [] },
     storyboard: { shotCount: 5, totalDuration: 30, shots },
     output: { status: 'pending', taskId: parentTaskId, canProceedToVideo: false, nextStep: '等待片段' },
-    suggestions: { subtitle: {} as any, narration: {} as any },
+    suggestions: {
+      subtitle: {} as unknown as ProductionProject['suggestions']['subtitle'],
+      narration: {} as unknown as ProductionProject['suggestions']['narration'],
+    },
   };
 }
 
@@ -247,7 +251,7 @@ async function main() {
       productionProject,
       assemblyPlan,
       assemblyQueue: { version: 'qa', sourceTaskId: parentTaskId, status: 'planned', queuedSegmentCount: 5, childTaskIds, updatedAt: new Date(0).toISOString() },
-    } as any,
+    } as TaskResult,
   });
 
   let currentPlan = assemblyPlan;
@@ -271,7 +275,7 @@ async function main() {
       },
     });
     currentPlan = completed.assemblyPlan;
-    taskManager.updateTask(parentTaskId, { result: { productionProject: completed.productionProject, assemblyPlan: currentPlan } as any });
+    taskManager.updateTask(parentTaskId, { result: { productionProject: completed.productionProject, assemblyPlan: currentPlan } as TaskResult });
     const next = currentPlan.segments[index + 1];
     assert(next.expectedInputs.firstFrameUrl === `https://example.invalid/segment-${index + 1}-tail.jpg`, `segment ${index + 2} must use direct previous tail frame`);
     assert(next.expectedInputs.previousAudioCue === audioState(index).audioCue, `segment ${index + 2} must use direct previous audio cue`);
@@ -280,7 +284,7 @@ async function main() {
 
   const parentBeforeFailure = taskManager.getTaskFresh(parentTaskId)!;
   const failed = segmentAssets.applySegmentAssetWriteback({
-    productionProject: parentBeforeFailure.result!.productionProject as any,
+    productionProject: parentBeforeFailure.result!.productionProject as ProductionProject,
     assemblyPlan: parentBeforeFailure.result!.assemblyPlan as ProductionAssemblyPlan,
     segmentIndex: 2,
     patch: {
@@ -294,7 +298,7 @@ async function main() {
       },
     },
   });
-  taskManager.updateTask(parentTaskId, { result: { productionProject: failed.productionProject, assemblyPlan: failed.assemblyPlan } as any });
+  taskManager.updateTask(parentTaskId, { result: { productionProject: failed.productionProject, assemblyPlan: failed.assemblyPlan } as TaskResult });
   assert(failed.assemblyPlan.segments[3].status === 'skipped', 'segment 4 must be skipped after segment 3 failure');
   assert(failed.assemblyPlan.segments[4].status === 'skipped', 'segment 5 must be skipped after segment 3 failure');
   assert(failed.assemblyPlan.segments[3].expectedInputs.previousAudioCue === null, 'segment 4 stale audio cue must be cleared');
@@ -316,7 +320,7 @@ async function main() {
   assert(fourthBlocked, 'segment 4 must remain blocked until segment 3 writes lastFrameUrl');
 
   const recoveredThird = segmentAssets.applySegmentAssetWriteback({
-    productionProject: parentAfterRetry.result!.productionProject as any,
+    productionProject: parentAfterRetry.result!.productionProject as ProductionProject,
     assemblyPlan: retryPlan,
     segmentIndex: 2,
     patch: {
@@ -333,7 +337,7 @@ async function main() {
       },
     },
   });
-  taskManager.updateTask(parentTaskId, { result: { productionProject: recoveredThird.productionProject, assemblyPlan: recoveredThird.assemblyPlan } as any });
+  taskManager.updateTask(parentTaskId, { result: { productionProject: recoveredThird.productionProject, assemblyPlan: recoveredThird.assemblyPlan } as TaskResult });
   const fourthDryRun = startService.startProductionAssemblySegment({ childTaskId: childTaskIds[3] });
   assert(fourthDryRun.startPayload.firstFrameImage === 'https://example.invalid/segment-3-tail.jpg', 'segment 4 must use recovered segment 3 tail frame');
   assert(fourthDryRun.startPayload.audioContinuity.previousAudioCue === audioState(2).audioCue, 'segment 4 must use recovered segment 3 audio cue');
