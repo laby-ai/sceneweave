@@ -359,8 +359,11 @@ export async function GET(request: Request) {
   const csvRows = mediaIndex.available ? collectMediaRows(mediaIndex.text, limit) : [];
   const filesystemRows = await collectFilesystemMediaRows();
   const rows = rankMediaRows([...csvRows, ...filesystemRows], limit);
+  const filesystemIndexAvailable = filesystemRows.length > 0;
+  const effectiveIndexAvailable = mediaIndex.available || filesystemIndexAvailable;
+  const indexSource = mediaIndex.available ? 'csv' : filesystemIndexAvailable ? 'filesystem' : 'none';
 
-  if (!mediaIndex.available && rows.length === 0) {
+  if (!effectiveIndexAvailable && rows.length === 0) {
     return NextResponse.json(
       {
         success: false,
@@ -393,9 +396,12 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     success: true,
-    indexPath: mediaIndex.indexPath,
-    indexAvailable: mediaIndex.available,
+    indexPath: mediaIndex.available ? mediaIndex.indexPath : 'filesystem:/opt/huiying/releases/*/public/generated',
+    indexAvailable: effectiveIndexAvailable,
+    indexSource,
+    csvIndexAvailable: mediaIndex.available,
     indexCandidateCount: mediaIndex.candidates.length,
+    filesystemAssetCount: filesystemRows.length,
     count: assets.length,
     assets,
   });
