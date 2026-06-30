@@ -1,6 +1,11 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import type { ProductionAssemblyPlan, ProductionSegmentAudioState } from '../src/lib/production-assembly-plan';
+import type { ProductionProject } from '../src/lib/production-project';
+import type { ShotFrameContract } from '../src/lib/production-shot-frame-contract';
+import type { StorySegmentContract } from '../src/lib/production-story-segment-contract';
+import type { TaskResult } from '../src/lib/task-manager';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -16,7 +21,7 @@ async function main() {
   const segmentAssets = await import('../src/lib/production-segment-assets');
   const storyContract = await import('../src/lib/production-story-segment-contract');
   const tailFrame = await import('../src/lib/production-segment-tail-frame');
-  const shotFrameContract = {
+  const shotFrameContract: ShotFrameContract = {
     version: 'yh-shot-frame-contract-v1',
     reference: {
       primary: 'ViMAX',
@@ -60,7 +65,7 @@ async function main() {
       warnings: [],
     },
   };
-  const firstAudioState = {
+  const firstAudioState: ProductionSegmentAudioState = {
     dialogue: '还有一班车能过桥。',
     narration: null,
     soundDesign: '雨声、列车进站声，主角短促吸气。',
@@ -68,7 +73,7 @@ async function main() {
     emotion: '警觉',
     audioCue: '情绪=警觉；对白=还有一班车能过桥。；旁白=无；声音=雨声、列车进站声，主角短促吸气。',
   };
-  const secondAudioState = {
+  const secondAudioState: ProductionSegmentAudioState = {
     dialogue: null,
     narration: null,
     soundDesign: '雨声延续，远处警报变得更急。',
@@ -76,7 +81,7 @@ async function main() {
     emotion: '紧张',
     audioCue: '情绪=紧张；对白=无；旁白=无；声音=雨声延续，远处警报变得更急。',
   };
-  const makeAudioEventContract = (audioState: any) => ({
+  const makeAudioEventContract = (audioState: ProductionSegmentAudioState): StorySegmentContract['audioContract']['audioEventContract'] => ({
     dialogueType: audioState.dialogue ? 'dialogue' : audioState.narration ? 'voiceover' : 'none',
     lipSyncPolicy: audioState.dialogue ? 'lip-sync-active' : audioState.narration ? 'silent-lips' : 'ambient-only',
     mustGenerateAudioTrack: true,
@@ -90,7 +95,11 @@ async function main() {
       ? `保留对白原文“${audioState.dialogue}”，角色口型必须和对白同步。环境声和音效必须可听见：${audioState.soundDesign}`
       : `本段无对白/旁白，角色嘴唇保持自然静默，只保留环境声和动作声。环境声和音效必须可听见：${audioState.soundDesign}`,
   });
-  const makeStorySegmentContract = (index: number, contract: any, audioState: any) => ({
+  const makeStorySegmentContract = (
+    index: number,
+    contract: ShotFrameContract,
+    audioState: ProductionSegmentAudioState,
+  ): StorySegmentContract => ({
     version: 'yh-story-segment-contract-v1',
     reference: {
       primary: 'Toonflow-app',
@@ -164,162 +173,146 @@ async function main() {
     ratio: '16:9',
   });
 
+  const secondShotFrameContract: ShotFrameContract = {
+    ...shotFrameContract,
+    shotId: 'shot-2',
+    shotIndex: 1,
+    handoff: {
+      requiresPreviousLastFrame: true,
+      previousShotId: 'shot-1',
+      nextShotId: null,
+      entryContinuity: '第二段必须先复现第一段尾帧。',
+      exitContinuity: '第二段尾帧继续保留红色书包和列车灯光。',
+    },
+  };
+
+  const productionProject = {
+    id: 'production-start-qa',
+    title: 'QA segment start production',
+    prompt: 'A compact segment start service QA.',
+    style: 'cinematic',
+    ratio: '16:9',
+    sceneType: 'drama',
+    duration: 10,
+    assets: [],
+    graph: { nodes: [], edges: [] },
+    stages: [],
+    storyboard: { shots: [
+      { id: 'shot-1', index: 1, status: 'queued' },
+      { id: 'shot-2', index: 2, status: 'queued' },
+    ] },
+    semanticPlan: {
+      assetLinks: {
+        storyboardAssetId: 'storyboard',
+        deliverableAssetId: 'deliverable',
+      },
+      dag: { nodes: [] },
+    },
+    output: {},
+  } as unknown as ProductionProject;
+
+  const assemblyPlan = {
+    version: 'qa',
+    productionProjectId: 'production-start-qa',
+    sourceTaskId: parentTaskId,
+    totalDuration: 20,
+    segmentCount: 2,
+    status: 'planned',
+    segments: [
+      {
+        id: 'segment-1',
+        index: 0,
+        shotId: 'shot-1',
+        duration: 10,
+        prompt: '急诊医生收到已宣告死亡病人的电话，不要字幕，只用电话铃声和呼吸声推动悬疑。',
+        status: 'queued',
+        dependencies: {
+          characterAssetIds: ['character-protagonist'],
+          sceneAssetIds: ['scene-platform'],
+          propAssetIds: ['prop-red-bag'],
+        },
+        expectedInputs: {
+          firstFrameUrl: null,
+          previousLastFrameUrl: null,
+          sourceSegmentId: null,
+          sourceAssetId: null,
+          continuityPrompt: '第一段建立主角、场景和道具。',
+          previousAudioCue: null,
+          audioContinuityPrompt: '第一段建立声音基调。',
+          previousStoryStateCue: null,
+          storyContinuityPrompt: '第一段建立主角目标、冲突和道具状态。',
+        },
+        expectedOutputs: {
+          taskId: childTaskId,
+          videoUrl: null,
+          lastFrameUrl: null,
+          providerTaskId: null,
+          audioCue: firstAudioState.audioCue,
+          hasAudio: null,
+          storyStateCue: storyContract.describeStorySegmentCue(makeStorySegmentContract(0, shotFrameContract, firstAudioState)),
+        },
+        audioState: firstAudioState,
+        shotFrameContract,
+        storySegmentContract: makeStorySegmentContract(0, shotFrameContract, firstAudioState),
+        retryPolicy: {
+          maxRetries: 1,
+          retryable: true,
+          fallback: 'retry-segment',
+        },
+      },
+      {
+        id: 'segment-2',
+        index: 1,
+        shotId: 'shot-2',
+        duration: 10,
+        prompt: 'Second dry-run bridge shot',
+        status: 'queued',
+        dependencies: {
+          characterAssetIds: ['character-protagonist'],
+          sceneAssetIds: ['scene-platform'],
+          propAssetIds: ['prop-red-bag'],
+        },
+        expectedInputs: {
+          firstFrameUrl: null,
+          previousLastFrameUrl: null,
+          sourceSegmentId: 'segment-1',
+          sourceAssetId: null,
+          continuityPrompt: '等待第一段尾帧。',
+          previousAudioCue: null,
+          audioContinuityPrompt: '等待第一段声音状态。',
+          previousStoryStateCue: null,
+          storyContinuityPrompt: '等待第一段故事状态。',
+        },
+        expectedOutputs: {
+          taskId: secondChildTaskId,
+          videoUrl: null,
+          lastFrameUrl: null,
+          providerTaskId: null,
+          audioCue: secondAudioState.audioCue,
+          hasAudio: null,
+          storyStateCue: storyContract.describeStorySegmentCue(makeStorySegmentContract(1, secondShotFrameContract, secondAudioState)),
+        },
+        audioState: secondAudioState,
+        shotFrameContract: secondShotFrameContract,
+        storySegmentContract: makeStorySegmentContract(1, secondShotFrameContract, secondAudioState),
+        retryPolicy: {
+          maxRetries: 1,
+          retryable: true,
+          fallback: 'retry-segment',
+        },
+      },
+    ],
+    recovery: {
+      resumeFromSegmentIndex: 0,
+    },
+  } as unknown as ProductionAssemblyPlan;
+
   taskManager.updateTask(parentTaskId, {
     status: 'completed',
     progress: 100,
     result: {
-      productionProject: {
-        id: 'production-start-qa',
-        title: 'QA segment start production',
-        prompt: 'A compact segment start service QA.',
-        style: 'cinematic',
-        ratio: '16:9',
-        sceneType: 'drama',
-        duration: 10,
-        assets: [],
-        graph: { nodes: [], edges: [] },
-        stages: [],
-        storyboard: { shots: [
-          { id: 'shot-1', index: 1, status: 'queued' },
-          { id: 'shot-2', index: 2, status: 'queued' },
-        ] },
-        semanticPlan: {
-          assetLinks: {
-            storyboardAssetId: 'storyboard',
-            deliverableAssetId: 'deliverable',
-          },
-          dag: { nodes: [] },
-        },
-        output: {},
-      },
-      assemblyPlan: {
-        version: 'qa',
-        productionProjectId: 'production-start-qa',
-        sourceTaskId: parentTaskId,
-        totalDuration: 20,
-        segmentCount: 2,
-        status: 'planned',
-        segments: [
-          {
-            id: 'segment-1',
-            index: 0,
-            shotId: 'shot-1',
-            duration: 10,
-            prompt: '急诊医生收到已宣告死亡病人的电话，不要字幕，只用电话铃声和呼吸声推动悬疑。',
-            status: 'queued',
-            dependencies: {
-              characterAssetIds: ['character-protagonist'],
-              sceneAssetIds: ['scene-platform'],
-              propAssetIds: ['prop-red-bag'],
-            },
-            expectedInputs: {
-              firstFrameUrl: null,
-              previousLastFrameUrl: null,
-              sourceSegmentId: null,
-              sourceAssetId: null,
-              continuityPrompt: '第一段建立主角、场景和道具。',
-              previousAudioCue: null,
-              audioContinuityPrompt: '第一段建立声音基调。',
-              previousStoryStateCue: null,
-              storyContinuityPrompt: '第一段建立主角目标、冲突和道具状态。',
-            },
-            expectedOutputs: {
-              taskId: childTaskId,
-              videoUrl: null,
-              lastFrameUrl: null,
-              providerTaskId: null,
-              audioCue: firstAudioState.audioCue,
-              hasAudio: null,
-              storyStateCue: storyContract.describeStorySegmentCue(makeStorySegmentContract(0, shotFrameContract, firstAudioState) as any),
-            },
-            audioState: firstAudioState,
-            shotFrameContract,
-            storySegmentContract: makeStorySegmentContract(0, shotFrameContract, firstAudioState),
-            retryPolicy: {
-              maxRetries: 1,
-              retryable: true,
-              fallback: 'retry-segment',
-            },
-          },
-          {
-            id: 'segment-2',
-            index: 1,
-            shotId: 'shot-2',
-            duration: 10,
-            prompt: 'Second dry-run bridge shot',
-            status: 'queued',
-            dependencies: {
-              characterAssetIds: ['character-protagonist'],
-              sceneAssetIds: ['scene-platform'],
-              propAssetIds: ['prop-red-bag'],
-            },
-            expectedInputs: {
-              firstFrameUrl: null,
-              previousLastFrameUrl: null,
-              sourceSegmentId: 'segment-1',
-              sourceAssetId: null,
-              continuityPrompt: '等待第一段尾帧。',
-              previousAudioCue: null,
-              audioContinuityPrompt: '等待第一段声音状态。',
-              previousStoryStateCue: null,
-              storyContinuityPrompt: '等待第一段故事状态。',
-            },
-            expectedOutputs: {
-              taskId: secondChildTaskId,
-              videoUrl: null,
-              lastFrameUrl: null,
-              providerTaskId: null,
-              audioCue: secondAudioState.audioCue,
-              hasAudio: null,
-              storyStateCue: storyContract.describeStorySegmentCue(makeStorySegmentContract(1, {
-                ...shotFrameContract,
-                shotId: 'shot-2',
-                shotIndex: 1,
-                handoff: {
-                  requiresPreviousLastFrame: true,
-                  previousShotId: 'shot-1',
-                  nextShotId: null,
-                  entryContinuity: '第二段必须先复现第一段尾帧。',
-                  exitContinuity: '第二段尾帧继续保留红色书包和列车灯光。',
-                },
-              }, secondAudioState) as any),
-            },
-            audioState: secondAudioState,
-            shotFrameContract: {
-              ...shotFrameContract,
-              shotId: 'shot-2',
-              shotIndex: 1,
-              handoff: {
-                requiresPreviousLastFrame: true,
-                previousShotId: 'shot-1',
-                nextShotId: null,
-                entryContinuity: '第二段必须先复现第一段尾帧。',
-                exitContinuity: '第二段尾帧继续保留红色书包和列车灯光。',
-              },
-            },
-            storySegmentContract: makeStorySegmentContract(1, {
-              ...shotFrameContract,
-              shotId: 'shot-2',
-              shotIndex: 1,
-              handoff: {
-                requiresPreviousLastFrame: true,
-                previousShotId: 'shot-1',
-                nextShotId: null,
-                entryContinuity: '第二段必须先复现第一段尾帧。',
-                exitContinuity: '第二段尾帧继续保留红色书包和列车灯光。',
-              },
-            }, secondAudioState),
-            retryPolicy: {
-              maxRetries: 1,
-              retryable: true,
-              fallback: 'retry-segment',
-            },
-          },
-        ],
-        recovery: {
-          resumeFromSegmentIndex: 0,
-        },
-      } as any,
+      productionProject,
+      assemblyPlan,
       assemblyQueue: {
         version: 'qa',
         sourceTaskId: parentTaskId,
@@ -328,7 +321,7 @@ async function main() {
         childTaskIds: [childTaskId, secondChildTaskId],
         updatedAt: new Date(0).toISOString(),
       },
-    },
+    } as TaskResult,
   });
 
   const dryRun = startService.startProductionAssemblySegment({ childTaskId });
@@ -395,6 +388,7 @@ async function main() {
       conflictEvidence?: string;
       endingHookEvidence?: string;
     };
+    storySegmentContract?: StorySegmentContract;
     audioState?: {
       audioCue?: string;
     } | null;
@@ -408,7 +402,7 @@ async function main() {
   );
   assert(childStartPayload?.visualStoryEvidence?.conflictEvidence, 'child config should persist visible conflict evidence');
   assert(childStartPayload?.visualStoryEvidence?.endingHookEvidence, 'child config should persist visible ending hook');
-  assert((childStartPayload as any)?.storySegmentContract?.storyState?.currentGoal, 'child config should persist story segment contract');
+  assert(childStartPayload?.storySegmentContract?.storyState?.currentGoal, 'child config should persist story segment contract');
   assert(childStartPayload?.audioState?.audioCue === firstAudioState.audioCue, 'child config should persist audio state');
   assert(
     Number(childStartPayload?.providerPromptLength || 0) > 0 && Number(childStartPayload?.providerPromptLength || 0) <= 900,
@@ -436,8 +430,8 @@ async function main() {
 
   const parentBeforeHandoff = taskManager.getTaskFresh(parentTaskId)!;
   const writeback = segmentAssets.applySegmentAssetWriteback({
-    productionProject: parentBeforeHandoff.result!.productionProject as any,
-    assemblyPlan: parentBeforeHandoff.result!.assemblyPlan as any,
+    productionProject: parentBeforeHandoff.result!.productionProject as ProductionProject,
+    assemblyPlan: parentBeforeHandoff.result!.assemblyPlan as ProductionAssemblyPlan,
     segmentIndex: 0,
     patch: {
       status: 'completed',
@@ -449,7 +443,7 @@ async function main() {
         providerTaskId: 'provider-task-1',
         audioCue: firstAudioState.audioCue,
         hasAudio: true,
-        storyStateCue: storyContract.describeStorySegmentCue(makeStorySegmentContract(0, shotFrameContract, firstAudioState) as any),
+        storyStateCue: storyContract.describeStorySegmentCue(makeStorySegmentContract(0, shotFrameContract, firstAudioState)),
       },
     },
   });
@@ -477,7 +471,7 @@ async function main() {
     'second segment should receive previous audio cue after writeback'
   );
   assert(
-    secondDryRun.startPayload.storyContinuity.previousStoryStateCue === storyContract.describeStorySegmentCue(makeStorySegmentContract(0, shotFrameContract, firstAudioState) as any),
+    secondDryRun.startPayload.storyContinuity.previousStoryStateCue === storyContract.describeStorySegmentCue(makeStorySegmentContract(0, shotFrameContract, firstAudioState)),
     'second segment should receive previous story state cue after writeback'
   );
   assert(
@@ -485,7 +479,7 @@ async function main() {
     'second segment story contract should receive previous audio cue after writeback'
   );
   assert(
-    secondDryRun.startPayload.storySegmentContract.dependencyContract.previousStoryStateCue === storyContract.describeStorySegmentCue(makeStorySegmentContract(0, shotFrameContract, firstAudioState) as any),
+    secondDryRun.startPayload.storySegmentContract.dependencyContract.previousStoryStateCue === storyContract.describeStorySegmentCue(makeStorySegmentContract(0, shotFrameContract, firstAudioState)),
     'second segment story contract should receive previous story state cue after writeback'
   );
   assert(
