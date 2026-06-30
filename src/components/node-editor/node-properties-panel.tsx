@@ -36,6 +36,21 @@ import { VisualPropertiesSections } from './node-properties-visual-sections';
 import { CharacterScenePropertiesSections } from './node-properties-character-scene-sections';
 import { MediaPropertiesSections } from './node-properties-media-sections';
 
+type PanelNodeData = CustomNodeData & {
+  characterUploads?: string[];
+  sceneUploads?: string[];
+  issues?: QualityIssue[];
+};
+type PanelNodePatch = Partial<CustomNodeData> & {
+  characterUploads?: string[];
+  sceneUploads?: string[];
+};
+type QualityIssue = {
+  code?: string;
+  severity?: string;
+  message?: string;
+};
+
 // 属性面板组件
 export const PropertiesPanel = ({ 
   selectedNode, 
@@ -82,17 +97,23 @@ export const PropertiesPanel = ({
   const [panelOpen, setPanelOpen] = useState(true);
 
   if (!selectedNode) return null;
+  const nodeData = selectedNode.data as PanelNodeData;
+  const updateNodeData = (patch: PanelNodePatch) => onUpdateNode(selectedNode.id, patch);
+  const readUploads = (key: 'characterUploads' | 'sceneUploads') => {
+    const value = nodeData[key];
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+  };
 
   // 多图上传处理函数
   const handleCharacterUpload = (files: FileList | File[]) => {
     const fileArray = Array.from(files);
-    const currentUploads: string[] = (selectedNode.data as any).characterUploads || [];
+    const currentUploads = readUploads('characterUploads');
     fileArray.forEach(file => {
       const reader = new FileReader();
       reader.onload = (e) => {
         const base64 = e.target?.result as string;
         const newUploads = [...currentUploads, base64];
-        onUpdateNode(selectedNode.id, { characterUploads: newUploads } as any);
+        updateNodeData({ characterUploads: newUploads });
       };
       reader.readAsDataURL(file);
     });
@@ -100,26 +121,26 @@ export const PropertiesPanel = ({
 
   const handleSceneUpload = (files: FileList | File[]) => {
     const fileArray = Array.from(files);
-    const currentUploads: string[] = (selectedNode.data as any).sceneUploads || [];
+    const currentUploads = readUploads('sceneUploads');
     fileArray.forEach(file => {
       const reader = new FileReader();
       reader.onload = (e) => {
         const base64 = e.target?.result as string;
         const newUploads = [...currentUploads, base64];
-        onUpdateNode(selectedNode.id, { sceneUploads: newUploads } as any);
+        updateNodeData({ sceneUploads: newUploads });
       };
       reader.readAsDataURL(file);
     });
   };
 
   const removeCharacterUpload = (index: number) => {
-    const currentUploads: string[] = ((selectedNode.data as any).characterUploads || []) as string[];
-    onUpdateNode(selectedNode.id, { characterUploads: currentUploads.filter((_: string, i: number) => i !== index) } as any);
+    const currentUploads = readUploads('characterUploads');
+    updateNodeData({ characterUploads: currentUploads.filter((_, i) => i !== index) });
   };
 
   const removeSceneUpload = (index: number) => {
-    const currentUploads: string[] = ((selectedNode.data as any).sceneUploads || []) as string[];
-    onUpdateNode(selectedNode.id, { sceneUploads: currentUploads.filter((_: string, i: number) => i !== index) } as any);
+    const currentUploads = readUploads('sceneUploads');
+    updateNodeData({ sceneUploads: currentUploads.filter((_, i) => i !== index) });
   };
 
   const colors = nodeColors[selectedNode.type as NodeType];
@@ -241,7 +262,7 @@ export const PropertiesPanel = ({
 
                 {Array.isArray(selectedNode.data.issues) && selectedNode.data.issues.length > 0 ? (
                   <div className="mt-3 space-y-2">
-                    {selectedNode.data.issues.map((issue: any, index: number) => (
+                    {nodeData.issues?.map((issue, index) => (
                       <div key={`${issue.code || 'issue'}-${index}`} className="rounded-md border border-white/10 bg-black/20 p-2">
                         <div className="flex items-center justify-between gap-2">
                           <span className="font-medium">{issue.code || 'issue'}</span>
