@@ -48,9 +48,9 @@ function classifyCaseType(text: string) {
 
 function fallbackPosterFor(text: string) {
   if (/营销|广告|增长|市场|品牌/.test(text)) return '/home/huiying-ad-perfume.png';
-  if (/二次元|动漫|调律|冒险|幻想/.test(text)) return '/home/huiying-hero-cosmic-reel-v2.png';
+  if (/二次元|动漫|调律|冒险|幻想/.test(text)) return '/home/huiying-hero-cosmic-reel-v2.webp';
   if (/短剧|剧场|录像带|悬疑|便利店/.test(text)) return '/home/huiying-story-aware-10s-poster.jpg';
-  return '/home/huiying-hero-cinematic-flow.png';
+  return '/home/huiying-hero-cinematic-flow.webp';
 }
 
 function collectTaskCases(task: BackgroundTask): ProductionCaseAsset[] {

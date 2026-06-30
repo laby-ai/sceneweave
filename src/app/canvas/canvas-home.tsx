@@ -40,8 +40,8 @@ function withBasePath(url: string) {
 const TEMPLATES = [
   { id: "t1", title: "品牌视觉叙事", desc: "品牌故事到分镜成片", icon: Film, src: "/home/huiying-story-aware-10s-poster.jpg" },
   { id: "t2", title: "产品广告短片", desc: "卖点拆解 + 分镜脚本", icon: Video, src: "/home/huiying-ad-perfume.png" },
-  { id: "t3", title: "IP 角色设计", desc: "角色设定 + 多视图参考图", icon: ImageIcon, src: "/home/huiying-hero-production-console.png" },
-  { id: "t4", title: "口播脚本生成", desc: "主题到口播稿 + 配音", icon: Music, src: "/samples/cyber-city.jpg" },
+  { id: "t3", title: "IP 角色设计", desc: "角色设定 + 多视图参考图", icon: ImageIcon, src: "/home/huiying-hero-production-console.webp" },
+  { id: "t4", title: "口播脚本生成", desc: "主题到口播稿 + 配音", icon: Music, src: "/samples/cyber-city.webp" },
   { id: "t5", title: "分镜拆解工作流", desc: "脚本到分镜 + 参考帧", icon: Wand2, src: "/home/huiying-workflow-canvas.png" },
   { id: "t6", title: "AI 短剧制作", desc: "ViMAX：剧本到 30 秒成片", icon: Sparkles, src: "/home/huiying-hero-cosmic-film.png" },
 ];

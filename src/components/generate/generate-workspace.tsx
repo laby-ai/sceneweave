@@ -235,7 +235,7 @@ export function GenerateWorkspace({ initialPrompt, onNavigate }: GenerateWorkspa
       <div
         className="pointer-events-none absolute inset-0 opacity-55"
         style={{
-          backgroundImage: `linear-gradient(90deg, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.54) 34%, rgba(0,0,0,0.74) 100%), url(${withBasePath('/home/huiying-hero-cosmic-reel-v2.png')})`,
+          backgroundImage: `linear-gradient(90deg, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.54) 34%, rgba(0,0,0,0.74) 100%), url(${withBasePath('/home/huiying-hero-cosmic-reel-v2.webp')})`,
           backgroundPosition: 'center',
           backgroundSize: 'cover',
         }}

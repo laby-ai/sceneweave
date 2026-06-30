@@ -739,13 +739,13 @@ export function DreamboxHome() {
 
   const homeGalleryItems = useMemo<HomeGalleryItem[]>(() => {
     const staticItems: HomeGalleryItem[] = [
-      { title: '角色导演', src: '/home/huiying-character-director.png', span: 'row-span-2', type: '角色', target: 'media', source: 'static' },
-      { title: '霓虹雨城', src: '/samples/cyber-city.jpg', span: 'row-span-2', type: '场景', target: 'image', source: 'static' },
-      { title: '黑玫瑰', src: '/samples/butterfly-rose.jpg', span: 'row-span-2', type: '图像', target: 'image', source: 'static' },
+      { title: '角色导演', src: '/home/huiying-character-director.webp', span: 'row-span-2', type: '角色', target: 'media', source: 'static' },
+      { title: '霓虹雨城', src: '/samples/cyber-city.webp', span: 'row-span-2', type: '场景', target: 'image', source: 'static' },
+      { title: '黑玫瑰', src: '/samples/butterfly-rose.webp', span: 'row-span-2', type: '图像', target: 'image', source: 'static' },
       { title: '海边日落', src: '/samples/sunset-beach.jpg', span: '', type: '场景', target: 'image', source: 'static' },
-      { title: '织物静物', src: '/samples/wicker-basket.jpg', span: 'row-span-2', type: '质感', target: 'image', source: 'static' },
-      { title: '分镜资产', src: '/home/huiying-hero-production-console.png', span: '', type: '资产', target: 'media', source: 'static' },
-      { title: '片段队列', src: '/home/huiying-hero-cinematic-flow.png', span: 'col-span-2 row-span-2', type: '流程', target: 'film', source: 'static' },
+      { title: '织物静物', src: '/samples/wicker-basket.webp', span: 'row-span-2', type: '质感', target: 'image', source: 'static' },
+      { title: '分镜资产', src: '/home/huiying-hero-production-console.webp', span: '', type: '资产', target: 'media', source: 'static' },
+      { title: '片段队列', src: '/home/huiying-hero-cinematic-flow.webp', span: 'col-span-2 row-span-2', type: '流程', target: 'film', source: 'static' },
     ];
     const historicalItems: HomeGalleryItem[] = pickHomeHistoricalAssets(homeHistoricalAssets).map((asset, index) => ({
       title: asset.title,

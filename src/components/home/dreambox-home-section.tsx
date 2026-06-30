@@ -35,7 +35,7 @@ export function DreamboxHomeSection({
               <section className="mx-auto w-full max-w-none px-3 pt-4 sm:px-5 xl:px-8 2xl:px-10">
                 <div className="relative min-h-[500px] overflow-hidden rounded-none border border-white/10 bg-[#03050a] md:min-h-[58vh] xl:min-h-[640px]">
                   <img
-                    src={withBasePath("/home/huiying-hero-cosmic-reel-v2.png")}
+                    src={withBasePath("/home/huiying-hero-cosmic-reel-v2.webp")}
                     alt="绘影宇宙胶卷制作流"
                     className="absolute inset-0 h-full w-full object-cover object-center"
                     draggable={false}
