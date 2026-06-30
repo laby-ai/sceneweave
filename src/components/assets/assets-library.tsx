@@ -275,7 +275,7 @@ export function AssetsLibrary({ finalVideoCaseAssets = [], segmentCaseAssets = [
                             src={videoPreviewUrl(asset.url)}
                             muted
                             playsInline
-                            preload="metadata"
+                            preload="none"
                             className="h-full w-full object-cover"
                           />
                         )}

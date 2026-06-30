@@ -275,7 +275,7 @@ export function DreamboxMediaSection({
                                   src={asset.videoUrl}
                                   poster={asset.posterUrl}
                                   controls
-                                  preload="metadata"
+                                  preload="none"
                                   className="h-full w-full object-cover"
                                 />
                                 <span className="absolute left-3 top-3 rounded-md bg-cyan-300/15 px-2 py-1 text-[11px] font-medium text-cyan-50 backdrop-blur">
