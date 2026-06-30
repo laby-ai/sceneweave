@@ -1,8 +1,26 @@
 # SceneWeave
 
-SceneWeave is an AIGC short-film studio for story-aware segmented video generation, frame handoff, audio continuity, and recoverable production workflows.
+SceneWeave（绘影）is an AIGC short-film studio for story-aware segmented video generation, frame handoff, audio continuity, media asset management, and recoverable production workflows.
 
-它面向短剧、预告片和商业短片制作，把剧本、角色、场景、道具、分镜、尾帧承接、声音状态、任务恢复和成片交付收束到同一条可审计的制作链路。当前内部产品代号仍保留为“绘影”，仓库品牌与对外介绍使用 SceneWeave，便于后续归档到 `laby-ai/sceneweave`。
+它面向短剧、预告片和商业短片制作，把创意、剧本、角色、场景、道具、分镜、尾帧承接、声音状态、素材资产、任务恢复和成片交付收束到同一张制作台。当前中文产品名为“绘影”，仓库品牌与对外介绍使用 SceneWeave，便于归档到 `laby-ai/sceneweave`。
+
+![SceneWeave workbench](docs/screenshots/huiying-workbench.png)
+
+## 当前状态
+
+- Live: [airai.world/huiying](http://airai.world/huiying)
+- Runtime: `huiying.service` + `nginx`
+- 最近线上巡检：页面、`/api/health`、媒体库、制作案例接口均返回 200。
+- 最近体验优化：媒体接口已适配 `/huiying` 子路径，首页/资产库视频卡片不再预加载整段视频，旧 release 已清理到可回滚但不挤占磁盘的状态。
+- 稳定性边界：当前 README 记录的是线上运行态、媒体展示和任务接口健康；真实 Seedance/Seedream 生成、费用确认和 ViMAX 主链路需按下方 QA 门控单独回归。
+
+## 核心能力
+
+- **短片制作台**：从创意、剧本、角色和场景进入分镜、镜头、任务和交付资产。
+- **分段视频链路**：围绕尾帧承接、片段恢复、合成失败可追溯和长任务状态管理构建。
+- **资产库**：同步历史图片、视频、封面和真实制作案例，封面优先加载，视频点击后再打开。
+- **任务中心**：长耗时任务进入后台状态机，支持轮询、SSE、取消、重试和恢复。
+- **工作流画布**：把剧本、分镜、图片、视频、音频和质量节点纳入可审计的创作流程。
 
 Suggested GitHub About:
 
@@ -12,6 +30,18 @@ Suggested GitHub About:
 这是一个基于 [Next.js 16](https://nextjs.org) + [shadcn/ui](https://ui.shadcn.com) 的全栈应用项目。
 
 ## 快速开始
+
+```bash
+pnpm install
+pnpm dev
+```
+
+默认开发入口为 [http://localhost:5000](http://localhost:5000)。生产构建和启动：
+
+```bash
+pnpm build
+pnpm start
+```
 
 ## 产品化优化约束
 
@@ -106,7 +136,7 @@ pnpm run qa:flow
 ### 启动开发服务器
 
 ```bash
-coze dev
+pnpm dev
 ```
 
 启动后，在浏览器中打开 [http://localhost:5000](http://localhost:5000) 查看应用。
@@ -116,13 +146,13 @@ coze dev
 ### 构建生产版本
 
 ```bash
-coze build
+pnpm build
 ```
 
 ### 启动生产服务器
 
 ```bash
-coze start
+pnpm start
 ```
 
 ## 项目结构
