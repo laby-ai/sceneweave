@@ -25,6 +25,36 @@ import { Switch } from '@/components/ui/switch';
 import { getBgmTypeList } from '@/constants/bgm-types';
 import type { NodePropertiesSectionProps } from './node-properties-types';
 
+type VisualNodeData = NodePropertiesSectionProps['selectedNode']['data'] & {
+  materialUploadEnabled?: boolean;
+  generatedImage?: string | null;
+  assets?: {
+    characters?: AgentCharacterView[];
+    scenes?: AgentSceneView[];
+  };
+  audioAssets?: {
+    characters?: AgentAudioView[];
+  };
+};
+type VisualNodePatch = Partial<NodePropertiesSectionProps['selectedNode']['data']> & {
+  generatedImage?: string | null;
+  materialUploadEnabled?: boolean;
+};
+type AgentCharacterView = {
+  name?: string;
+  age?: string;
+  personality?: string;
+  appearance?: string;
+};
+type AgentSceneView = {
+  name?: string;
+  environment?: string;
+};
+type AgentAudioView = {
+  character?: string;
+  voiceDescription?: string;
+};
+
 export function VisualPropertiesSections({
   selectedNode,
   onUpdateNode,
@@ -50,6 +80,9 @@ export function VisualPropertiesSections({
   selectedVideoTaskId,
   selectedVideoCanExport,
 }: NodePropertiesSectionProps) {
+  const nodeData = selectedNode.data as VisualNodeData;
+  const updateNodeData = (patch: VisualNodePatch) => onUpdateNode(selectedNode.id, patch);
+
   return (
     <>
             {selectedNode.type === 'image' && (
@@ -61,7 +94,7 @@ export function VisualPropertiesSections({
                     <Upload className="w-3.5 h-3.5 text-green-500/70" />
                     <span className="text-xs text-foreground/70">启用素材上传</span>
                   </div>
-                  <Switch checked={(selectedNode.data as any).materialUploadEnabled || false} onCheckedChange={(checked) => onUpdateNode(selectedNode.id, { materialUploadEnabled: checked } as any)} />
+                  <Switch checked={nodeData.materialUploadEnabled || false} onCheckedChange={(checked) => updateNodeData({ materialUploadEnabled: checked })} />
                 </div>
                 
                 <div className="space-y-3">
@@ -90,12 +123,12 @@ export function VisualPropertiesSections({
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      {(selectedNode.data as any).materialUploadEnabled ? (
+                      {nodeData.materialUploadEnabled ? (
                         <div
                           className="flex items-center justify-center h-24 bg-muted rounded-lg border border-dashed border-cyan-300/30 cursor-pointer hover:border-cyan-300/50 hover:bg-secondary transition-colors"
                           onClick={() => { const el = document.getElementById('material-upload-input'); if (el) el.click(); }}
                           onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                          onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const f = e.dataTransfer.files; if (f.length > 0) { const file = f[0]; const r = new FileReader(); r.onload = (ev) => { onUpdateNode(selectedNode.id, { generatedImage: ev.target?.result as string, status: 'success' } as any); }; r.readAsDataURL(file); } }}
+                          onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const f = e.dataTransfer.files; if (f.length > 0) { const file = f[0]; const r = new FileReader(); r.onload = (ev) => { updateNodeData({ generatedImage: ev.target?.result as string, status: 'success' }); }; r.readAsDataURL(file); } }}
                         >
                           <div className="text-center">
                             <Upload className="w-5 h-5 text-green-500/60 mx-auto mb-1" />
@@ -107,7 +140,7 @@ export function VisualPropertiesSections({
                           <p className="text-xs text-foreground/40">图片未生成（开启上传可使用本地素材）</p>
                         </div>
                       )}
-                      <input id="material-upload-input" type="file" accept="image/*" className="hidden" onChange={(e) => { if (e.target.files && e.target.files.length > 0) { const file = e.target.files[0]; const r = new FileReader(); r.onload = (ev) => { onUpdateNode(selectedNode.id, { generatedImage: ev.target?.result as string, status: 'success' } as any); }; r.readAsDataURL(file); e.target.value = ''; } }} />
+                      <input id="material-upload-input" type="file" accept="image/*" className="hidden" onChange={(e) => { if (e.target.files && e.target.files.length > 0) { const file = e.target.files[0]; const r = new FileReader(); r.onload = (ev) => { updateNodeData({ generatedImage: ev.target?.result as string, status: 'success' }); }; r.readAsDataURL(file); e.target.value = ''; } }} />
                     </div>
                   )}
                   
@@ -281,7 +314,7 @@ export function VisualPropertiesSections({
                           <span>人物列表 ({selectedNode.data.assets.characters.length}个)</span>
                         </div>
                         <div className="space-y-1.5">
-                          {selectedNode.data.assets.characters.map((char: any, index: number) => (
+                          {nodeData.assets?.characters?.map((char, index) => (
                             <div key={index} className="bg-muted border border-cyan-300/20 rounded-md p-2">
                               <div className="text-xs font-semibold text-foreground">{char.name}</div>
                               <div className="text-[10px] text-muted-foreground mt-0.5">
@@ -306,7 +339,7 @@ export function VisualPropertiesSections({
                           <span>场景列表 ({selectedNode.data.assets.scenes.length}个)</span>
                         </div>
                         <div className="space-y-1.5">
-                          {selectedNode.data.assets.scenes.map((scene: any, index: number) => (
+                          {nodeData.assets?.scenes?.map((scene, index) => (
                             <div key={index} className="bg-muted border border-cyan-300/20 rounded-md p-2">
                               <div className="text-xs font-semibold text-foreground">{scene.name}</div>
                               {scene.environment && (
@@ -350,7 +383,7 @@ export function VisualPropertiesSections({
                           <span>音频资产 ({selectedNode.data.audioAssets.characters.length}个)</span>
                         </div>
                         <div className="space-y-1.5">
-                          {selectedNode.data.audioAssets.characters.map((audio: any, index: number) => (
+                          {nodeData.audioAssets?.characters?.map((audio, index) => (
                             <div key={index} className="bg-muted border border-cyan-300/20 rounded-md p-2">
                               <div className="text-xs font-semibold text-foreground">{audio.character}</div>
                               {audio.voiceDescription && (
