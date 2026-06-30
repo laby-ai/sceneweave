@@ -4,6 +4,7 @@ import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { promisify } from 'node:util';
+import ffmpegStaticPath from 'ffmpeg-static';
 
 import { NextResponse } from 'next/server';
 
@@ -29,6 +30,16 @@ function cachePathFor(filePath: string): string {
   return path.join(CACHE_DIR, `${digest}.jpg`);
 }
 
+function resolveFfmpegPath(): string {
+  if (ffmpegStaticPath && fs.existsSync(ffmpegStaticPath)) return ffmpegStaticPath;
+
+  const platformBinary = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
+  const cwdFallback = path.resolve(process.cwd(), 'node_modules', 'ffmpeg-static', platformBinary);
+  if (fs.existsSync(cwdFallback)) return cwdFallback;
+
+  return platformBinary;
+}
+
 async function ensurePoster(filePath: string, posterPath: string): Promise<void> {
   try {
     const stat = await fs.promises.stat(posterPath);
@@ -38,8 +49,9 @@ async function ensurePoster(filePath: string, posterPath: string): Promise<void>
   }
 
   await fs.promises.mkdir(CACHE_DIR, { recursive: true });
+  const ffmpegPath = resolveFfmpegPath();
   await execFileAsync(
-    'ffmpeg',
+    ffmpegPath,
     ['-y', '-ss', '1', '-i', filePath, '-frames:v', '1', '-vf', 'scale=640:-2', '-q:v', '4', posterPath],
     { timeout: 20000, windowsHide: true },
   );
