@@ -1,7 +1,6 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
 import { Film, GitBranch, Image as ImageIcon, Play, Video } from 'lucide-react';
 import type { HomeGalleryItem } from '@/components/home/dreambox-types';
 
@@ -11,13 +10,6 @@ function withBasePath(url?: string) {
   if (!url) return url;
   if (!BASE_PATH || !url.startsWith('/') || url.startsWith(`${BASE_PATH}/`)) return url;
   return `${BASE_PATH}${url}`;
-}
-
-function videoPreviewUrl(url?: string) {
-  if (!url) return undefined;
-  const normalized = withBasePath(url);
-  if (!normalized) return undefined;
-  return normalized.includes('#') ? normalized : `${normalized}#t=0.12`;
 }
 
 export function DreamboxHomeSection({
@@ -34,7 +26,6 @@ export function DreamboxHomeSection({
   onOpenWorkDetail?: (item: { title: string; type: string; videoSrc?: string; src: string; source?: string }) => void;
 }) {
   const router = useRouter();
-  const [failedPreviewIds, setFailedPreviewIds] = useState<Set<string>>(new Set());
 
   return (
     <>
@@ -117,12 +108,9 @@ export function DreamboxHomeSection({
                 </div>
 
                 <div className="grid grid-flow-dense auto-rows-[118px] grid-cols-2 gap-2 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 2xl:auto-rows-[140px]">
-                  {homeGalleryItems.map((item) => {
-                    const itemKey = `${item.title}-${item.type}`;
-                    const previewFailed = failedPreviewIds.has(itemKey);
-                    return (
+                  {homeGalleryItems.map((item) => (
                     <button
-                      key={itemKey}
+                      key={`${item.title}-${item.type}`}
                       onClick={() => {
                         if (item.source === 'historical' && onOpenWorkDetail) {
                           onOpenWorkDetail(item);
@@ -141,28 +129,13 @@ export function DreamboxHomeSection({
                       }}
                       className={`group relative overflow-hidden rounded-[3px] border border-white/[0.04] bg-[#111] text-left ${item.span}`}
                     >
-                      {previewFailed && item.videoSrc ? (
-                        <video
-                          src={videoPreviewUrl(item.videoSrc)}
-                          muted
-                          playsInline
-                          preload="metadata"
-                          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                        />
-                      ) : (
-                        <img
-                          src={withBasePath(item.src)}
-                          alt=""
-                          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                          loading="lazy"
-                          decoding="async"
-                          onError={() => {
-                            if (item.videoSrc) {
-                              setFailedPreviewIds(prev => new Set(prev).add(itemKey));
-                            }
-                          }}
-                        />
-                      )}
+                      <img
+                        src={withBasePath(item.src)}
+                        alt={item.title}
+                        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        loading="lazy"
+                        decoding="async"
+                      />
                       {Boolean(item.videoSrc || ['短片', '短片概念', '真实视频', '视频', '镜头', '广告', '真实片段资产'].includes(item.type)) && (
                         <>
                           <span className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/20 bg-black/45 text-white shadow-lg backdrop-blur">
@@ -183,8 +156,7 @@ export function DreamboxHomeSection({
                         {item.title}
                       </span>
                     </button>
-                    );
-                  })}
+                  ))}
                 </div>
               </section>
 

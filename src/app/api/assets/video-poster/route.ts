@@ -34,8 +34,8 @@ function resolveFfmpegPath(): string {
   if (ffmpegStaticPath && fs.existsSync(ffmpegStaticPath)) return ffmpegStaticPath;
 
   const platformBinary = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
-  const cwdFallback = path.resolve(process.cwd(), 'node_modules', 'ffmpeg-static', platformBinary);
-  if (fs.existsSync(cwdFallback)) return cwdFallback;
+  const packagedBinaryPath = path.resolve(process.cwd(), 'node_modules', 'ffmpeg-static', platformBinary);
+  if (fs.existsSync(packagedBinaryPath)) return packagedBinaryPath;
 
   return platformBinary;
 }
