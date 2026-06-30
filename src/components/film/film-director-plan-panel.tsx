@@ -1,8 +1,91 @@
 "use client";
 
 import { ArrowLeft, Film, Mountain, Package, Users } from 'lucide-react';
-import type { FilmScript } from '@/types/film';
+import type { FilmScript, FilmShot } from '@/types/film';
 import { renderSafe } from '@/lib/film-creation-panel-model';
+
+type RelationshipView = string | Record<string, unknown>;
+
+type CharacterCardView = {
+  name?: string;
+  age?: string;
+  gender?: string;
+  mbti?: string;
+  arc?: string;
+  motivation?: string;
+  appearance?: string;
+  outfit?: string;
+  personality?: string;
+  characterArc?: string;
+  relationships?: RelationshipView;
+  signatureDetail?: string;
+  consistencyRules?: {
+    mustInclude?: string[];
+    mustExclude?: string[];
+  };
+};
+
+type SceneCardView = {
+  name?: string;
+  location?: string;
+  interior?: boolean;
+  timeOfDay?: string;
+  visualDescription?: string;
+  description?: string;
+  fiveSenses?: {
+    sight?: string;
+    hearing?: string;
+    touch?: string;
+    smell?: string;
+    taste?: string;
+    visual?: string;
+    auditory?: string;
+    olfactory?: string;
+    tactile?: string;
+    thermal?: string;
+  };
+  symbolism?: string;
+  mood?: string;
+  keyProps?: string;
+  colorPalette?: string;
+};
+
+type PropCardView = {
+  name?: string;
+  category?: string;
+  closeup?: boolean;
+  appearance?: string;
+  material?: string;
+  color?: string;
+  size?: string;
+  significance?: string;
+};
+
+type ShotView = Partial<FilmShot> & {
+  angle?: string;
+  description?: string;
+  narrationDirection?: string;
+  bgmCue?: string;
+  transition?: string;
+};
+
+type FilmScriptWithLegacyConsistency = FilmScript & {
+  consistencyConstraints?: unknown;
+};
+
+function formatRelationships(relationships: RelationshipView | undefined): string {
+  if (!relationships) {
+    return '';
+  }
+
+  if (typeof relationships === 'string') {
+    return relationships;
+  }
+
+  return Object.entries(relationships)
+    .map(([key, value]) => `${key}: ${renderSafe(value)}`)
+    .join('; ');
+}
 
 export function FilmDirectorPlanPanel({
   script,
@@ -11,6 +94,13 @@ export function FilmDirectorPlanPanel({
   script: FilmScript | null;
   onBackToCanvas: () => void;
 }) {
+  const scriptView = script as FilmScriptWithLegacyConsistency | null;
+  const characterCards: CharacterCardView[] = scriptView?.directorPlan?.characterCards ?? scriptView?.characters ?? [];
+  const sceneCards: SceneCardView[] = scriptView?.directorPlan?.sceneCards ?? scriptView?.scenes ?? [];
+  const propCards: PropCardView[] = scriptView?.directorPlan?.propCards ?? [];
+  const shots: ShotView[] = scriptView?.shots ?? [];
+  const consistencyNotes = scriptView?.directorPlan?.consistencyNotes ?? scriptView?.consistencyConstraints;
+
   return (
     <div className="rounded-xl border border-border/40 overflow-hidden">
       <div className="px-4 py-2.5 bg-primary/5 border-b border-border/30 flex items-center gap-2">
@@ -25,12 +115,12 @@ export function FilmDirectorPlanPanel({
       </div>
       {script ? (
         <div className="p-4 space-y-4 max-h-[60vh] overflow-y-auto">
-          {(script.directorPlan?.characterCards || script.characters || []).length > 0 && (
+          {characterCards.length > 0 && (
             <div className="space-y-2">
               <div className="text-[11px] font-semibold text-foreground/70 flex items-center gap-1.5">
-                <Users className="w-3.5 h-3.5 text-orange-500" /> 角色卡 ({(script.directorPlan?.characterCards || script.characters || []).length})
+                <Users className="w-3.5 h-3.5 text-orange-500" /> 角色卡 ({characterCards.length})
               </div>
-              {(script.directorPlan?.characterCards || script.characters || []).map((character: any, i: number) => (
+              {characterCards.map((character, i) => (
                 <div key={i} className="border border-orange-500/20 rounded-lg p-3 space-y-1.5">
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] font-semibold text-orange-600">{character.name || `角色${i + 1}`}</span>
@@ -44,9 +134,9 @@ export function FilmDirectorPlanPanel({
                   {character.outfit && <div className="text-[10px] text-foreground/40"><span className="font-medium">着装:</span> {renderSafe(character.outfit)}</div>}
                   {character.personality && <div className="text-[10px] text-foreground/40"><span className="font-medium">性格:</span> {renderSafe(character.personality)}</div>}
                   {character.characterArc && <div className="text-[10px] text-foreground/40"><span className="font-medium">弧光:</span> {renderSafe(character.characterArc)}</div>}
-                  {character.relationships && Object.keys(character.relationships).length > 0 && (
+                  {formatRelationships(character.relationships) && (
                     <div className="text-[10px] text-foreground/40">
-                      <span className="font-medium">关系网:</span> {typeof character.relationships === 'string' ? character.relationships : Object.entries(character.relationships).map(([k, v]: [string, any]) => `${k}: ${v}`).join('; ')}
+                      <span className="font-medium">关系网:</span> {formatRelationships(character.relationships)}
                     </div>
                   )}
                   {character.signatureDetail && <div className="text-[10px] text-foreground/40"><span className="font-medium">标志性细节:</span> {renderSafe(character.signatureDetail)}</div>}
@@ -60,12 +150,12 @@ export function FilmDirectorPlanPanel({
             </div>
           )}
 
-          {(script.directorPlan?.sceneCards || script.scenes || []).length > 0 && (
+          {sceneCards.length > 0 && (
             <div className="space-y-2">
               <div className="text-[11px] font-semibold text-foreground/70 flex items-center gap-1.5">
-                <Mountain className="w-3.5 h-3.5 text-blue-500" /> 场景卡 ({(script.directorPlan?.sceneCards || script.scenes || []).length})
+                <Mountain className="w-3.5 h-3.5 text-blue-500" /> 场景卡 ({sceneCards.length})
               </div>
-              {(script.directorPlan?.sceneCards || script.scenes || []).map((scene: any, i: number) => (
+              {sceneCards.map((scene, i) => (
                 <div key={i} className="border border-blue-500/20 rounded-lg p-3 space-y-1.5">
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] font-semibold text-blue-600">{scene.name || scene.location || `场景${i + 1}`}</span>
@@ -93,12 +183,12 @@ export function FilmDirectorPlanPanel({
             </div>
           )}
 
-          {(script.directorPlan?.propCards || []).length > 0 && (
+          {propCards.length > 0 && (
             <div className="space-y-2">
               <div className="text-[11px] font-semibold text-foreground/70 flex items-center gap-1.5">
-                <Package className="w-3.5 h-3.5 text-purple-500" /> 道具卡 ({(script.directorPlan?.propCards || []).length})
+                <Package className="w-3.5 h-3.5 text-purple-500" /> 道具卡 ({propCards.length})
               </div>
-              {(script.directorPlan?.propCards || []).map((prop: any, i: number) => (
+              {propCards.map((prop, i) => (
                 <div key={i} className="border border-purple-500/20 rounded-lg p-3 space-y-1.5">
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] font-semibold text-purple-600">{prop.name || `道具${i + 1}`}</span>
@@ -117,12 +207,12 @@ export function FilmDirectorPlanPanel({
             </div>
           )}
 
-          {(script.shots || []).length > 0 && (
+          {shots.length > 0 && (
             <div className="space-y-2">
               <div className="text-[11px] font-semibold text-foreground/70 flex items-center gap-1.5">
-                <Film className="w-3.5 h-3.5 text-green-500" /> 分镜详情 ({(script.shots || []).length}个镜头)
+                <Film className="w-3.5 h-3.5 text-green-500" /> 分镜详情 ({shots.length}个镜头)
               </div>
-              {(script.shots || []).map((shot: any, i: number) => (
+              {shots.map((shot, i) => (
                 <div key={i} className="border border-green-500/20 rounded-lg p-3 space-y-1">
                   <div className="flex items-center gap-1.5 text-[10px]">
                     <span className="font-semibold text-green-600">镜头{shot.id || i + 1}</span>
@@ -160,10 +250,10 @@ export function FilmDirectorPlanPanel({
             )}
           </div>
 
-          {(script.directorPlan?.consistencyNotes || (script as any).consistencyConstraints) && (
+          {Boolean(consistencyNotes) && (
             <div className="border border-rose-500/20 rounded-lg p-3">
               <div className="text-[10px] font-semibold text-rose-600 mb-1">人物一致性约束</div>
-              <div className="text-[10px] text-foreground/40 whitespace-pre-line">{renderSafe(script.directorPlan?.consistencyNotes || (script as any).consistencyConstraints)}</div>
+              <div className="text-[10px] text-foreground/40 whitespace-pre-line">{renderSafe(consistencyNotes)}</div>
             </div>
           )}
         </div>
