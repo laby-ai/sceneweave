@@ -57,6 +57,20 @@ function videoPreviewUrl(url: string): string {
   return url.includes('#') ? url : `${url}#t=0.12`;
 }
 
+function dedupeAssetsByUrl(assets: UnifiedAsset[]): UnifiedAsset[] {
+  const seen = new Set<string>();
+  const deduped: UnifiedAsset[] = [];
+
+  for (const asset of assets) {
+    const key = asset.url.split('#')[0].toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(asset);
+  }
+
+  return deduped;
+}
+
 export function AssetsLibrary({ finalVideoCaseAssets = [], segmentCaseAssets = [] }: AssetsLibraryProps) {
   const router = useRouter();
   const { videoHistory, imageHistory, deleteVideoHistory, deleteImageHistory } = useVideoHistory();
@@ -117,7 +131,7 @@ export function AssetsLibrary({ finalVideoCaseAssets = [], segmentCaseAssets = [
         list.push({ id: `prod-${item.id}`, kind: 'video', url: item.videoUrl, poster: item.posterUrl, title: item.title || item.projectTitle || '成片', createdAt: item.createdAt || 0, taskId: item.taskId, source: 'production' });
       }
     });
-    return list.sort((a, b) => b.createdAt - a.createdAt);
+    return dedupeAssetsByUrl(list).sort((a, b) => b.createdAt - a.createdAt);
   }, [historicalAssets, imageHistory, videoHistory, finalVideoCaseAssets, segmentCaseAssets]);
 
   const filtered = useMemo(() => {
@@ -246,16 +260,22 @@ export function AssetsLibrary({ finalVideoCaseAssets = [], segmentCaseAssets = [
                         onClick={() => selectMode ? toggleSelect(asset.id) : window.open(asset.url, '_blank')}
                         className="group relative aspect-square overflow-hidden rounded-xl border border-border bg-card"
                       >
-                        {asset.kind === 'image' ? (
+                        {asset.kind === 'image' || asset.poster ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={asset.url} alt={asset.title} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
+                          <img
+                            src={asset.kind === 'image' ? asset.url : asset.poster}
+                            alt={asset.title}
+                            loading="lazy"
+                            decoding="async"
+                            className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                          />
                         ) : (
                           <video
                             src={videoPreviewUrl(asset.url)}
                             poster={asset.poster}
                             muted
                             playsInline
-                            preload="metadata"
+                            preload="none"
                             className="h-full w-full object-cover"
                           />
                         )}

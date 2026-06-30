@@ -351,15 +351,24 @@ export function DreamboxMediaSection({
                               className="group overflow-hidden rounded-xl border border-emerald-300/15 bg-[#08140f] text-left transition-colors hover:border-emerald-300/35 hover:bg-emerald-300/10"
                             >
                               <div className="relative aspect-video bg-black">
-                                <video
-                                  src={asset.videoUrl}
-                                  poster={asset.posterUrl}
-                                  muted
-                                  loop
-                                  playsInline
-                                  preload="metadata"
-                                  className="h-full w-full object-cover opacity-90 transition-transform duration-500 group-hover:scale-105"
-                                />
+                                {asset.posterUrl ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={asset.posterUrl}
+                                    alt={asset.title}
+                                    loading="lazy"
+                                    decoding="async"
+                                    className="h-full w-full object-cover opacity-90 transition-transform duration-500 group-hover:scale-105"
+                                  />
+                                ) : (
+                                  <video
+                                    src={asset.videoUrl}
+                                    muted
+                                    playsInline
+                                    preload="none"
+                                    className="h-full w-full object-cover opacity-90 transition-transform duration-500 group-hover:scale-105"
+                                  />
+                                )}
                                 <span className="absolute left-2 top-2 rounded bg-emerald-300/15 px-2 py-1 text-[10px] text-emerald-50">
                                   真实片段资产
                                 </span>

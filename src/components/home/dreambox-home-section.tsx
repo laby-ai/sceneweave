@@ -128,20 +128,13 @@ export function DreamboxHomeSection({
                       }}
                       className={`group relative overflow-hidden rounded-[3px] border border-white/[0.04] bg-[#111] text-left ${item.span}`}
                     >
-                      {item.videoSrc ? (
-                        <video
-                          src={`${withBasePath(item.videoSrc)}#t=0.5`}
-                          poster={withBasePath(item.src)}
-                          autoPlay
-                          muted
-                          loop
-                          playsInline
-                          preload="auto"
-                          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                        />
-                      ) : (
-                        <img src={withBasePath(item.src)} alt={item.title} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
-                      )}
+                      <img
+                        src={withBasePath(item.src)}
+                        alt={item.title}
+                        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        loading="lazy"
+                        decoding="async"
+                      />
                       {Boolean(item.videoSrc || ['短片', '短片概念', '真实视频', '视频', '镜头', '广告', '真实片段资产'].includes(item.type)) && (
                         <>
                           <span className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/20 bg-black/45 text-white shadow-lg backdrop-blur">
