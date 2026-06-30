@@ -4,6 +4,19 @@ import { TaskCenter } from '@/components/task-center';
 import { TaskProgressCard } from '@/components/task-progress-card';
 import type { MonitorTask } from '@/lib/video-monitor';
 import type { MediaSubSection } from '@/components/home/dreambox-media-section';
+import type {
+  GeneratedCopywriting,
+  GeneratedImage,
+  GeneratedVideo,
+  MonitorDetails,
+  SetGeneratedCopywriting,
+  SetGeneratedImage,
+  SetGeneratedVideo,
+  SetImageInitialConfig,
+  SetStoryboardTask,
+  SetVideoInitialConfig,
+} from '@/components/home/dreambox-types';
+import type { BackgroundTask } from '@/types/task';
 
 export function DreamboxTasksSection({
   activeSection,
@@ -31,18 +44,18 @@ export function DreamboxTasksSection({
   setTaskViewMode: (mode: 'list' | 'monitor') => void;
   syncFromServer: () => void | Promise<void>;
   setActiveSection: (section: string) => void;
-  setVideoInitialConfig: (config: any) => void;
-  setImageInitialConfig: (config: any) => void;
+  setVideoInitialConfig: SetVideoInitialConfig;
+  setImageInitialConfig: SetImageInitialConfig;
   setMediaSubSection: (section: MediaSubSection) => void;
-  setCurrentVideo: (video: any) => void;
-  setCurrentImages: (images: any) => void;
-  setCurrentCopywriting: (copywriting: any) => void;
+  setCurrentVideo: SetGeneratedVideo;
+  setCurrentImages: SetGeneratedImage;
+  setCurrentCopywriting: SetGeneratedCopywriting;
   setShowCopywritingDialog: (value: boolean) => void;
-  setCurrentStoryboardTask: (task: any) => void;
+  setCurrentStoryboardTask: SetStoryboardTask;
   setShowStoryboardDialog: (value: boolean) => void;
   monitorTasks: MonitorTask[];
-  monitorDetails: Record<string, any>;
-  backgroundTasks: any[];
+  monitorDetails: MonitorDetails;
+  backgroundTasks: BackgroundTask[];
   removeTask: (taskId: string) => void;
   cancelTask: (taskId: string) => void;
 }) {
@@ -138,7 +151,7 @@ export function DreamboxTasksSection({
                       return;
                     }
                     
-                    const video = {
+                    const video: GeneratedVideo = {
                       id: task.id,
                       videoUrl: videoUrl,
                       prompt: task.config?.prompt || '无描述',
@@ -165,7 +178,7 @@ export function DreamboxTasksSection({
                     setCurrentVideo(video);
                     setActiveSection('video');
                   } else if (task.type === 'image' && task.result?.imageUrls) {
-                    const image = {
+                    const image: GeneratedImage = {
                       id: task.id,
                       imageUrls: task.result.imageUrls,
                       prompt: task.config?.prompt || '无描述',
@@ -204,7 +217,7 @@ export function DreamboxTasksSection({
                     setActiveSection('media');
                     setMediaSubSection('image');
                   } else if (task.type === 'copywriting') {
-                    const copywriting = {
+                    const copywriting: GeneratedCopywriting = {
                       id: task.id,
                       content: task.result?.content,
                       imageUrls: task.result?.imageUrls,

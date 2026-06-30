@@ -23,6 +23,7 @@ import { WechatGeneration } from '@/components/wechat-generation';
 import { DouyinGeneration } from '@/components/douyin-generation';
 import { PosterGeneration } from '@/components/home/poster-generation';
 import { CopywritingGeneration } from '@/components/home/copywriting-generation';
+import type { GeneratedCopywriting, GeneratedImage, ProductionCaseAsset } from '@/components/home/dreambox-types';
 
 export type MediaSubSection = 'select' | 'assets' | 'image' | 'poster' | 'copywriting' | 'xiaohongshu' | 'wechat' | 'douyin';
 
@@ -55,24 +56,24 @@ export function DreamboxMediaSection({
   mediaSubSection: MediaSubSection;
   setMediaSubSection: (section: MediaSubSection) => void;
   setActiveSection: (section: string) => void;
-  finalVideoCaseAssets: any[];
-  segmentCaseAssets: any[];
-  productionCaseAssets: any[];
+  finalVideoCaseAssets: ProductionCaseAsset[];
+  segmentCaseAssets: ProductionCaseAsset[];
+  productionCaseAssets: ProductionCaseAsset[];
   setPendingPrompt: (prompt: string | undefined) => void;
   setShouldAutoGenerate: (value: boolean) => void;
-  setCurrentImages: (value: any) => void;
-  setCurrentCopywriting: (value: any) => void;
+  setCurrentImages: (value: GeneratedImage | null) => void;
+  setCurrentCopywriting: (value: GeneratedCopywriting | null) => void;
   setShowCopywritingDialog: (value: boolean) => void;
   isGeneratingImage: boolean;
   setIsGeneratingImage: (value: boolean) => void;
   handlePromptEnhanced: (originalPrompt: string, enhancedPrompt: string) => void;
   editingImagePrompt: string | null;
-  imageInitialConfig: any;
-  currentImages: any;
-  handleRemixImage: (image: any) => void;
-  handleEditImage: (image?: any) => void;
-  handleRegenerateImage: (imageOrPrompt: any) => void;
-  handlePosterGenerated: (imageData: any) => void;
+  imageInitialConfig: Partial<GeneratedImage> | null;
+  currentImages: GeneratedImage | null;
+  handleRemixImage: (image: GeneratedImage) => void;
+  handleEditImage: (image?: GeneratedImage) => void;
+  handleRegenerateImage: (imageOrPrompt: GeneratedImage | string) => void;
+  handlePosterGenerated: (imageData: unknown) => void;
   handleCopywritingGenerated: (prompt: string, variations: string[]) => void;
 }) {
   const router = useRouter();

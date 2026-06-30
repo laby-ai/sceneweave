@@ -16,91 +16,19 @@ import { WorkDetailOverlay, type WorkDetailData } from '@/components/work-detail
 import { DreamboxMainContent } from '@/components/home/dreambox-main-content';
 import { DreamboxMediaSection, type MediaSubSection } from '@/components/home/dreambox-media-section';
 import { DreamboxNavigationShell } from '@/components/home/dreambox-navigation-shell';
-
-type ApiProviderType = 'openai-compatible' | 'ark-plan';
-
-interface GeneratedVideo {
-  id: string;
-  videoUrl: string;
-  prompt: string;
-  createdAt: number;
-  duration?: string;
-  style?: string;
-  mood?: string;
-  filter?: string;
-  resolution?: string;
-  ratio?: string;
-  materials?: any[];
-  hasSubtitle?: boolean;
-  enableSubtitle?: boolean;
-  subtitleText?: string;
-  subtitlePosition?: string;
-  subtitleFontSize?: string;
-  subtitleColor?: string;
-  subtitleVoiceType?: string;
-  subtitleSpeechSpeed?: number;
-  generateVoice?: boolean;
-}
-
-interface GeneratedImage {
-  id: string;
-  imageUrls: string[];
-  prompt: string;
-  createdAt: number;
-  size?: string;
-  style?: string;
-  mood?: string;
-  filter?: string;
-  resolution?: string;
-  quality?: string;
-  materials?: any[];
-  enableImageText?: boolean;
-  imageText?: string;
-}
-
-interface GeneratedCopywriting {
-  id: string;
-  content?: string;
-  imageUrls?: string[];
-  platform?: string;
-  prompt: string;
-  title?: string;
-  createdAt: number;
-}
-
-interface ProductionCaseAsset {
-  id: string;
-  title: string;
-  type: string;
-  taskId: string;
-  projectTitle: string;
-  videoUrl: string;
-  posterUrl: string;
-  durationLabel: string;
-  source: 'productionProject.assets.videoSegment' | 'productionProject.assets.finalVideo';
-}
-
-interface HistoricalMediaAsset {
-  id: string;
-  kind: 'image' | 'video';
-  title: string;
-  url: string;
-  poster?: string;
-  createdAt: number;
-  source: 'historical';
-}
-
-interface HomeGalleryItem {
-  title: string;
-  src: string;
-  videoSrc?: string;
-  span: string;
-  type: string;
-  target: string;
-  href?: string;
-  duration?: string;
-  source?: 'static' | 'production-case-asset' | 'historical';
-}
+import type {
+  ApiConnectionStatus,
+  ApiProviderType,
+  DreamboxMaterial,
+  GeneratedCopywriting,
+  GeneratedImage,
+  GeneratedVideo,
+  HistoricalMediaAsset,
+  HomeGalleryItem,
+  ProductionCaseAsset,
+  StoryboardTask,
+} from '@/components/home/dreambox-types';
+import type { BackgroundTask } from '@/types/task';
 
 function historicalHomeCategory(title: string): string {
   const normalized = title.toLowerCase();
@@ -135,6 +63,14 @@ function pickHomeHistoricalAssets(assets: HistoricalMediaAsset[]): HistoricalMed
   }
 
   return Array.from(picked.values());
+}
+
+function normalizeMaterials(materials?: unknown[]): DreamboxMaterial[] | undefined {
+  if (!Array.isArray(materials)) return undefined;
+  const normalized = materials.filter((item): item is DreamboxMaterial =>
+    typeof item === 'string' || (typeof item === 'object' && item !== null),
+  );
+  return normalized.length > 0 ? normalized : undefined;
 }
 
 export function DreamboxHome() {
@@ -214,7 +150,7 @@ export function DreamboxHome() {
   const [currentCopywriting, setCurrentCopywriting] = useState<GeneratedCopywriting | null>(null);
   const [showCopywritingDialog, setShowCopywritingDialog] = useState(false);
   const [showStoryboardDialog, setShowStoryboardDialog] = useState(false);
-  const [currentStoryboardTask, setCurrentStoryboardTask] = useState<any>(null);
+  const [currentStoryboardTask, setCurrentStoryboardTask] = useState<StoryboardTask | null>(null);
   const [productionCaseAssets, setProductionCaseAssets] = useState<ProductionCaseAsset[]>([]);
   const [homeHistoricalAssets, setHomeHistoricalAssets] = useState<HistoricalMediaAsset[]>([]);
   const storyboardVideoRef = useRef<HTMLVideoElement>(null);
@@ -244,10 +180,7 @@ export function DreamboxHome() {
   const [settingsModel, setSettingsModel] = useState('');
   const [settingsImageModel, setSettingsImageModel] = useState('');
   const [settingsVideoModel, setSettingsVideoModel] = useState('');
-  const [apiConnectionStatus, setApiConnectionStatus] = useState<{
-    type: 'idle' | 'testing' | 'success' | 'error';
-    message: string;
-  }>({ type: 'idle', message: '' });
+  const [apiConnectionStatus, setApiConnectionStatus] = useState<ApiConnectionStatus>({ type: 'idle', message: '' });
 
   const saveApiConnectionSettings = () => {
     const config = {
@@ -484,7 +417,7 @@ export function DreamboxHome() {
       const response = await fetch('/api/tasks');
       
       if (response.ok) {
-        const { tasks: serverTasks } = await response.json();
+        const { tasks: serverTasks = [] } = await response.json() as { tasks?: BackgroundTask[] };
         console.log(`[DreamboxHome] 收到 ${serverTasks.length} 个服务端任务`);
         
         // 如果服务端没有任务，直接清空本地显示
@@ -496,35 +429,39 @@ export function DreamboxHome() {
         }
         
         // 转换视频任务
-        const serverVideos = serverTasks
-          .filter((task: any) => task.type === 'video' && task.status === 'completed' && task.result?.videoUrl)
-          .map((task: any) => ({
-            id: task.id,
-            videoUrl: task.result.videoUrl,
-            prompt: task.config.prompt,
-            createdAt: task.completedAt || task.createdAt,
-            duration: task.config.duration?.toString(),
-            resolution: task.config.resolution,
-            ratio: task.config.ratio,
-          }));
+        const serverVideos = serverTasks.flatMap((task): GeneratedVideo[] => {
+          const result = task.result;
+          if (task.type !== 'video' || task.status !== 'completed' || !result?.videoUrl) return [];
+          return [{
+              id: task.id,
+              videoUrl: result.videoUrl,
+              prompt: task.config.prompt,
+              createdAt: task.completedAt || task.createdAt,
+              duration: task.config.duration?.toString(),
+              resolution: task.config.resolution,
+              ratio: task.config.ratio,
+            }];
+        });
         
         // 转换图片任务（如果有的话）
-        const serverImages = serverTasks
-          .filter((task: any) => task.type === 'image' && task.status === 'completed' && task.result?.imageUrls)
-          .map((task: any) => ({
-            id: task.id,
-            imageUrls: task.result.imageUrls,
-            prompt: task.config.prompt,
-            createdAt: task.completedAt || task.createdAt,
-            size: task.config.size,
-            resolution: task.config.resolution,
-            quality: task.config.quality,
-          }));
+        const serverImages = serverTasks.flatMap((task): GeneratedImage[] => {
+          const result = task.result;
+          if (task.type !== 'image' || task.status !== 'completed' || !result?.imageUrls) return [];
+          return [{
+              id: task.id,
+              imageUrls: result.imageUrls,
+              prompt: task.config.prompt,
+              createdAt: task.completedAt || task.createdAt,
+              size: task.config.size,
+              resolution: task.config.resolution,
+              quality: task.config.quality,
+            }];
+        });
         
         // 转换文案任务（如果有的话）
         const serverCopywritings = serverTasks
-          .filter((task: any) => task.type === 'copywriting' && task.status === 'completed')
-          .map((task: any) => ({
+          .filter((task) => task.type === 'copywriting' && task.status === 'completed')
+          .map((task): GeneratedCopywriting => ({
             id: task.id,
             content: task.result?.content,
             imageUrls: task.result?.imageUrls,
@@ -601,7 +538,7 @@ export function DreamboxHome() {
           duration: item.duration?.toString(),
           resolution: item.resolution,
           ratio: item.ratio,
-          materials: item.materials,
+          materials: normalizeMaterials(item.materials),
           enableSubtitle: item.enableSubtitle,
           subtitleText: item.subtitleText,
           subtitlePosition: item.subtitlePosition,
@@ -625,7 +562,7 @@ export function DreamboxHome() {
           size: item.size,
           resolution: item.resolution,
           quality: item.quality,
-          materials: item.materials,
+          materials: normalizeMaterials(item.materials),
           enableImageText: item.enableImageText,
           imageText: item.imageText,
         }));
@@ -688,7 +625,7 @@ export function DreamboxHome() {
     });
   };
 
-  const handleRegenerateVideo = (videoOrPrompt: any) => {
+  const handleRegenerateVideo = (videoOrPrompt: GeneratedVideo | string) => {
     console.log('[DreamboxHome] handleRegenerateVideo called with:', videoOrPrompt);
     
     if (typeof videoOrPrompt === 'string') {
@@ -706,7 +643,7 @@ export function DreamboxHome() {
     console.log('[DreamboxHome] handleRegenerateVideo completed, states updated');
   };
 
-  const handleRegenerateImage = (imageOrPrompt: any) => {
+  const handleRegenerateImage = (imageOrPrompt: GeneratedImage | string) => {
     if (typeof imageOrPrompt === 'string') {
       setEditingImagePrompt(imageOrPrompt);
       setImageInitialConfig(null);
@@ -795,7 +732,7 @@ export function DreamboxHome() {
     console.log('Generated copywriting:', variations);
   };
 
-  const handlePosterGenerated = (imageData: any) => {
+  const handlePosterGenerated = (imageData: unknown) => {
     // 海报生成处理逻辑
     console.log('Generated poster:', imageData);
   };

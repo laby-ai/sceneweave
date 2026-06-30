@@ -23,17 +23,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { SubtitleOverlay } from '@/components/subtitle-overlay';
-
-interface CopywritingResult {
-  content?: string;
-  imageUrls?: string[];
-  platform?: string;
-  prompt: string;
-}
+import type { GeneratedCopywriting, StoryboardShotResult, StoryboardTask } from '@/components/home/dreambox-types';
 
 interface DreamboxResultDialogsProps {
-  currentCopywriting: CopywritingResult | null;
-  currentStoryboardTask: any;
+  currentCopywriting: GeneratedCopywriting | null;
+  currentStoryboardTask: StoryboardTask | null;
   setShowCopywritingDialog: (open: boolean) => void;
   setShowStoryboardDialog: (open: boolean) => void;
   showCopywritingDialog: boolean;
@@ -106,7 +100,7 @@ export function DreamboxResultDialogs({
                   </h3>
 
                   <div className="space-y-4">
-                    {currentStoryboardTask.result.shots.map((shot: any, index: number) => (
+                    {currentStoryboardTask.result.shots.map((shot: StoryboardShotResult, index: number) => (
                       <div key={shot.id} className="bg-accent/30 rounded-lg p-4 border border-border">
                         <div className="flex items-start justify-between gap-4 mb-4">
                           <div className="flex-1">
@@ -219,8 +213,10 @@ export function DreamboxResultDialogs({
                   <Button
                     className="flex-1 bg-gradient-to-r from-[#70E0FF] to-[#B4E22F] hover:opacity-90 text-black"
                     onClick={async () => {
+                      const videoUrl = currentStoryboardTask.result?.videoUrl;
+                      if (!videoUrl) return;
                       try {
-                        const response = await fetch(currentStoryboardTask.result.videoUrl);
+                        const response = await fetch(videoUrl);
                         const blob = await response.blob();
                         const blobUrl = window.URL.createObjectURL(blob);
                         const link = document.createElement('a');

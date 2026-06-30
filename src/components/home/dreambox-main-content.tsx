@@ -16,55 +16,77 @@ import { DreamboxResultDialogs } from '@/components/home/dreambox-result-dialogs
 import { DreamboxSettingsSection } from '@/components/home/dreambox-settings-section';
 import { DreamboxTasksSection } from '@/components/home/dreambox-tasks-section';
 import type { FilmScript } from '@/types/film';
+import type {
+  ApiConnectionStatus,
+  ApiProviderType,
+  GeneratedCopywriting,
+  GeneratedImage,
+  GeneratedVideo,
+  HomeGalleryItem,
+  MonitorDetails,
+  ProductionCaseAsset,
+  SetGeneratedCopywriting,
+  SetGeneratedImage,
+  SetGeneratedVideo,
+  SetImageInitialConfig,
+  SetStoryboardTask,
+  SetVideoHistory,
+  SetVideoInitialConfig,
+  StoryboardTask,
+} from '@/components/home/dreambox-types';
+import type { UserSettings } from '@/constants/themes';
+import type { BackgroundTask } from '@/types/task';
+import type { MonitorTask } from '@/lib/video-monitor';
+import type { SmartAssistantTransferData } from '@/types/film';
 
 interface DreamboxMainContentProps {
   activeSection: string;
-  apiConnectionStatus: any;
-  backgroundTasks: any[];
-  cancelTask: any;
+  apiConnectionStatus: ApiConnectionStatus;
+  backgroundTasks: BackgroundTask[];
+  cancelTask: (taskId: string) => void;
   clearApiConnectionSettings: () => void;
-  currentCopywriting: any;
-  currentImages: any;
-  currentStoryboardTask: any;
+  currentCopywriting: GeneratedCopywriting | null;
+  currentImages: GeneratedImage | null;
+  currentStoryboardTask: StoryboardTask | null;
   editingImagePrompt: string | null;
-  finalVideoCaseAssets: any[];
+  finalVideoCaseAssets: ProductionCaseAsset[];
   handleClearImageHistory: () => void;
   handleClearVideoHistory: () => void;
   handleCopywritingGenerated: (prompt: string, variations: string[]) => void;
-  handleEditImage: (image?: any) => void;
-  handlePosterGenerated: (imageData: any) => void;
-  handlePromptEnhanced: any;
-  handleRegenerateImage: any;
-  handleRemixImage: any;
-  homeGalleryItems: any[];
+  handleEditImage: (image?: GeneratedImage) => void;
+  handlePosterGenerated: (imageData: unknown) => void;
+  handlePromptEnhanced: (originalPrompt: string, enhancedPrompt: string) => void;
+  handleRegenerateImage: (imageOrPrompt: GeneratedImage | string) => void;
+  handleRemixImage: (image: GeneratedImage) => void;
+  homeGalleryItems: HomeGalleryItem[];
   onOpenWorkDetail?: (item: { title: string; type: string; videoSrc?: string; src: string; source?: string }) => void;
-  imageInitialConfig: any;
+  imageInitialConfig: Partial<GeneratedImage> | null;
   isDark: boolean;
   isGeneratingImage: boolean;
   mediaSubSection: MediaSubSection;
-  monitorDetails: any;
-  monitorTasks: any[];
+  monitorDetails: MonitorDetails;
+  monitorTasks: MonitorTask[];
   pendingImageRefs: string[];
   pendingPrompt: string | undefined;
-  productionCaseAssets: any[];
-  removeTask: any;
+  productionCaseAssets: ProductionCaseAsset[];
+  removeTask: (taskId: string) => void;
   saveApiConnectionSettings: () => void;
-  segmentCaseAssets: any[];
+  segmentCaseAssets: ProductionCaseAsset[];
   setActiveSection: (section: string) => void;
-  setCurrentCopywriting: Dispatch<SetStateAction<any>>;
-  setCurrentImages: Dispatch<SetStateAction<any>>;
-  setCurrentStoryboardTask: Dispatch<SetStateAction<any>>;
-  setCurrentVideo: Dispatch<SetStateAction<any>>;
+  setCurrentCopywriting: SetGeneratedCopywriting;
+  setCurrentImages: SetGeneratedImage;
+  setCurrentStoryboardTask: SetStoryboardTask;
+  setCurrentVideo: SetGeneratedVideo;
   setEditingVideoPrompt: Dispatch<SetStateAction<string | null>>;
-  setGeneratedVideos: Dispatch<SetStateAction<any[]>>;
-  setImageInitialConfig: Dispatch<SetStateAction<any>>;
+  setGeneratedVideos: SetVideoHistory;
+  setImageInitialConfig: SetImageInitialConfig;
   setIsGeneratingImage: Dispatch<SetStateAction<boolean>>;
   setMediaSubSection: (section: MediaSubSection) => void;
   setPendingImageRefs: Dispatch<SetStateAction<string[]>>;
   setPendingPrompt: Dispatch<SetStateAction<string | undefined>>;
   setSettingsApiBase: Dispatch<SetStateAction<string>>;
   setSettingsApiKey: Dispatch<SetStateAction<string>>;
-  setSettingsApiProvider: Dispatch<SetStateAction<any>>;
+  setSettingsApiProvider: Dispatch<SetStateAction<ApiProviderType>>;
   setSettingsAutoSave: Dispatch<SetStateAction<boolean>>;
   setSettingsEmail: Dispatch<SetStateAction<string>>;
   setSettingsFontSize: Dispatch<SetStateAction<number>>;
@@ -78,13 +100,13 @@ interface DreamboxMainContentProps {
   setShowCopywritingDialog: Dispatch<SetStateAction<boolean>>;
   setShowStoryboardDialog: Dispatch<SetStateAction<boolean>>;
   setShouldAutoGenerate: Dispatch<SetStateAction<boolean>>;
-  setSmartAssistantTransfer: Dispatch<SetStateAction<any>>;
+  setSmartAssistantTransfer: Dispatch<SetStateAction<SmartAssistantTransferData | undefined>>;
   setTargetService: Dispatch<SetStateAction<string | undefined>>;
   setTaskViewMode: Dispatch<SetStateAction<'list' | 'monitor'>>;
-  setVideoInitialConfig: Dispatch<SetStateAction<any>>;
+  setVideoInitialConfig: SetVideoInitialConfig;
   settingsApiBase: string;
   settingsApiKey: string;
-  settingsApiProvider: any;
+  settingsApiProvider: ApiProviderType;
   settingsAutoSave: boolean;
   settingsEmail: string;
   settingsFontSize: number;
@@ -98,15 +120,15 @@ interface DreamboxMainContentProps {
   shouldAutoGenerate: boolean;
   showCopywritingDialog: boolean;
   showStoryboardDialog: boolean;
-  smartAssistantTransfer: any;
+  smartAssistantTransfer: SmartAssistantTransferData | undefined;
   storyboardVideoRef: RefObject<HTMLVideoElement | null>;
-  syncFromServer: any;
+  syncFromServer: () => void | Promise<void>;
   t: (key: string) => string;
   targetService: string | undefined;
   taskViewMode: 'list' | 'monitor';
   testApiConnection: (testMode?: 'models' | 'chat' | 'image') => Promise<void>;
   toggleColorMode: () => void;
-  updateUserSettings: any;
+  updateUserSettings: (settings: Partial<UserSettings>) => void;
 }
 
 export function DreamboxMainContent(props: DreamboxMainContentProps) {

@@ -2,18 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { Film, GitBranch, Image as ImageIcon, Play, Video } from 'lucide-react';
-
-interface HomeGalleryItem {
-  title: string;
-  src: string;
-  videoSrc?: string;
-  span: string;
-  type: string;
-  target: string;
-  href?: string;
-  duration?: string;
-  source?: 'static' | 'production-case-asset' | 'historical';
-}
+import type { HomeGalleryItem } from '@/components/home/dreambox-types';
 
 const BASE_PATH = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
 
