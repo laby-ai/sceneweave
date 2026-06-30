@@ -33,8 +33,20 @@ type AudioEventContractView = {
   expectedAudioEvidence?: unknown;
   providerInstruction?: unknown;
 };
+type MediaNodeData = NodePropertiesSectionProps['selectedNode']['data'] & {
+  audioEventContract?: unknown;
+  metadata?: {
+    audioEventContract?: unknown;
+  };
+  generatedVideo?: string | null;
+  videoUploadEnabled?: boolean;
+};
+type MediaNodePatch = Partial<NodePropertiesSectionProps['selectedNode']['data']> & {
+  generatedVideo?: string | null;
+  videoUploadEnabled?: boolean;
+};
 
-function getAudioEventContract(data: Record<string, any>): AudioEventContractView | null {
+function getAudioEventContract(data: MediaNodeData): AudioEventContractView | null {
   const direct = data.audioEventContract;
   const fromMetadata = data.metadata?.audioEventContract;
   const contract = direct || fromMetadata;
@@ -79,7 +91,9 @@ export function MediaPropertiesSections({
   selectedVideoTaskId,
   selectedVideoCanExport,
 }: NodePropertiesSectionProps) {
-  const audioEventContract = getAudioEventContract(selectedNode.data as Record<string, any>);
+  const nodeData = selectedNode.data as MediaNodeData;
+  const updateNodeData = (patch: MediaNodePatch) => onUpdateNode(selectedNode.id, patch);
+  const audioEventContract = getAudioEventContract(nodeData);
   const audioEvidencePreview = audioEventContract
     ? getAudioEvidencePreview(audioEventContract.expectedAudioEvidence)
     : '';
@@ -96,7 +110,7 @@ export function MediaPropertiesSections({
                     <Upload className="w-3.5 h-3.5 text-cyan-300/70" />
                     <span className="text-xs text-foreground/70">启用素材上传</span>
                   </div>
-                  <Switch checked={(selectedNode.data as any).videoUploadEnabled || false} onCheckedChange={(checked) => onUpdateNode(selectedNode.id, { videoUploadEnabled: checked } as any)} />
+                  <Switch checked={nodeData.videoUploadEnabled || false} onCheckedChange={(checked) => updateNodeData({ videoUploadEnabled: checked })} />
                 </div>
                 
                 <div className="space-y-3">
@@ -241,13 +255,13 @@ export function MediaPropertiesSections({
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      {(selectedNode.data as any).videoUploadEnabled ? (
+                      {nodeData.videoUploadEnabled ? (
                         <>
                           <div
                             className="flex items-center justify-center h-24 bg-muted rounded-lg border border-dashed border-cyan-300/30 cursor-pointer hover:border-cyan-300/50 hover:bg-secondary transition-colors"
                             onClick={() => { const el = document.getElementById('video-upload-input'); if (el) el.click(); }}
                             onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                            onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const f = e.dataTransfer.files; if (f.length > 0) { const file = f[0]; const url = URL.createObjectURL(file); onUpdateNode(selectedNode.id, { generatedVideo: url, status: 'success' } as any); } }}
+                            onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const f = e.dataTransfer.files; if (f.length > 0) { const file = f[0]; const url = URL.createObjectURL(file); updateNodeData({ generatedVideo: url, status: 'success' }); } }}
                           >
                             <div className="text-center">
                               <Upload className="w-5 h-5 text-cyan-300/60 mx-auto mb-1" />
@@ -255,9 +269,9 @@ export function MediaPropertiesSections({
                               <p className="text-[10px] text-foreground/30">支持 MP4 / WebM / MOV</p>
                             </div>
                           </div>
-                          <input id="video-upload-input" type="file" accept="video/mp4,video/webm,video/quicktime" className="hidden" onChange={(e) => { if (e.target.files && e.target.files.length > 0) { const file = e.target.files[0]; const url = URL.createObjectURL(file); onUpdateNode(selectedNode.id, { generatedVideo: url, status: 'success' } as any); e.target.value = ''; } }} />
-                          {(selectedNode.data as any).generatedVideo && (
-                            <Button variant="ghost" size="sm" onClick={() => onUpdateNode(selectedNode.id, { generatedVideo: null, status: 'idle' } as any)} className="w-full text-[11px] text-cyan-300/70 hover:text-cyan-300 hover:bg-cyan-400/10">清除已上传视频</Button>
+                          <input id="video-upload-input" type="file" accept="video/mp4,video/webm,video/quicktime" className="hidden" onChange={(e) => { if (e.target.files && e.target.files.length > 0) { const file = e.target.files[0]; const url = URL.createObjectURL(file); updateNodeData({ generatedVideo: url, status: 'success' }); e.target.value = ''; } }} />
+                          {nodeData.generatedVideo && (
+                            <Button variant="ghost" size="sm" onClick={() => updateNodeData({ generatedVideo: null, status: 'idle' })} className="w-full text-[11px] text-cyan-300/70 hover:text-cyan-300 hover:bg-cyan-400/10">清除已上传视频</Button>
                           )}
                         </>
                       ) : (
