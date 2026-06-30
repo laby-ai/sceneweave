@@ -82,6 +82,7 @@ export function AssetsLibrary({ finalVideoCaseAssets = [], segmentCaseAssets = [
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [historicalAssets, setHistoricalAssets] = useState<UnifiedAsset[]>([]);
   const [historicalAssetError, setHistoricalAssetError] = useState<string | null>(null);
+  const [failedPosterIds, setFailedPosterIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -260,22 +261,26 @@ export function AssetsLibrary({ finalVideoCaseAssets = [], segmentCaseAssets = [
                         onClick={() => selectMode ? toggleSelect(asset.id) : window.open(asset.url, '_blank')}
                         className="group relative aspect-square overflow-hidden rounded-xl border border-border bg-card"
                       >
-                        {asset.kind === 'image' || asset.poster ? (
+                        {asset.kind === 'image' || (asset.poster && !failedPosterIds.has(asset.id)) ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
                             src={asset.kind === 'image' ? asset.url : asset.poster}
                             alt={asset.title}
                             loading="lazy"
                             decoding="async"
+                            onError={() => {
+                              if (asset.kind === 'video') {
+                                setFailedPosterIds(prev => new Set(prev).add(asset.id));
+                              }
+                            }}
                             className="h-full w-full object-cover transition-transform group-hover:scale-105"
                           />
                         ) : (
                           <video
                             src={videoPreviewUrl(asset.url)}
-                            poster={asset.poster}
                             muted
                             playsInline
-                            preload="none"
+                            preload="metadata"
                             className="h-full w-full object-cover"
                           />
                         )}
