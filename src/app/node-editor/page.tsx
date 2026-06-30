@@ -16,9 +16,12 @@ import ReactFlow, {
   MarkerType,
   Node,
   Edge,
+  NodeChange,
+  EdgeChange,
   Connection,
   Panel,
   NodeProps,
+  ReactFlowInstance,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { Button } from '@/components/ui/button';
@@ -89,7 +92,7 @@ function NodeEditor() {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
-  const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
+  const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance<CustomNodeData> | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [shouldCancel, setShouldCancel] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -141,10 +144,10 @@ function NodeEditor() {
 
   // 处理节点变化时保存历史
   const handleNodesChange = useCallback(
-    (changes: any) => {
+    (changes: NodeChange[]) => {
       onNodesChange(changes);
       // 只在节点真正改变时保存历史（不是选择变化）
-      const hasRealChange = changes.some((change: any) => change.type !== 'select');
+      const hasRealChange = changes.some((change) => change.type !== 'select');
       if (hasRealChange) {
         setTimeout(() => {
           setNodes((currentNodes) => {
@@ -162,10 +165,10 @@ function NodeEditor() {
 
   // 处理边变化时保存历史
   const handleEdgesChange = useCallback(
-    (changes: any) => {
+    (changes: EdgeChange[]) => {
       onEdgesChange(changes);
       // 只在边真正改变时保存历史
-      const hasRealChange = changes.some((change: any) => change.type !== 'select');
+      const hasRealChange = changes.some((change) => change.type !== 'select');
       if (hasRealChange) {
         setTimeout(() => {
           setNodes((currentNodes) => {
