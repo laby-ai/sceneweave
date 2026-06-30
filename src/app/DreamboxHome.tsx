@@ -11,6 +11,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useVideoHistory } from '@/hooks/useVideoHistory';
 import { useTasks } from '@/contexts/TaskContext';
 import { useDreamboxMonitorTasks } from '@/hooks/useDreamboxMonitorTasks';
+import { clientApiPath } from '@/lib/client-api-path';
 import { PromptPreview } from '@/components/prompt-preview';
 import { WorkDetailOverlay, type WorkDetailData } from '@/components/work-detail-overlay';
 import { DreamboxMainContent } from '@/components/home/dreambox-main-content';
@@ -237,7 +238,7 @@ export function DreamboxHome() {
             : '正在验证模型列表连接...',
     });
     try {
-      const response = await fetch('/api/provider/test', {
+      const response = await fetch(clientApiPath('/api/provider/test'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -373,7 +374,7 @@ export function DreamboxHome() {
 
     async function loadProductionCaseAssets() {
       try {
-        const response = await fetch('/api/production/case-assets?limit=6', { cache: 'no-store' });
+        const response = await fetch(clientApiPath('/api/production/case-assets?limit=6'), { cache: 'no-store' });
         const data = await response.json();
         if (!cancelled && response.ok && Array.isArray(data.cases)) {
           setProductionCaseAssets(data.cases);
@@ -394,7 +395,7 @@ export function DreamboxHome() {
 
     async function loadHomeHistoricalAssets() {
       try {
-        const response = await fetch('/api/assets/media-library?limit=32', { cache: 'no-store' });
+        const response = await fetch(clientApiPath('/api/assets/media-library?limit=32'), { cache: 'no-store' });
         const data = await response.json();
         if (!cancelled && response.ok && Array.isArray(data.assets)) {
           setHomeHistoricalAssets(data.assets);
@@ -414,7 +415,7 @@ export function DreamboxHome() {
   const syncTasksFromServer = useCallback(async (force = false) => {
     try {
       console.log('[DreamboxHome] 从服务端同步任务...');
-      const response = await fetch('/api/tasks');
+      const response = await fetch(clientApiPath('/api/tasks'));
       
       if (response.ok) {
         const { tasks: serverTasks = [] } = await response.json() as { tasks?: BackgroundTask[] };

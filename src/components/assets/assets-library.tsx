@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { CheckSquare, Download, GitBranch, Layers, Search, Square, Trash2, Users, Video as VideoIcon } from 'lucide-react';
 
 import { useVideoHistory } from '@/hooks/useVideoHistory';
+import { clientApiPath } from '@/lib/client-api-path';
 
 type AssetKind = 'image' | 'video';
 type AssetTab = 'history' | 'subjects' | 'canvas';
@@ -88,7 +89,7 @@ export function AssetsLibrary({ finalVideoCaseAssets = [], segmentCaseAssets = [
 
     async function loadHistoricalAssets() {
       try {
-        const response = await fetch('/api/assets/media-library?limit=80');
+        const response = await fetch(clientApiPath('/api/assets/media-library?limit=80'));
         const payload = await response.json();
         if (!response.ok || payload?.success !== true) {
           throw new Error(payload?.message || `历史素材索引加载失败：${response.status}`);

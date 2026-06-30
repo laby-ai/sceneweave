@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { BackgroundTask, TaskStatus, TaskContextType } from '@/types/task';
+import { clientApiPath } from '@/lib/client-api-path';
 
 const TaskContext = createContext<TaskContextType | undefined>(undefined);
 
@@ -119,7 +120,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     log('开始从服务端同步任务...');
 
     try {
-      const response = await fetch('/api/tasks');
+      const response = await fetch(clientApiPath('/api/tasks'));
       
       if (response.ok) {
         const data = await response.json();
@@ -364,7 +365,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const source = new EventSource(`/api/tasks/${task.id}/events`);
+      const source = new EventSource(clientApiPath(`/api/tasks/${task.id}/events`));
       taskStreamsRef.current.set(task.id, source);
       updateExistingTask(task.id, { streamStatus: 'connecting' });
 
@@ -429,7 +430,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     log('批量删除任务:', ids);
     // 调用 API 删除服务端任务
     try {
-      const response = await fetch('/api/tasks', {
+      const response = await fetch(clientApiPath('/api/tasks'), {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ taskIds: ids }),
@@ -501,7 +502,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       log('准备删除服务端任务:', allTaskIds);
       
       if (allTaskIds.length > 0) {
-        const response = await fetch('/api/tasks', {
+        const response = await fetch(clientApiPath('/api/tasks'), {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ taskIds: allTaskIds }),
