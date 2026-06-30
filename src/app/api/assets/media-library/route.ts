@@ -7,13 +7,59 @@ export const runtime = 'nodejs';
 
 type CsvRow = Record<string, string>;
 
-const MEDIA_INDEX_PATH = path.resolve(
-  process.cwd(),
-  '..',
+const MEDIA_INDEX_RELATIVE_PARTS = [
   'outputs',
   'media-addresses',
   'past-image-video-addresses-20260627.csv',
-);
+];
+
+function uniquePaths(paths: string[]): string[] {
+  const seen = new Set<string>();
+  return paths.filter(item => {
+    const normalized = path.normalize(item);
+    if (seen.has(normalized)) return false;
+    seen.add(normalized);
+    return true;
+  });
+}
+
+function getMediaIndexCandidates(): string[] {
+  const configuredPath = process.env.HUIYING_MEDIA_INDEX_PATH?.trim();
+  const cwd = process.cwd();
+  const candidates = [
+    configuredPath ? path.resolve(configuredPath) : '',
+    path.resolve(cwd, '..', ...MEDIA_INDEX_RELATIVE_PARTS),
+    path.resolve(cwd, '..', '..', ...MEDIA_INDEX_RELATIVE_PARTS),
+    path.resolve('/opt/huiying', ...MEDIA_INDEX_RELATIVE_PARTS),
+  ].filter(Boolean);
+
+  return uniquePaths(candidates);
+}
+
+async function readMediaIndex(): Promise<{
+  indexPath: string;
+  candidates: string[];
+  text: string;
+  available: boolean;
+}> {
+  const candidates = getMediaIndexCandidates();
+
+  for (const candidate of candidates) {
+    try {
+      const text = await fs.readFile(candidate, 'utf8');
+      return { indexPath: candidate, candidates, text, available: true };
+    } catch {
+      // Try the next known deployment layout.
+    }
+  }
+
+  return {
+    indexPath: candidates[0] ?? path.resolve(process.cwd(), ...MEDIA_INDEX_RELATIVE_PARTS),
+    candidates,
+    text: '',
+    available: false,
+  };
+}
 
 const SUPPORTED_TYPES = new Set(['image', 'video']);
 const SUPPORTED_EXTENSIONS = new Map<string, string>([
@@ -26,13 +72,36 @@ const SUPPORTED_EXTENSIONS = new Map<string, string>([
   ['.webm', 'video'],
 ]);
 
-const CURATED_FILESYSTEM_ROOTS = [
+const STATIC_CURATED_FILESYSTEM_ROOTS = [
   path.resolve(process.cwd(), 'public', 'generated'),
   path.resolve(process.cwd(), 'public', 'home'),
   path.resolve(process.cwd(), 'public', 'samples'),
+  '/opt/huiying/shared/public/generated',
   'D:/C_Migrated/Users_16571_Documents_Codex/2026-06-15/files-mentioned-by-the-user-1/work/project/projects/public/generated',
   'D:/C_Migrated/Users_16571_Documents_Codex/2026-06-15/files-mentioned-by-the-user-gz/work/extracted/projects/public/generated',
 ].map(root => path.normalize(root));
+
+async function getReleaseGeneratedRoots(): Promise<string[]> {
+  const releasesRoot = '/opt/huiying/releases';
+
+  let entries;
+  try {
+    entries = await fs.readdir(releasesRoot, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  return entries
+    .filter(entry => entry.isDirectory())
+    .map(entry => path.join(releasesRoot, entry.name, 'public', 'generated'));
+}
+
+async function getCuratedFilesystemRoots(): Promise<string[]> {
+  return uniquePaths([
+    ...STATIC_CURATED_FILESYSTEM_ROOTS,
+    ...(await getReleaseGeneratedRoots()),
+  ].map(root => path.normalize(root)));
+}
 
 const LOW_QUALITY_NAME_PATTERNS = [
   /apple-touch/i,
@@ -271,7 +340,9 @@ async function collectFilesystemMediaRows(maxFiles = 240): Promise<CsvRow[]> {
     }
   }
 
-  for (const root of CURATED_FILESYSTEM_ROOTS) {
+  const roots = await getCuratedFilesystemRoots();
+
+  for (const root of roots) {
     await walk(root, root);
   }
 
@@ -283,24 +354,18 @@ export async function GET(request: Request) {
   const limit = Math.min(Math.max(Number(url.searchParams.get('limit') ?? 80), 1), 120);
   const basePath = url.pathname.startsWith('/huiying/') ? '/huiying' : (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
 
-  let text = '';
-  let indexAvailable = true;
-  try {
-    text = await fs.readFile(MEDIA_INDEX_PATH, 'utf8');
-  } catch (error) {
-    indexAvailable = false;
-  }
+  const mediaIndex = await readMediaIndex();
 
-  const csvRows = indexAvailable ? collectMediaRows(text, limit) : [];
+  const csvRows = mediaIndex.available ? collectMediaRows(mediaIndex.text, limit) : [];
   const filesystemRows = await collectFilesystemMediaRows();
   const rows = rankMediaRows([...csvRows, ...filesystemRows], limit);
 
-  if (!indexAvailable && rows.length === 0) {
+  if (!mediaIndex.available && rows.length === 0) {
     return NextResponse.json(
       {
         success: false,
         error: 'media_index_missing',
-        message: `历史素材索引不存在或不可读取：${MEDIA_INDEX_PATH}`,
+        message: `历史素材索引不存在或不可读取：${mediaIndex.candidates.join(' | ')}`,
       },
       { status: 404 },
     );
@@ -328,8 +393,9 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     success: true,
-    indexPath: MEDIA_INDEX_PATH,
-    indexAvailable,
+    indexPath: mediaIndex.indexPath,
+    indexAvailable: mediaIndex.available,
+    indexCandidateCount: mediaIndex.candidates.length,
     count: assets.length,
     assets,
   });
