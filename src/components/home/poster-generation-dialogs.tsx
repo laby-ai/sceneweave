@@ -10,6 +10,10 @@ import { ImageEditor } from '@/components/image-editor';
 
 type RegenerateMode = 'detail' | 'full';
 type DetailFixMode = 'editor' | 'ai';
+type PosterGenerationResult = {
+  posterUrl?: string;
+  posterPrompt?: string;
+} & Record<string, unknown>;
 
 export function PosterGenerationDialogs({
   showEditor,
@@ -41,8 +45,8 @@ export function PosterGenerationDialogs({
 }: {
   showEditor: boolean;
   setShowEditor: (value: boolean) => void;
-  result: any;
-  setResult: (value: any) => void;
+  result: PosterGenerationResult | null;
+  setResult: (value: PosterGenerationResult | null) => void;
   showRegenerateDialog: boolean;
   setShowRegenerateDialog: (value: boolean) => void;
   regenerateMode: RegenerateMode;
@@ -69,7 +73,7 @@ export function PosterGenerationDialogs({
   return (
     <>
       {/* 图片编辑器对话框 */}
-      {showEditor && result.posterUrl && (
+      {showEditor && result?.posterUrl && (
         <Dialog open={showEditor} onOpenChange={setShowEditor}>
           <DialogContent className="max-w-[95vw] h-[90vh] p-0">
             <ImageEditor
@@ -378,11 +382,11 @@ export function PosterGenerationDialogs({
                   <Wand2 className="inline w-4 h-4 mr-1 text-[#70E0FF]" />
                   {regeneratePrompt.trim() ? (
                     <>
-                      点击"开始修复"后，AI 将根据您的描述自动修改图片细节。您可以随时点击"取消"停止生成。
+                      点击&quot;开始修复&quot;后，AI 将根据您的描述自动修改图片细节。您可以随时点击&quot;取消&quot;停止生成。
                     </>
                   ) : (
                     <>
-                      请先点击"返回修改"输入您的修改描述，然后才能开始AI修复。
+                      请先点击&quot;返回修改&quot;输入您的修改描述，然后才能开始AI修复。
                     </>
                   )}
                 </p>
