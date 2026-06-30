@@ -1,7 +1,11 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { ProductionAssemblyPlan } from '../src/lib/production-assembly-plan';
+import type { ProductionAssemblyPlan, ProductionSegmentAudioState } from '../src/lib/production-assembly-plan';
+import type { ProductionProject } from '../src/lib/production-project';
+import type { ShotFrameContract } from '../src/lib/production-shot-frame-contract';
+import type { StorySegmentContract } from '../src/lib/production-story-segment-contract';
+import type { TaskResult } from '../src/lib/task-manager';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -10,7 +14,7 @@ function assert(condition: unknown, message: string): asserts condition {
 const qaDir = fs.mkdtempSync(path.join(os.tmpdir(), 'huiying-segment-cascade-recovery-'));
 process.env.HUIYING_TASKS_FILE = path.join(qaDir, 'tasks.json');
 
-function makeShotFrameContract(index: number, shotId: string) {
+function makeShotFrameContract(index: number, shotId: string): ShotFrameContract {
   const previousShotId = index > 0 ? `shot-${index}` : null;
   const nextShotId = index < 2 ? `shot-${index + 2}` : null;
   return {
@@ -61,7 +65,7 @@ function makeShotFrameContract(index: number, shotId: string) {
   };
 }
 
-function makeAudioState(index: number) {
+function makeAudioState(index: number): ProductionSegmentAudioState {
   const dialogue = index === 0
     ? '最后一班车还没过桥。'
     : index === 2
@@ -82,7 +86,7 @@ function makeAudioState(index: number) {
   };
 }
 
-function makeAudioEventContract(audioState: ReturnType<typeof makeAudioState>) {
+function makeAudioEventContract(audioState: ProductionSegmentAudioState): StorySegmentContract['audioContract']['audioEventContract'] {
   return {
     dialogueType: audioState.dialogue ? 'dialogue' as const : 'none' as const,
     lipSyncPolicy: audioState.dialogue ? 'lip-sync-active' as const : 'ambient-only' as const,
@@ -98,7 +102,7 @@ function makeAudioEventContract(audioState: ReturnType<typeof makeAudioState>) {
   };
 }
 
-function makeStorySegmentContract(index: number, shotId: string) {
+function makeStorySegmentContract(index: number, shotId: string): StorySegmentContract {
   const shotFrameContract = makeShotFrameContract(index, shotId);
   const audioState = makeAudioState(index);
   return {
@@ -239,9 +243,9 @@ async function main() {
       },
     },
     output: { status: 'pending', taskId: parentTaskId, canProceedToVideo: false, nextStep: '等待片段' },
-  };
+  } as unknown as ProductionProject;
 
-  const assemblyPlan = {
+  const assemblyPlan: ProductionAssemblyPlan = {
     version: 'yh-assembly-plan-v1',
     reference: { primary: 'ArcReel', adaptedIdeas: ['dependency claim gate', 'cascade fail'] },
     productionProjectId: productionProject.id,
@@ -286,7 +290,7 @@ async function main() {
           lastFrameUrl: null,
           providerTaskId: null,
           audioCue: makeAudioState(0).audioCue,
-          storyStateCue: storyContract.describeStorySegmentCue(makeStorySegmentContract(0, 'shot-1') as any),
+          storyStateCue: storyContract.describeStorySegmentCue(makeStorySegmentContract(0, 'shot-1')),
         },
         audioState: makeAudioState(0),
         shotFrameContract: makeShotFrameContract(0, 'shot-1'),
@@ -318,7 +322,7 @@ async function main() {
           lastFrameUrl: null,
           providerTaskId: null,
           audioCue: makeAudioState(1).audioCue,
-          storyStateCue: storyContract.describeStorySegmentCue(makeStorySegmentContract(1, 'shot-2') as any),
+          storyStateCue: storyContract.describeStorySegmentCue(makeStorySegmentContract(1, 'shot-2')),
         },
         audioState: makeAudioState(1),
         shotFrameContract: makeShotFrameContract(1, 'shot-2'),
@@ -350,7 +354,7 @@ async function main() {
           lastFrameUrl: null,
           providerTaskId: null,
           audioCue: makeAudioState(2).audioCue,
-          storyStateCue: storyContract.describeStorySegmentCue(makeStorySegmentContract(2, 'shot-3') as any),
+          storyStateCue: storyContract.describeStorySegmentCue(makeStorySegmentContract(2, 'shot-3')),
         },
         audioState: makeAudioState(2),
         shotFrameContract: makeShotFrameContract(2, 'shot-3'),
@@ -387,13 +391,13 @@ async function main() {
         childTaskIds: [firstChildTaskId, secondChildTaskId, thirdChildTaskId],
         updatedAt: new Date(0).toISOString(),
       },
-    } as any,
+    } as TaskResult,
   });
 
   taskManager.failTask(firstChildTaskId, 'segment-tail-frame-missing after partial provider result');
   const failedWriteback = segmentAssets.applySegmentAssetWriteback({
-    productionProject: productionProject as any,
-    assemblyPlan: assemblyPlan as any,
+    productionProject,
+    assemblyPlan,
     segmentIndex: 0,
     patch: {
       status: 'failed',
@@ -418,7 +422,7 @@ async function main() {
         childTaskIds: [firstChildTaskId, secondChildTaskId, thirdChildTaskId],
         updatedAt: new Date(1).toISOString(),
       },
-    } as any,
+    } as TaskResult,
   });
   assert(failedWriteback.assemblyPlan.segments[1].status === 'skipped', 'downstream segment should be skipped after first failure');
   assert(failedWriteback.assemblyPlan.segments[1].expectedInputs.firstFrameUrl === null, 'downstream skipped segment must not keep fake first frame');
@@ -441,8 +445,8 @@ async function main() {
   assert(retryAssemblyPlan.segments[2].expectedInputs.previousStoryStateCue === null, 'third retry release must keep stale story cue cleared');
 
   const completedWriteback = segmentAssets.applySegmentAssetWriteback({
-    productionProject: parentAfterRetry.result!.productionProject as any,
-    assemblyPlan: retryAssemblyPlan as any,
+    productionProject: parentAfterRetry.result!.productionProject as ProductionProject,
+    assemblyPlan: retryAssemblyPlan,
     segmentIndex: 0,
     patch: {
       status: 'completed',
@@ -454,7 +458,7 @@ async function main() {
         lastFrameUrl: 'https://example.invalid/recovered-first-tail.jpg',
         audioCue: makeAudioState(0).audioCue,
         hasAudio: true,
-        storyStateCue: storyContract.describeStorySegmentCue(makeStorySegmentContract(0, 'shot-1') as any),
+        storyStateCue: storyContract.describeStorySegmentCue(makeStorySegmentContract(0, 'shot-1')),
       },
     },
   });
@@ -463,7 +467,7 @@ async function main() {
       ...parentAfterRetry.result,
       productionProject: completedWriteback.productionProject,
       assemblyPlan: completedWriteback.assemblyPlan,
-    } as any,
+    } as TaskResult,
   });
 
   let thirdBlockedBeforeSecond = false;
@@ -482,7 +486,7 @@ async function main() {
     'second segment must use recovered first segment lastFrameUrl'
   );
   assert(
-    secondDryRun.startPayload.storyContinuity.previousStoryStateCue === storyContract.describeStorySegmentCue(makeStorySegmentContract(0, 'shot-1') as any),
+    secondDryRun.startPayload.storyContinuity.previousStoryStateCue === storyContract.describeStorySegmentCue(makeStorySegmentContract(0, 'shot-1')),
     'second segment must use recovered first segment storyStateCue'
   );
   assert(
@@ -494,8 +498,8 @@ async function main() {
 
   const parentAfterSecondStart = taskManager.getTaskFresh(parentTaskId)!;
   const secondCompletedWriteback = segmentAssets.applySegmentAssetWriteback({
-    productionProject: parentAfterSecondStart.result!.productionProject as any,
-    assemblyPlan: parentAfterSecondStart.result!.assemblyPlan as any,
+    productionProject: parentAfterSecondStart.result!.productionProject as ProductionProject,
+    assemblyPlan: parentAfterSecondStart.result!.assemblyPlan as ProductionAssemblyPlan,
     segmentIndex: 1,
     patch: {
       status: 'completed',
@@ -507,7 +511,7 @@ async function main() {
         lastFrameUrl: 'https://example.invalid/recovered-second-tail.jpg',
         audioCue: makeAudioState(1).audioCue,
         hasAudio: true,
-        storyStateCue: storyContract.describeStorySegmentCue(makeStorySegmentContract(1, 'shot-2') as any),
+        storyStateCue: storyContract.describeStorySegmentCue(makeStorySegmentContract(1, 'shot-2')),
       },
     },
   });
@@ -516,7 +520,7 @@ async function main() {
       ...parentAfterSecondStart.result,
       productionProject: secondCompletedWriteback.productionProject,
       assemblyPlan: secondCompletedWriteback.assemblyPlan,
-    } as any,
+    } as TaskResult,
   });
 
   const thirdDryRun = startService.startProductionAssemblySegment({ childTaskId: thirdChildTaskId });
@@ -526,7 +530,7 @@ async function main() {
     'third segment must use recovered second segment lastFrameUrl'
   );
   assert(
-    thirdDryRun.startPayload.storyContinuity.previousStoryStateCue === storyContract.describeStorySegmentCue(makeStorySegmentContract(1, 'shot-2') as any),
+    thirdDryRun.startPayload.storyContinuity.previousStoryStateCue === storyContract.describeStorySegmentCue(makeStorySegmentContract(1, 'shot-2')),
     'third segment must use recovered second segment storyStateCue'
   );
   assert(
