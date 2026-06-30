@@ -31,6 +31,44 @@ interface SubtitleVideoTextEditorProps {
   videoDuration: number;
 }
 
+type VideoTextPosition = VideoTextSegment['position'];
+type VideoTextFontWeight = NonNullable<VideoTextSegment['fontWeight']>;
+type VideoTextAnimation = NonNullable<SubtitleConfig['videoTextAnimation']>;
+
+const VIDEO_TEXT_TEMPLATES: Array<{
+  id: string;
+  label: string;
+  icon: string;
+  desc: string;
+  position: VideoTextPosition;
+  fontSize: number;
+  fontWeight: VideoTextFontWeight;
+}> = [
+  { id: 'title', label: '主标题', icon: '📌', desc: '顶部居中·大字', position: 'top', fontSize: 56, fontWeight: 'bold' },
+  { id: 'subtitle', label: '副标题', icon: '📝', desc: '标题下方·中字', position: 'upper-third', fontSize: 36, fontWeight: 'normal' },
+  { id: 'caption', label: '字幕条', icon: '💬', desc: '底部居中·白底黑字', position: 'bottom', fontSize: 28, fontWeight: 'normal' },
+  { id: 'label', label: '数据标注', icon: '🏷️', desc: '右侧悬浮·小字标签', position: 'custom', fontSize: 20, fontWeight: 'bold' },
+  { id: 'watermark', label: '水印Logo', icon: '©️', desc: '右下角半透明', position: 'bottom', fontSize: 18, fontWeight: 'normal' },
+  { id: 'quote', label: '引用文字', icon: '❝', desc: '左侧大引号装饰', position: 'middle', fontSize: 32, fontWeight: 'normal' },
+  { id: 'highlight', label: '重点高亮', icon: '⚡', desc: '醒目色块背景', position: 'middle', fontSize: 40, fontWeight: 'bold' },
+  { id: 'lower-third', label: '人名字幕条', icon: '👤', desc: '底部三分之一·左对齐', position: 'lower-third', fontSize: 24, fontWeight: 'normal' },
+];
+
+const VIDEO_TEXT_ANIMATIONS: Array<{
+  id: VideoTextAnimation;
+  label: string;
+  icon: string;
+}> = [
+  { id: 'none', label: '无', icon: '⏹️' },
+  { id: 'fade-in', label: '淡入', icon: '🌫️' },
+  { id: 'slide-up', label: '上滑', icon: '⬆️' },
+  { id: 'slide-left', label: '左滑', icon: '⬅️' },
+  { id: 'zoom-in', label: '缩放', icon: '🔍' },
+  { id: 'typewriter', label: '打字机', icon: '⌨️' },
+  { id: 'bounce', label: '弹跳', icon: '🏀' },
+  { id: 'glow', label: '发光', icon: '✨' },
+];
+
 export function SubtitleVideoTextEditor({
   config,
   disabled,
@@ -89,16 +127,7 @@ export function SubtitleVideoTextEditor({
                   <span className="text-xs font-medium text-foreground/70">用途模板</span>
                 </div>
                 <div className="grid grid-cols-4 gap-1.5">
-                  {[
-                    { id: 'title', label: '主标题', icon: '📌', desc: '顶部居中·大字', position: 'top', fontSize: 56, fontWeight: 'bold' },
-                    { id: 'subtitle', label: '副标题', icon: '📝', desc: '标题下方·中字', position: 'upper-third', fontSize: 36, fontWeight: 'normal' },
-                    { id: 'caption', label: '字幕条', icon: '💬', desc: '底部居中·白底黑字', position: 'bottom', fontSize: 28, fontWeight: 'normal' },
-                    { id: 'label', label: '数据标注', icon: '🏷️', desc: '右侧悬浮·小字标签', position: 'custom', fontSize: 20, fontWeight: 'bold' },
-                    { id: 'watermark', label: '水印Logo', icon: '©️', desc: '右下角半透明', position: 'bottom-right', fontSize: 18, fontWeight: 'normal' },
-                    { id: 'quote', label: '引用文字', icon: '❝', desc: '左侧大引号装饰', position: 'middle', fontSize: 32, fontWeight: 'normal' },
-                    { id: 'highlight', label: '重点高亮', icon: '⚡', desc: '醒目色块背景', position: 'middle', fontSize: 40, fontWeight: 'bold' },
-                    { id: 'lower-third', label: '人名字幕条', icon: '👤', desc: '底部三分之一·左对齐', position: 'lower-third', fontSize: 24, fontWeight: 'normal' },
-                  ].map((tpl) => (
+                  {VIDEO_TEXT_TEMPLATES.map((tpl) => (
                     <button
                       key={tpl.id}
                       type="button"
@@ -114,9 +143,9 @@ export function SubtitleVideoTextEditor({
                               const lastId = segs[segs.length - 1].id;
                               handleUpdateVideoTextSegment(lastId, {
                                 text: `${tpl.icon} ${tpl.label}`,
-                                position: tpl.position as any,
+                                position: tpl.position,
                                 fontSize: tpl.fontSize,
-                                fontWeight: tpl.fontWeight as any,
+                                fontWeight: tpl.fontWeight,
                               });
                             }
                           }, 50);
@@ -128,9 +157,9 @@ export function SubtitleVideoTextEditor({
                           segments[0] = {
                             ...segments[0],
                             text: `${tpl.icon} ${tpl.label}`,
-                            position: tpl.position as any,
+                            position: tpl.position,
                             fontSize: tpl.fontSize,
-                            fontWeight: tpl.fontWeight as any,
+                            fontWeight: tpl.fontWeight,
                           };
                           updateConfig({ videoTextSegments: segments });
                         }
@@ -158,20 +187,11 @@ export function SubtitleVideoTextEditor({
                   )}
                 </div>
                 <div className="flex flex-wrap gap-1.5">
-                  {[
-                    { id: 'none', label: '无', icon: '⏹️' },
-                    { id: 'fade-in', label: '淡入', icon: '🌫️' },
-                    { id: 'slide-up', label: '上滑', icon: '⬆️' },
-                    { id: 'slide-left', label: '左滑', icon: '⬅️' },
-                    { id: 'zoom-in', label: '缩放', icon: '🔍' },
-                    { id: 'typewriter', label: '打字机', icon: '⌨️' },
-                    { id: 'bounce', label: '弹跳', icon: '🏀' },
-                    { id: 'glow', label: '发光', icon: '✨' },
-                  ].map((anim) => (
+                  {VIDEO_TEXT_ANIMATIONS.map((anim) => (
                     <button
                       key={anim.id}
                       type="button"
-                      onClick={() => updateConfig({ videoTextAnimation: anim.id as any })}
+                      onClick={() => updateConfig({ videoTextAnimation: anim.id })}
                       disabled={disabled}
                       className={`px-2 py-1 rounded-md text-[11px] transition-all ${
                         config.videoTextAnimation === anim.id
@@ -278,7 +298,7 @@ export function SubtitleVideoTextEditor({
                                   text: titleCandidate.slice(0, 20),
                                   position: 'top',
                                   fontSize: 48,
-                                  fontWeight: 'bold' as any,
+                                  fontWeight: 'bold',
                                 });
                               }
                             }, 50);
@@ -291,7 +311,7 @@ export function SubtitleVideoTextEditor({
                               text: titleCandidate.slice(0, 20),
                               position: 'top',
                               fontSize: 48,
-                              fontWeight: 'bold' as any,
+                              fontWeight: 'bold',
                             };
                             updateConfig({ videoTextSegments: segments });
                           }
@@ -370,8 +390,8 @@ export function SubtitleVideoTextEditor({
                               <Label className="text-xs text-red-700">显示位置</Label>
                               <Select
                                 value={segment.position}
-                                onValueChange={(value: any) => 
-                                  handleUpdateVideoTextSegment(segment.id, { position: value })
+                                onValueChange={(value) =>
+                                  handleUpdateVideoTextSegment(segment.id, { position: value as VideoTextPosition })
                                 }
                                 disabled={disabled}
                               >
@@ -572,13 +592,14 @@ export function SubtitleVideoTextEditor({
                         <Label className="text-xs text-red-700">显示位置</Label>
                         <Select
                           value={config.videoTextSegments[0]?.position || 'middle'}
-                          onValueChange={(value: any) => {
+                          onValueChange={(value) => {
+                            const position = value as VideoTextPosition;
                             if (config.videoTextSegments.length === 0) {
                               const newSegment = createDefaultVideoTextSegment(videoDuration);
-                              newSegment.position = value;
+                              newSegment.position = position;
                               updateConfig({ videoTextSegments: [newSegment] });
                             } else {
-                              handleUpdateVideoTextSegment(config.videoTextSegments[0].id, { position: value });
+                              handleUpdateVideoTextSegment(config.videoTextSegments[0].id, { position });
                             }
                           }}
                           disabled={disabled}
