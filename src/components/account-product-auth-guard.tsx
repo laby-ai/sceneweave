@@ -1,25 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { accountLoginUrl, clientApiFetch, hasStoredAccountToken } from '@/lib/client-api';
 
-const OFFICIAL_ACCOUNT_TOKEN_KEYS = ['account_entitlement_token', 'huiying_account_token'];
+const AUTH_CHECK_TIMEOUT_MS = 8_000;
 
 type AuthState = 'checking' | 'allowed';
-
-function getStoredAccountToken(): string {
-  for (const storage of [window.localStorage, window.sessionStorage]) {
-    for (const key of OFFICIAL_ACCOUNT_TOKEN_KEYS) {
-      const token = storage.getItem(key)?.trim();
-      if (token) return token;
-    }
-  }
-  return '';
-}
-
-function loginRedirectUrl(): string {
-  const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-  return `/account-login.html?next=${encodeURIComponent(next)}`;
-}
 
 function shouldGuardCurrentPath(): boolean {
   const forceGuard = process.env.NEXT_PUBLIC_REQUIRE_ACCOUNT_AUTH?.trim().toLowerCase() === 'true';
@@ -35,7 +21,7 @@ export function AccountProductAuthGuard({ children }: { children: ReactNode }) {
         正在确认账号登录状态...
       </div>
     ),
-    []
+    [],
   );
 
   useEffect(() => {
@@ -47,26 +33,16 @@ export function AccountProductAuthGuard({ children }: { children: ReactNode }) {
         return;
       }
 
-      const token = getStoredAccountToken();
-      if (!token) {
-        window.location.replace(loginRedirectUrl());
+      if (!hasStoredAccountToken()) {
+        window.location.replace(accountLoginUrl());
         return;
       }
 
       try {
-        const response = await fetch('/v1/auth/me', {
-          headers: { Authorization: `Bearer ${token}` },
-          cache: 'no-store',
-        });
-
-        if (!response.ok) {
-          window.location.replace(loginRedirectUrl());
-          return;
-        }
-
+        await clientApiFetch('/api/account/me', { timeoutMs: AUTH_CHECK_TIMEOUT_MS });
         if (!cancelled) setAuthState('allowed');
       } catch {
-        window.location.replace(loginRedirectUrl());
+        if (!cancelled) window.location.replace(accountLoginUrl());
       }
     }
 

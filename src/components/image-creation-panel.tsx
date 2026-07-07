@@ -18,6 +18,7 @@ import ImageAnnotationViewer, { type Annotation } from '@/components/image-annot
 import DesignBlueprintOverlay, { type DesignDomain, type BlueprintType } from '@/components/design-blueprint-overlay';
 import { downloadPlainTextAsPDF } from '@/lib/pdf-export';
 import { formatProviderError, getBYOKRequestHeaders } from '@/lib/byok-client';
+import { clientApiFetch } from '@/lib/client-api';
 import {
   REMIX_STYLE_PRESETS,
   REMIX_CATEGORIES,
@@ -74,6 +75,22 @@ interface GeneratedImage {
   /** 设计还原类型标签 */
   designLabel?: string;
 }
+
+type ImageCreationPanelApiResponse = {
+  success?: boolean;
+  error?: unknown;
+  url?: string;
+  description?: string;
+  enhancedText?: string;
+  enhancedPrompt?: string;
+  imageUrls?: string[];
+  images?: Array<{ url: string } | string>;
+  preserveElements?: ElementKey[];
+  approach?: string;
+};
+const IMAGE_PANEL_REQUEST_TIMEOUT_MS = 30_000;
+const IMAGE_PANEL_UPLOAD_TIMEOUT_MS = 60_000;
+const IMAGE_PANEL_GENERATE_TIMEOUT_MS = 120_000;
 
 // ========== 常量 ==========
 const QUICK_IDEAS = [
@@ -255,11 +272,15 @@ export function ImageCreationPanel({ onBack, initialPrompt, autoGenerate, initia
       try {
         const formData = new FormData();
         formData.append('file', file);
-        const res = await fetch('/api/upload/material', { method: 'POST', body: formData });
-        const data = await res.json();
-        if (data.success) {
+        const data = await clientApiFetch<ImageCreationPanelApiResponse>('/api/upload/material', {
+          method: 'POST',
+          body: formData,
+          timeoutMs: IMAGE_PANEL_UPLOAD_TIMEOUT_MS,
+        });
+        if (data.success && data.url) {
+          const uploadedUrl = data.url;
           setImageRefs(prev => prev.map(r =>
-            r.localPreview === localPreview ? { ...r, url: data.url, uploading: false } : r
+            r.localPreview === localPreview ? { ...r, url: uploadedUrl, uploading: false } : r
           ));
         } else {
           setImageRefs(prev => prev.map(r =>
@@ -280,12 +301,11 @@ export function ImageCreationPanel({ onBack, initialPrompt, autoGenerate, initia
     if (req) setCustomRequirement(req);
     setAnalyzingRequirement(true);
     try {
-      const res = await fetch('/api/remix/analyze', {
+      const data = await clientApiFetch<NonNullable<typeof requirementAnalysis> & { error?: unknown }>('/api/remix/analyze', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ requirement: text.trim() }),
+        timeoutMs: IMAGE_PANEL_REQUEST_TIMEOUT_MS,
       });
-      const data = await res.json();
       if (!data.error) {
         setRequirementAnalysis(data);
         // 自动应用推荐的保留元素
@@ -359,11 +379,15 @@ export function ImageCreationPanel({ onBack, initialPrompt, autoGenerate, initia
 
           const formData = new FormData();
           formData.append('file', file);
-          const res = await fetch('/api/upload/material', { method: 'POST', body: formData });
-          const data = await res.json();
-          if (data.success) {
+          const data = await clientApiFetch<ImageCreationPanelApiResponse>('/api/upload/material', {
+            method: 'POST',
+            body: formData,
+            timeoutMs: IMAGE_PANEL_UPLOAD_TIMEOUT_MS,
+          });
+          if (data.success && data.url) {
+            const uploadedUrl = data.url;
             setImageRefs(prev => prev.map(r =>
-              r.localPreview === localPreview ? { ...r, url: data.url, uploading: false } : r
+              r.localPreview === localPreview ? { ...r, url: uploadedUrl, uploading: false } : r
             ));
             setPasteToast(`已添加${imageFiles.length > 1 ? ` ${imageFiles.length} 张` : ''}参考图片`);
           } else {
@@ -444,18 +468,16 @@ export function ImageCreationPanel({ onBack, initialPrompt, autoGenerate, initia
       };
       const elementList = elements.map(k => labels[k]).join('、');
 
-      const res = await fetch('/api/image/understand', {
+      const data = await clientApiFetch<ImageCreationPanelApiResponse>('/api/image/understand', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           imageUrl: generatedImageUrl,
           referenceImageUrl,
           prompt: `对比这两张图片，判断右侧生成图片是否成功保留了左侧原图中的以下元素：${elementList}。对每项给出"保留"或"未保留"的判断。请用JSON格式回复：{"character":"保留/未保留","scene":"保留/未保留","composition":"保留/未保留","atmosphere":"保留/未保留","color":"保留/未保留"}`,
         }),
+        timeoutMs: IMAGE_PANEL_REQUEST_TIMEOUT_MS,
       });
 
-      if (!res.ok) return null;
-      const data = await res.json();
       if (!data.success || !data.description) return null;
 
       // 解析AI返回的验证结果
@@ -501,9 +523,8 @@ export function ImageCreationPanel({ onBack, initialPrompt, autoGenerate, initia
       try {
         const refImageUrl = imageRefs.find(r => r.url)?.url;
         if (refImageUrl) {
-          const understandRes = await fetch('/api/image/understand', {
+          const understandData = await clientApiFetch<ImageCreationPanelApiResponse>('/api/image/understand', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               imageUrl: refImageUrl,
               question: creativeIntent === 'reinterpret' 
@@ -512,12 +533,10 @@ export function ImageCreationPanel({ onBack, initialPrompt, autoGenerate, initia
                 ? `请详细描述这张图片中所有可见的设计元素：主体形态、材质纹理、色彩方案、结构层次、工艺细节、装饰纹样。用户希望将其还原为设计图：${effectivePrompt}。请特别关注可以转化为设计图纸的元素特征。`
                 : `请简要描述这张图片的核心内容、风格和关键视觉元素，以便结合文字描述进行AI创作。用户想要基于此图片创作：${effectivePrompt}`,
             }),
+            timeoutMs: IMAGE_PANEL_REQUEST_TIMEOUT_MS,
           });
-          if (understandRes.ok) {
-            const understandData = await understandRes.json();
-            if (understandData.success && understandData.description) {
+          if (understandData.success && understandData.description) {
               imageDescription = understandData.description;
-            }
           }
         }
       } catch { /* 图片理解失败不阻断 */ }
@@ -590,16 +609,13 @@ export function ImageCreationPanel({ onBack, initialPrompt, autoGenerate, initia
         ? `【参考图片内容】${imageDescription}\n【创作需求】${remixPrompt}`
         : remixPrompt;
 
-      const enhanceRes = await fetch('/api/prompt/enhance', {
+      const enhanceData = await clientApiFetch<ImageCreationPanelApiResponse>('/api/prompt/enhance', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: enhanceText, sceneType: inferSceneType(effectivePrompt), composition: selectedComposition, creativeIntent, preserveElements: activeRemix ? preservedElements : undefined }),
+        timeoutMs: IMAGE_PANEL_REQUEST_TIMEOUT_MS,
       });
-      if (enhanceRes.ok) {
-        const enhanceData = await enhanceRes.json();
-        if (enhanceData.success && enhanceData.enhancedText) {
-          enhancedPromptText = enhanceData.enhancedText;
-        }
+      if (enhanceData.success && enhanceData.enhancedText) {
+        enhancedPromptText = enhanceData.enhancedText;
       }
     } catch {
       // 增强失败不阻断生成
@@ -630,6 +646,7 @@ export function ImageCreationPanel({ onBack, initialPrompt, autoGenerate, initia
         cfgScale,
         steps,
         batchSize,
+        n: batchSize,
         referenceImages: imageRefs.map(r => r.url).filter(Boolean),
         referenceDocs: imageDocs.map(d => d.name),
         referenceLinks: imageLinks,
@@ -645,14 +662,12 @@ export function ImageCreationPanel({ onBack, initialPrompt, autoGenerate, initia
       }
       console.log('[ImageCreationPanel] 生成参数: intent=', creativeIntent, 'image=', refImgUrls.length > 0 ? 'provided' : 'none');
 
-      const response = await fetch('/api/image/generate', {
+      const data = await clientApiFetch<ImageCreationPanelApiResponse>('/api/image/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getBYOKRequestHeaders() },
+        headers: getBYOKRequestHeaders(),
         body: JSON.stringify(genBody),
+        timeoutMs: IMAGE_PANEL_GENERATE_TIMEOUT_MS,
       });
-
-      const data = await response.json();
-      if (!response.ok) throw new Error(formatProviderError(data, '生成失败'));
       setGenerationProgress(80);
       setGenerationPhase('图片生成完成，正在加载...');
       if (data.success) {
@@ -806,9 +821,8 @@ export function ImageCreationPanel({ onBack, initialPrompt, autoGenerate, initia
         if (refImageUrls.length > 0) {
           setGenerationPhase('正在理解参考图片...');
           try {
-            const understandRes = await fetch('/api/image/understand', {
+            const understandData = await clientApiFetch<ImageCreationPanelApiResponse>('/api/image/understand', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 imageUrl: refImageUrls[0],
                 question: creativeIntent === 'reinterpret' 
@@ -817,13 +831,11 @@ export function ImageCreationPanel({ onBack, initialPrompt, autoGenerate, initia
                   ? `请详细描述这张图片中所有可见的设计元素：主体形态、材质纹理、色彩方案、结构层次、工艺细节、装饰纹样。用户希望将其还原为设计图：${effectivePrompt}。请特别关注可以转化为设计图纸的元素特征。`
                   : `请简要描述这张图片的核心内容、风格和关键视觉元素，以便结合文字描述进行AI创作。用户想要基于此图片创作：${effectivePrompt}`,
               }),
+              timeoutMs: IMAGE_PANEL_REQUEST_TIMEOUT_MS,
             });
-            if (understandRes.ok) {
-              const understandData = await understandRes.json();
-              if (understandData.success && understandData.description) {
+            if (understandData.success && understandData.description) {
                 imageDescription = understandData.description;
                 console.log('[ImageCreationPanel] 图片理解成功, descLen:', imageDescription.length);
-              }
             }
           } catch (e) {
             console.warn('[ImageCreationPanel] 图片理解失败，继续生成:', e);
@@ -894,18 +906,13 @@ export function ImageCreationPanel({ onBack, initialPrompt, autoGenerate, initia
             ? `【参考图片内容】${imageDescription}${designRestoreInstruction}\n【创作需求】${remixPrompt}`
             : `${designRestoreInstruction}${remixPrompt}`;
 
-          const enhanceRes = await fetch('/api/prompt/enhance', {
+          const enhanceData = await clientApiFetch<ImageCreationPanelApiResponse>('/api/prompt/enhance', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text: enhanceText, sceneType, composition: selectedComposition, creativeIntent, preserveElements: autoRemix ? autoRemix.preserveDefaults : undefined }),
+            timeoutMs: IMAGE_PANEL_REQUEST_TIMEOUT_MS,
           });
-          if (enhanceRes.ok) {
-            const enhanceData = await enhanceRes.json();
-            if (enhanceData.success && enhanceData.enhancedText) enhancedPromptText = enhanceData.enhancedText;
-            console.log('[ImageCreationPanel] 增强结果: success=', enhanceData.success, 'enhancedLen=', enhanceData.enhancedText?.length);
-          } else {
-            console.warn('[ImageCreationPanel] 增强API返回非200:', enhanceRes.status);
-          }
+          if (enhanceData.success && enhanceData.enhancedText) enhancedPromptText = enhanceData.enhancedText;
+          console.log('[ImageCreationPanel] 增强结果: success=', enhanceData.success, 'enhancedLen=', enhanceData.enhancedText?.length);
         } catch (e) { console.warn('[ImageCreationPanel] 提示词增强失败:', e); /* 增强失败不阻断 */ }
 
         // 设计还原时：确保最终提示词包含参考图描述（增强API可能丢失描述）
@@ -931,6 +938,7 @@ export function ImageCreationPanel({ onBack, initialPrompt, autoGenerate, initia
           style: selectedStyle,
           size: selectedSize,
           cfgScale, steps, batchSize,
+          n: batchSize,
         };
         // 传递参考图片给生成API
         // 重要：无论创作意图是reference还是reinterpret，都传参考图给生成模型
@@ -944,15 +952,14 @@ export function ImageCreationPanel({ onBack, initialPrompt, autoGenerate, initia
         }
         console.log('[ImageCreationPanel] 生成参数: intent=', creativeIntent, 'image=', refImageUrls.length > 0 ? 'provided' : 'none');
 
-        const response = await fetch('/api/image/generate', {
+        const data = await clientApiFetch<ImageCreationPanelApiResponse>('/api/image/generate', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getBYOKRequestHeaders() },
+          headers: getBYOKRequestHeaders(),
           body: JSON.stringify(genBody),
+          timeoutMs: IMAGE_PANEL_GENERATE_TIMEOUT_MS,
         });
         if (cancelled) { console.log('[ImageCreationPanel] 生成请求后StrictMode卸载, 继续处理结果'); }
-        console.log('[ImageCreationPanel] image/generate响应:', response.status, response.ok);
-        const data = await response.json();
-        if (!response.ok) throw new Error(formatProviderError(data, '生成失败'));
+        console.log('[ImageCreationPanel] image/generate响应: clientApiFetch ok');
         if (data.success) {
           const urls: string[] = data.imageUrls || (data.images || []).map((img: { url: string } | string) =>
             typeof img === 'string' ? img : img.url
@@ -1032,15 +1039,14 @@ export function ImageCreationPanel({ onBack, initialPrompt, autoGenerate, initia
       if (hasRefImages) {
         const refImageUrl = imageRefs.find(r => r.url)?.url;
         if (refImageUrl) {
-          const understandRes = await fetch('/api/image/understand', {
+          const understandData = await clientApiFetch<ImageCreationPanelApiResponse>('/api/image/understand', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               imageUrl: refImageUrl,
               question: chatInput.trim(),
             }),
+            timeoutMs: IMAGE_PANEL_REQUEST_TIMEOUT_MS,
           });
-          const understandData = understandRes.ok ? await understandRes.json() : null;
           if (understandData?.success && understandData.description) {
             const aiMsg: ChatMessage = { id: genId(), role: 'assistant', content: understandData.description, timestamp: Date.now() };
             setChatMessages(prev => [...prev, aiMsg]);
@@ -1051,13 +1057,16 @@ export function ImageCreationPanel({ onBack, initialPrompt, autoGenerate, initia
       }
 
       // 默认：提示词增强
-      const response = await fetch('/api/prompt/enhance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: chatInput.trim(), sceneType: 'abstract', composition: selectedComposition }),
-      });
-
-      const data = response.ok ? await response.json() : null;
+      let data: ImageCreationPanelApiResponse | null = null;
+      try {
+        data = await clientApiFetch<ImageCreationPanelApiResponse>('/api/prompt/enhance', {
+          method: 'POST',
+          body: JSON.stringify({ text: chatInput.trim(), sceneType: 'abstract', composition: selectedComposition }),
+          timeoutMs: IMAGE_PANEL_REQUEST_TIMEOUT_MS,
+        });
+      } catch {
+        data = null;
+      }
       const aiContent = data?.enhancedPrompt || `针对「${chatInput.trim()}」的建议：\n\n1. 建议使用具体描述替代抽象概念\n2. 添加光照和氛围描述（如"金色日落"）\n3. 指定画面构图（如"特写"）\n4. 可尝试 ${STYLE_PRESETS.find(s => s.code === selectedStyle)?.name || '写实'} 风格获得更好效果`;
 
       const aiMsg: ChatMessage = { id: genId(), role: 'assistant', content: aiContent, timestamp: Date.now() };
@@ -1665,8 +1674,11 @@ export function ImageCreationPanel({ onBack, initialPrompt, autoGenerate, initia
                         try {
                           const formData = new FormData();
                           formData.append('file', file);
-                          const res = await fetch('/api/upload/material', { method: 'POST', body: formData });
-                          const data = await res.json();
+                          const data = await clientApiFetch<ImageCreationPanelApiResponse>('/api/upload/material', {
+                            method: 'POST',
+                            body: formData,
+                            timeoutMs: IMAGE_PANEL_UPLOAD_TIMEOUT_MS,
+                          });
                           if (data.success) {
                             setImageDocs(prev => prev.map(d =>
                               d.name === file.name && d.uploading ? { ...d, url: data.url, uploading: false } : d
@@ -1808,6 +1820,12 @@ export function ImageCreationPanel({ onBack, initialPrompt, autoGenerate, initia
                 className="w-full text-xs bg-accent/10 border border-border rounded-lg px-3 py-2 text-foreground/80 outline-none resize-none min-h-[48px] max-h-[80px] placeholder:text-foreground/25 focus:border-primary/30 mt-1.5"
                 rows={2}
               />
+              <div className="mt-3">
+                <div className="text-[10px] text-foreground/40 mb-1">生成数量</div>
+                <div className="flex gap-1">{[1, 2, 3, 4].map(n => (
+                  <button key={n} onClick={() => setBatchSize(n)} className={`flex-1 text-[11px] py-1 rounded transition-all ${batchSize === n ? 'bg-primary/10 text-primary' : 'text-foreground/50 hover:bg-accent/20'}`}>{n} 张</button>
+                ))}</div>
+              </div>
             </div>
 
           </div>

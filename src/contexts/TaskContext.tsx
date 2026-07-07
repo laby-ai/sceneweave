@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { BackgroundTask, TaskStatus, TaskContextType } from '@/types/task';
+import { clientApiFetch, clientApiPath } from '@/lib/client-api';
 
 const TaskContext = createContext<TaskContextType | undefined>(undefined);
 
@@ -11,6 +12,19 @@ const LOCAL_OPTIMISTIC_TASK_GRACE_MS = 2 * 60 * 1000;
 const PERSISTED_TASK_LIMIT = 80;
 const PERSISTED_TASK_BYTES_LIMIT = 320_000;
 const SERVER_TASK_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+type TasksListResponse = {
+  tasks?: BackgroundTask[];
+  cleanupCount?: number;
+};
+
+type DeleteTasksResponse = {
+  success?: boolean;
+  deleted?: number;
+};
+
+const TASK_SYNC_TIMEOUT_MS = 15_000;
+const TASK_MUTATION_TIMEOUT_MS = 20_000;
 
 const isTerminalTask = (task: BackgroundTask) =>
   ['completed', 'failed', 'cancelled'].includes(task.status);
@@ -119,21 +133,20 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     log('开始从服务端同步任务...');
 
     try {
-      const response = await fetch('/api/tasks');
+      const data = await clientApiFetch<TasksListResponse>('/api/tasks', {
+        timeoutMs: TASK_SYNC_TIMEOUT_MS,
+      });
+      const serverTasks: BackgroundTask[] = Array.isArray(data.tasks) ? data.tasks : [];
+      const cleanupCount = typeof data.cleanupCount === 'number' ? data.cleanupCount : 0;
+      setLastCleanupCount(cleanupCount);
+      setLastSyncedAt(Date.now());
+      setLastSyncError(null);
+      log(`从服务端获取到 ${serverTasks.length} 个任务`);
+      if (cleanupCount > 0) {
+        log(`服务端恢复了 ${cleanupCount} 个超时任务`);
+      }
       
-      if (response.ok) {
-        const data = await response.json();
-        const serverTasks: BackgroundTask[] = Array.isArray(data.tasks) ? data.tasks : [];
-        const cleanupCount = typeof data.cleanupCount === 'number' ? data.cleanupCount : 0;
-        setLastCleanupCount(cleanupCount);
-        setLastSyncedAt(Date.now());
-        setLastSyncError(null);
-        log(`从服务端获取到 ${serverTasks.length} 个任务`);
-        if (cleanupCount > 0) {
-          log(`服务端恢复了 ${cleanupCount} 个超时任务`);
-        }
-        
-        // 合并任务：服务端任务优先。服务端已不存在的 UUID/codex 探针任务不再从 localStorage 回流。
+      // 合并任务：服务端任务优先。服务端已不存在的 UUID/codex 探针任务不再从 localStorage 回流。
         setTasks(prev => {
           const taskMap = new Map<string, BackgroundTask>();
           const serverTaskIds = new Set(serverTasks.map(task => task.id));
@@ -177,10 +190,6 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         });
         
         lastSyncTimeRef.current = now;
-      } else {
-        const errorText = await response.text();
-        setLastSyncError(errorText || `任务同步失败：HTTP ${response.status}`);
-      }
     } catch (error) {
       console.error('[TaskContext] 从服务端同步任务失败:', error);
       setLastSyncError(error instanceof Error ? error.message : '任务同步失败，请稍后重试');
@@ -364,7 +373,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const source = new EventSource(`/api/tasks/${task.id}/events`);
+      const source = new EventSource(clientApiPath(`/api/tasks/${task.id}/events`));
       taskStreamsRef.current.set(task.id, source);
       updateExistingTask(task.id, { streamStatus: 'connecting' });
 
@@ -429,17 +438,12 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     log('批量删除任务:', ids);
     // 调用 API 删除服务端任务
     try {
-      const response = await fetch('/api/tasks', {
+      const result = await clientApiFetch<DeleteTasksResponse>('/api/tasks', {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ taskIds: ids }),
+        timeoutMs: TASK_MUTATION_TIMEOUT_MS,
       });
-      if (!response.ok) {
-        console.error('删除服务端任务失败:', await response.text());
-      } else {
-        const result = await response.json();
-        log('服务端删除结果:', result);
-      }
+      log('服务端删除结果:', result);
     } catch (error) {
       console.error('删除服务端任务请求失败:', error);
     }
@@ -501,18 +505,12 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       log('准备删除服务端任务:', allTaskIds);
       
       if (allTaskIds.length > 0) {
-        const response = await fetch('/api/tasks', {
+        const result = await clientApiFetch<DeleteTasksResponse>('/api/tasks', {
           method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ taskIds: allTaskIds }),
+          timeoutMs: TASK_MUTATION_TIMEOUT_MS,
         });
-        
-        if (response.ok) {
-          const result = await response.json();
-          log('服务端任务删除结果:', result);
-        } else {
-          console.error('清空服务端任务失败:', await response.text());
-        }
+        log('服务端任务删除结果:', result);
       }
     } catch (error) {
       console.error('清空服务端任务请求失败:', error);
