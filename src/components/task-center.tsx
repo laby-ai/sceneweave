@@ -43,6 +43,7 @@ import {
 import { useTasks } from '@/contexts/TaskContext';
 import { BackgroundTask, TaskType, TaskStatus } from '@/types/task';
 import { getBYOKRequestHeaders } from '@/lib/byok-client';
+import { clientApiFetch } from '@/lib/client-api';
 import { deriveProductionSegmentUiState } from '@/lib/production-segment-ui';
 import { useTaskCenterProviderRecovery } from '@/hooks/useTaskCenterProviderRecovery';
 import { formatDistanceToNow } from 'date-fns';
@@ -55,6 +56,26 @@ interface TaskCenterProps {
   onViewConfig?: (task: BackgroundTask) => void;
   onOpenResult?: (task: BackgroundTask) => void;
   onRegenerate?: (task: BackgroundTask) => void;
+}
+
+type TaskCenterApiResponse = {
+  success?: boolean;
+  error?: string;
+  task?: BackgroundTask;
+  segmentIndex?: number;
+  successSegmentCount?: number;
+  segmentCount?: number;
+  merged?: boolean;
+};
+
+const TASK_CENTER_REQUEST_TIMEOUT_MS = 20_000;
+const TASK_CENTER_POLL_TIMEOUT_MS = 10_000;
+
+function taskCenterErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message && !error.message.startsWith('request_failed_')) {
+    return error.message;
+  }
+  return fallback;
 }
 
 const typeIcons: Record<TaskType, typeof Video> = {
@@ -214,20 +235,15 @@ function TaskItem({ task, onSync, isSelected, onSelect, showCheckbox, onViewConf
 
   const handleCancel = async () => {
     try {
-      const response = await fetch(`/api/tasks/${task.id}`, {
+      await clientApiFetch<TaskCenterApiResponse>(`/api/tasks/${task.id}`, {
         method: 'DELETE',
+        timeoutMs: TASK_CENTER_REQUEST_TIMEOUT_MS,
       });
-      
-      if (response.ok) {
-        cancelTask(task.id);
-        onSync();
-      } else {
-        const error = await response.json();
-        alert(error.error || '取消任务失败');
-      }
+      cancelTask(task.id);
+      onSync();
     } catch (error) {
       console.error('取消任务失败:', error);
-      alert('取消任务失败，请重试');
+      alert(taskCenterErrorMessage(error, '取消任务失败，请重试'));
     }
   };
 
@@ -282,23 +298,22 @@ function TaskItem({ task, onSync, isSelected, onSelect, showCheckbox, onViewConf
     const retryKey = `${task.id}:${segmentIndex}`;
     setSegmentRetryingKey(retryKey);
     try {
-      const res = await fetch('/api/production/assembly-plan/segment/retry', {
+      const data = await clientApiFetch<TaskCenterApiResponse>('/api/production/assembly-plan/segment/retry', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           parentTaskId: task.id,
           segmentIndex,
           childTaskId: childTaskId || undefined,
         }),
+        timeoutMs: TASK_CENTER_REQUEST_TIMEOUT_MS,
       });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
+      if (!data.success) {
         alert(data.error || '片段重新排队失败');
         return;
       }
       await onSync();
-    } catch {
-      alert('网络错误，片段重新排队失败');
+    } catch (error) {
+      alert(taskCenterErrorMessage(error, '网络错误，片段重新排队失败'));
     } finally {
       setSegmentRetryingKey(null);
     }
@@ -307,18 +322,18 @@ function TaskItem({ task, onSync, isSelected, onSelect, showCheckbox, onViewConf
   const handleRetryMergeSegments = async () => {
     setMergeRetrying(true);
     try {
-      const res = await fetch(`/api/tasks/${task.id}/merge-segments`, {
+      const data = await clientApiFetch<TaskCenterApiResponse>(`/api/tasks/${task.id}/merge-segments`, {
         method: 'POST',
+        timeoutMs: TASK_CENTER_REQUEST_TIMEOUT_MS,
       });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
+      if (!data.success) {
         alert(data.error || '片段合成失败，请稍后重试');
         return;
       }
       await onSync();
       alert('已使用保留片段合成成片，未重新调用视频生成供应商。');
-    } catch {
-      alert('网络错误，片段合成失败');
+    } catch (error) {
+      alert(taskCenterErrorMessage(error, '网络错误，片段合成失败'));
     } finally {
       setMergeRetrying(false);
     }
@@ -328,20 +343,22 @@ function TaskItem({ task, onSync, isSelected, onSelect, showCheckbox, onViewConf
     const resumeKey = `${task.id}:${segmentIndex}:dry-run`;
     setSegmentResumeKey(resumeKey);
     try {
-      const res = await fetch(`/api/tasks/${task.id}/resume-segment`, {
+      const data = await clientApiFetch<TaskCenterApiResponse>(`/api/tasks/${task.id}/resume-segment`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ segmentIndex, dryRun: true }),
+        timeoutMs: TASK_CENTER_REQUEST_TIMEOUT_MS,
       });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
+      if (!data.success) {
         alert(data.error || '片段恢复检查失败');
         return;
       }
       await onSync();
-      alert(`已确认：可只补第 ${data.segmentIndex + 1} 个片段，已成功的 ${data.successSegmentCount}/${data.segmentCount} 个片段不会重跑。`);
-    } catch {
-      alert('网络错误，片段恢复检查失败');
+      const checkedSegmentIndex = typeof data.segmentIndex === 'number' ? data.segmentIndex : segmentIndex;
+      const successSegmentCount = typeof data.successSegmentCount === 'number' ? data.successSegmentCount : 0;
+      const segmentCount = typeof data.segmentCount === 'number' ? data.segmentCount : 0;
+      alert(`已确认：可只补第 ${checkedSegmentIndex + 1} 个片段，已成功的 ${successSegmentCount}/${segmentCount} 个片段不会重跑。`);
+    } catch (error) {
+      alert(taskCenterErrorMessage(error, '网络错误，片段恢复检查失败'));
     } finally {
       setSegmentResumeKey(null);
     }
@@ -360,29 +377,26 @@ function TaskItem({ task, onSync, isSelected, onSelect, showCheckbox, onViewConf
     const resumeKey = `${task.id}:${segmentIndex}:real`;
     setSegmentResumeKey(resumeKey);
     try {
-      const res = await fetch(`/api/tasks/${task.id}/resume-segment`, {
+      const data = await clientApiFetch<TaskCenterApiResponse>(`/api/tasks/${task.id}/resume-segment`, {
         method: 'POST',
-        headers: {
-          ...byokHeaders,
-          'Content-Type': 'application/json',
-        },
+        headers: byokHeaders,
         body: JSON.stringify({
           segmentIndex,
           dryRun: false,
           allowRealCost: true,
           mergeAfterComplete: true,
         }),
+        timeoutMs: TASK_CENTER_REQUEST_TIMEOUT_MS,
       });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
+      if (!data.success) {
         alert(data.error || '真实补段失败');
         await onSync();
         return;
       }
       await onSync();
       alert(data.merged ? '失败片段已补齐，并已合成为成片。' : '失败片段已补齐，仍有其他片段待处理。');
-    } catch {
-      alert('网络错误，真实补段失败');
+    } catch (error) {
+      alert(taskCenterErrorMessage(error, '网络错误，真实补段失败'));
     } finally {
       setSegmentResumeKey(null);
     }
@@ -392,12 +406,11 @@ function TaskItem({ task, onSync, isSelected, onSelect, showCheckbox, onViewConf
     setRetrying(true);
     try {
       // 调用后端重试API，自动切换可用服务重试
-      const res = await fetch(`/api/tasks/${task.id}`, {
+      const data = await clientApiFetch<TaskCenterApiResponse>(`/api/tasks/${task.id}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'retry' }),
+        timeoutMs: TASK_CENTER_REQUEST_TIMEOUT_MS,
       });
-      const data = await res.json();
       if (data.success) {
         onSync(); // 刷新任务列表
       } else {
@@ -1524,14 +1537,14 @@ export function TaskCenter({ onClose, onViewConfig, onOpenResult, onRegenerate }
 
     for (const task of runningTasks) {
       try {
-        const response = await fetch(`/api/tasks/${task.id}`);
+        const { task: serverTask } = await clientApiFetch<TaskCenterApiResponse>(`/api/tasks/${task.id}`, {
+          timeoutMs: TASK_CENTER_POLL_TIMEOUT_MS,
+          redirectOnUnauthorized: false,
+        });
         
-        if (response.ok) {
-          const { task: serverTask } = await response.json();
-          
-          if (serverTask.status !== task.status || 
+        if (serverTask && (serverTask.status !== task.status ||
               serverTask.progress !== task.progress ||
-              serverTask.stage !== task.stage) {
+              serverTask.stage !== task.stage)) {
             updateTask(task.id, {
               status: serverTask.status,
               progress: serverTask.progress,
@@ -1542,7 +1555,6 @@ export function TaskCenter({ onClose, onViewConfig, onOpenResult, onRegenerate }
               completedAt: serverTask.completedAt,
             });
           }
-        }
       } catch (error) {
         console.error(`轮询任务 ${task.id} 状态失败:`, error);
       }

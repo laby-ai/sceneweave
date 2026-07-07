@@ -44,12 +44,53 @@ import {
 import { ConsoleTypeButton } from './generation-console/console-type-button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatProviderError, getBYOKRequestHeaders } from '@/lib/byok-client';
+import { clientApiFetch } from '@/lib/client-api';
 import { SuggestionChip } from './generation-console/suggestion-chip';
 import { TaskList } from './generation-console/task-list';
 import { SmartPanel } from './generation-console/smart-panel';
 import { ConfirmationPanel } from './generation-console/confirmation-panel';
 import { PromptPreview, type PromptData } from './prompt-preview';
 import { getBgmTypeList } from '@/constants/bgm-types';
+
+type GenerationConsoleApiResponse = {
+  success: boolean;
+  error: string;
+  content: string;
+  url: string;
+  name: string;
+  type: string;
+  taskId: string;
+  imageUrls: string[];
+  image_urls: string[];
+  task?: {
+    status?: string;
+    progress?: number;
+    message?: string;
+    error?: string;
+    result?: {
+      videoUrl?: string;
+      imageUrls?: string[];
+      image_urls?: string[];
+      degraded?: boolean;
+      lastFrameUrl?: string;
+    };
+  };
+  result?: {
+    message?: string;
+    readyToExecute?: boolean;
+    intent?: string;
+    collectedParams?: Record<string, unknown>;
+  };
+  message?: string;
+  readyToExecute?: boolean;
+  intent?: string;
+  collectedParams?: Record<string, unknown>;
+};
+
+const GENERATION_CONSOLE_REQUEST_TIMEOUT_MS = 30_000;
+const GENERATION_CONSOLE_POLL_TIMEOUT_MS = 10_000;
+const GENERATION_CONSOLE_UPLOAD_TIMEOUT_MS = 60_000;
+
 
 // ============================================================
 // 模型选择配置
@@ -307,10 +348,13 @@ export default function GenerationConsole({
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
         await new Promise((r) => setTimeout(r, 2000));
         try {
-          const res = await fetch(`/api/tasks/${taskId}`);
-          const data = await res.json();
-          if (data.task) {
-            const progress = data.task.progress || 0;
+          const data = await clientApiFetch<GenerationConsoleApiResponse>(`/api/tasks/${taskId}`, {
+            timeoutMs: GENERATION_CONSOLE_POLL_TIMEOUT_MS,
+            redirectOnUnauthorized: false,
+          });
+          const serverTask = data.task;
+          if (serverTask) {
+            const progress = serverTask.progress || 0;
             const statusMap: Record<string, ConsoleTask['status']> = {
               pending: 'pending',
               running: 'processing',
@@ -318,7 +362,7 @@ export default function GenerationConsole({
               completed: 'completed',
               failed: 'failed',
             };
-            const newStatus = statusMap[data.task.status] || 'processing';
+            const newStatus = statusMap[serverTask.status || 'processing'] || 'processing';
             setTasks((prev) =>
               prev.map((t) =>
                 t.id === consoleId
@@ -326,18 +370,18 @@ export default function GenerationConsole({
                       ...t,
                       status: newStatus,
                       progress,
-                      message: data.task.message || t.message,
-                      resultUrl: data.task.result?.videoUrl,
+                      message: serverTask.message || t.message,
+                      resultUrl: serverTask.result?.videoUrl,
                     }
                   : t
               )
             );
-            if (data.task.status === 'completed') {
-              const isDegraded = data.task.result?.degraded === true;
+            if (serverTask.status === 'completed') {
+              const isDegraded = serverTask.result?.degraded === true;
               setTasks((prev) =>
                 prev.map((t) =>
                   t.id === consoleId
-                    ? { ...t, status: 'completed' as const, progress: 100, resultUrl: data.task.result?.videoUrl, degraded: isDegraded }
+                    ? { ...t, status: 'completed' as const, progress: 100, resultUrl: serverTask.result?.videoUrl, degraded: isDegraded }
                     : t
                 )
               );
@@ -348,19 +392,19 @@ export default function GenerationConsole({
                   prompt: tasks.find((t) => t.id === consoleId)?.prompt || '',
                   status: 'completed',
                   progress: 100,
-                  videoUrl: data.task.result?.videoUrl,
-                  coverUrl: data.task.result?.lastFrameUrl,
+                  videoUrl: serverTask.result?.videoUrl,
+                  coverUrl: serverTask.result?.lastFrameUrl,
                   createdAt: Date.now(),
                 });
               }
               setShowResultView(true);
               return;
             }
-            if (data.task.status === 'failed') {
+            if (serverTask.status === 'failed') {
               setTasks((prev) =>
                 prev.map((t) =>
                   t.id === consoleId
-                    ? { ...t, status: 'failed', message: data.task.error || '生成失败' }
+                    ? { ...t, status: 'failed', message: serverTask.error || '生成失败' }
                     : t
                 )
               );
@@ -383,8 +427,11 @@ export default function GenerationConsole({
       try {
         const formData = new FormData();
         formData.append('file', file);
-        const res = await fetch('/api/upload', { method: 'POST', body: formData });
-        const data = await res.json();
+        const data = await clientApiFetch<GenerationConsoleApiResponse>('/api/upload', {
+          method: 'POST',
+          body: formData,
+          timeoutMs: GENERATION_CONSOLE_UPLOAD_TIMEOUT_MS,
+        });
         if (data.success) {
           setAttachments((prev) => [...prev, { url: data.url, name: data.name, type: data.type }]);
         } else {
@@ -400,12 +447,11 @@ export default function GenerationConsole({
   const handleUrlExtract = async () => {
     if (!urlInput.trim()) return;
     try {
-      const res = await fetch('/api/fetch-url', {
+      const data = await clientApiFetch<GenerationConsoleApiResponse>('/api/fetch-url', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: urlInput.trim() }),
+        timeoutMs: GENERATION_CONSOLE_REQUEST_TIMEOUT_MS,
       });
-      const data = await res.json();
       if (data.content) {
         setPrompt((prev) => prev + (prev ? '\n\n' : '') + '【链接内容】\n' + data.content.substring(0, 800));
       } else {
@@ -428,8 +474,11 @@ export default function GenerationConsole({
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const res = await fetch('/api/upload', { method: 'POST', body: formData });
-      const data = await res.json();
+      const data = await clientApiFetch<GenerationConsoleApiResponse>('/api/upload', {
+        method: 'POST',
+        body: formData,
+        timeoutMs: GENERATION_CONSOLE_UPLOAD_TIMEOUT_MS,
+      });
       if (data.success) {
         setBgmUrl(data.url);
         setBgmMode('upload');
@@ -493,12 +542,12 @@ export default function GenerationConsole({
           : '',
     };
 
-    const res = await fetch('/api/video/submit', {
+    const data = await clientApiFetch<GenerationConsoleApiResponse>('/api/video/submit', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...getBYOKRequestHeaders() },
+      headers: getBYOKRequestHeaders(),
       body: JSON.stringify(videoBody),
+      timeoutMs: GENERATION_CONSOLE_REQUEST_TIMEOUT_MS,
     });
-    const data = await res.json();
     if (data.taskId) {
       setTasks((prev) =>
         prev.map((t) => (t.id === consoleId ? { ...t, message: '视频生成中...' } : t))
@@ -526,17 +575,17 @@ export default function GenerationConsole({
     ]);
 
     try {
-      const res = await fetch('/api/image/generate', {
+      const data = await clientApiFetch<GenerationConsoleApiResponse>('/api/image/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getBYOKRequestHeaders() },
+        headers: getBYOKRequestHeaders(),
         body: JSON.stringify({
           prompt: generatePrompt,
           size: aspectRatio === '9:16' ? '1024x1792' : aspectRatio === '16:9' ? '1792x1024' : '1024x1024',
           count: 1,
           async: true,
         }),
+        timeoutMs: GENERATION_CONSOLE_REQUEST_TIMEOUT_MS,
       });
-      const data = await res.json();
       if (data.taskId) {
         // 异步模式：轮询任务状态
         pollImageTask(data.taskId, consoleId, generatePrompt);
@@ -577,10 +626,13 @@ export default function GenerationConsole({
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
         await new Promise((r) => setTimeout(r, 2000));
         try {
-          const res = await fetch(`/api/tasks/${taskId}`);
-          const data = await res.json();
-          if (data.task) {
-            const progress = data.task.progress || 0;
+          const data = await clientApiFetch<GenerationConsoleApiResponse>(`/api/tasks/${taskId}`, {
+            timeoutMs: GENERATION_CONSOLE_POLL_TIMEOUT_MS,
+            redirectOnUnauthorized: false,
+          });
+          const serverTask = data.task;
+          if (serverTask) {
+            const progress = serverTask.progress || 0;
             const statusMap: Record<string, ConsoleTask['status']> = {
               pending: 'pending',
               running: 'processing',
@@ -588,8 +640,8 @@ export default function GenerationConsole({
               completed: 'completed',
               failed: 'failed',
             };
-            const newStatus = statusMap[data.task.status] || 'processing';
-            const imageUrl = data.task.result?.imageUrls?.[0] || data.task.result?.image_urls?.[0];
+            const newStatus = statusMap[serverTask.status || 'processing'] || 'processing';
+            const imageUrl = serverTask.result?.imageUrls?.[0] || serverTask.result?.image_urls?.[0];
             setTasks((prev) =>
               prev.map((t) =>
                 t.id === consoleId
@@ -597,14 +649,14 @@ export default function GenerationConsole({
                       ...t,
                       status: newStatus,
                       progress,
-                      message: data.task.message || t.message,
+                      message: serverTask.message || t.message,
                       resultUrl: imageUrl,
                     }
                   : t
               )
             );
-            if (data.task.status === 'completed') {
-              const isDegraded = data.task.result?.degraded === true;
+            if (serverTask.status === 'completed') {
+              const isDegraded = serverTask.result?.degraded === true;
               setTasks((prev) =>
                 prev.map((t) =>
                   t.id === consoleId
@@ -615,14 +667,14 @@ export default function GenerationConsole({
               const image: GeneratedImage = {
                 id: consoleId,
                 taskId,
-                imageUrls: data.task.result?.imageUrls || data.task.result?.image_urls || [],
+                imageUrls: serverTask.result?.imageUrls || serverTask.result?.image_urls || [],
                 prompt: generatePrompt,
                 createdAt: Date.now(),
               };
               if (onImageGenerated) onImageGenerated(image);
               return;
             }
-            if (data.task.status === 'failed') {
+            if (serverTask.status === 'failed') {
               return;
             }
           }
@@ -774,15 +826,14 @@ export default function GenerationConsole({
     setSmartMessages((prev) => [...prev, { role: 'user', content: userMsg }]);
     setIsGenerating(true);
     try {
-      const res = await fetch('/api/subtitle/chat', {
+      const data = await clientApiFetch<GenerationConsoleApiResponse>('/api/subtitle/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: [...smartMessages.map((m) => ({ role: m.role, content: m.content })), { role: 'user', content: userMsg }],
           dialogState: { step: smartMessages.length + 1, totalSteps: 4 },
         }),
+        timeoutMs: GENERATION_CONSOLE_REQUEST_TIMEOUT_MS,
       });
-      const data = await res.json();
       const result = data.result || data;
       const aiText = result.message || '收到，请稍候...';
       setSmartMessages((prev) => [...prev, { role: 'assistant', content: aiText }]);
@@ -1356,8 +1407,11 @@ export default function GenerationConsole({
                     try {
                       const formData = new FormData();
                       formData.append('file', file);
-                      const res = await fetch('/api/upload/material', { method: 'POST', body: formData });
-                      const data = await res.json();
+                      const data = await clientApiFetch<GenerationConsoleApiResponse>('/api/upload/material', {
+                        method: 'POST',
+                        body: formData,
+                        timeoutMs: GENERATION_CONSOLE_UPLOAD_TIMEOUT_MS,
+                      });
                       if (data.success) {
                         setAttachments((prev) => [...prev, { url: data.url, name: file.name || '粘贴图片', type: file.type }]);
                         setPasteToast(`已添加${imageFiles.length > 1 ? ` ${imageFiles.length} 张` : ''}参考图片`);

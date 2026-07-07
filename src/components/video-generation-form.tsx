@@ -53,7 +53,8 @@ import { OptionSelectorModal } from '@/components/OptionSelectorModal';
 import { EnhancedPromptModal } from '@/components/EnhancedPromptModal';
 import { SubtitleEditor } from '@/components/subtitle-editor';
 import {
-  SubtitleConfig,
+  type SubtitleConfig,
+  type SubtitleSegment,
   DEFAULT_SUBTITLE_STYLE,
   createDefaultSubtitleSegment,
   autoSplitSubtitle,
@@ -78,6 +79,8 @@ import MusicLibraryBrowser from '@/components/music-library-browser';
 import type { LibraryTrack } from '@/constants/music-library';
 import { VideoGenerationSettingsPanel } from '@/components/video/video-generation-settings-panel';
 import { VideoGenerationSubmitPanel } from '@/components/video/video-generation-submit-panel';
+import type { PromptBasedShot } from '@/lib/storyboard-generator';
+import { clientApiFetch } from '@/lib/client-api';
 import {
   createDefaultVideoTextSegment,
   generateVideoTextSegmentId,
@@ -85,6 +88,25 @@ import {
   type VideoGenerationFormProps,
   type VideoTextSegment,
 } from '@/lib/video-generation-form-model';
+
+type VideoGenerationFormApiResponse = {
+  success?: boolean;
+  error?: string;
+  recommendedBgm?: string;
+  bgmName?: string;
+  reason?: string;
+  url?: string;
+  enhancedPrompt?: string;
+  subtitle?: string;
+  segments?: SubtitleSegment[];
+  taskId?: string;
+};
+
+type InitialMaterialInput = string | Partial<Material>;
+
+const VIDEO_FORM_REQUEST_TIMEOUT_MS = 30_000;
+const VIDEO_FORM_UPLOAD_TIMEOUT_MS = 60_000;
+
 
 export function VideoGenerationForm({ 
   onGenerate, 
@@ -328,7 +350,7 @@ export function VideoGenerationForm({
       if (hasTextKeyword) {
         // 如果有文字相关关键词，尝试提取整个提示词中可能的文字内容
         // 这里简化处理，直接使用整个提示词（去掉一些明显的描述性词汇）
-        let candidateText = prompt
+        const candidateText = prompt
           .replace(/.*?(显示|文字|字幕|写着|写有|写的是|内容是|text|display|show|saying|written).*?[:：]?/i, '')
           .trim();
         
@@ -351,13 +373,11 @@ export function VideoGenerationForm({
 
     setIsRecommendingBgm(true);
     try {
-      const response = await fetch('/api/prompt/bgm-recommend', {
+      const data = await clientApiFetch<VideoGenerationFormApiResponse>('/api/prompt/bgm-recommend', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: promptText }),
+        timeoutMs: VIDEO_FORM_REQUEST_TIMEOUT_MS,
       });
-      
-      const data = await response.json();
       
       if (data.success && data.recommendedBgm && data.recommendedBgm !== 'none') {
         setRecommendedBgm({
@@ -436,12 +456,11 @@ export function VideoGenerationForm({
       formData.append('file', file);
       formData.append('type', 'audio');
 
-      const response = await fetch('/api/upload', {
+      const data = await clientApiFetch<VideoGenerationFormApiResponse>('/api/upload', {
         method: 'POST',
         body: formData,
+        timeoutMs: VIDEO_FORM_UPLOAD_TIMEOUT_MS,
       });
-
-      const data = await response.json();
 
       if (data.success && data.url) {
         setCustomAudio({
@@ -533,7 +552,7 @@ export function VideoGenerationForm({
       }
       if (Array.isArray(initialConfig.materials)) {
         // 处理 materials 可能是字符串数组或对象数组的情况
-        const processedMaterials: Material[] = initialConfig.materials.map((m: any, index: number): Material | null => {
+        const processedMaterials: Material[] = initialConfig.materials.map((m: unknown, index: number): Material | null => {
           if (typeof m === 'string') {
             // 如果是字符串URL，转换为 Material 对象
             const isVideo = m.match(/\.(mp4|webm|mov|avi)$/i);
@@ -546,11 +565,13 @@ export function VideoGenerationForm({
           }
           // 如果已经是对象，确保有 id
           if (m && typeof m === 'object') {
+            const material = m as InitialMaterialInput;
+            if (typeof material === 'string' || typeof material.url !== 'string') return null;
             return {
-              id: m.id || `material-${index}-${Date.now()}`,
-              type: m.type || (m.url?.match(/\.(mp4|webm|mov|avi)$/i) ? 'video' : 'image'),
-              url: m.url,
-              name: m.name || `素材${index + 1}`,
+              id: material.id || `material-${index}-${Date.now()}`,
+              type: material.type || (material.url.match(/\.(mp4|webm|mov|avi)$/i) ? 'video' : 'image'),
+              url: material.url,
+              name: material.name || `素材${index + 1}`,
             };
           }
           return null;
@@ -663,27 +684,18 @@ export function VideoGenerationForm({
     
     try {
       console.log('[EnhancedPrompt] 开始请求 API...');
-      const response = await fetch('/api/prompt/enhance', {
+      const data = await clientApiFetch<VideoGenerationFormApiResponse>('/api/prompt/enhance', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({ 
           prompt,
           sceneType: 'portrait', // 可根据实际场景类型传入
         }),
+        timeoutMs: VIDEO_FORM_REQUEST_TIMEOUT_MS,
       });
 
-      console.log('[EnhancedPrompt] 收到 API 响应', { status: response.status });
-
-      const data = await response.json();
       console.log('[EnhancedPrompt] 解析响应数据', data);
 
-      if (!response.ok) {
-        throw new Error(data.error || '增强失败');
-      }
-
-      const finalEnhancedPrompt = data.enhancedPrompt;
+      const finalEnhancedPrompt = data.enhancedPrompt || generateEnhancedPrompt(prompt);
 
       console.log('[EnhancedPrompt] 更新状态...');
       setEnhancedPrompt(finalEnhancedPrompt);
@@ -827,9 +839,8 @@ export function VideoGenerationForm({
     abortControllerRef.current = subtitleAbortController;
     
     try {
-      const response = await fetch('/api/video/generate-subtitle', {
+      const data = await clientApiFetch<VideoGenerationFormApiResponse>('/api/video/generate-subtitle', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         signal: subtitleAbortController.signal,
         body: JSON.stringify({
           prompt: getFinalPrompt(),
@@ -844,20 +855,15 @@ export function VideoGenerationForm({
       // 检查组件是否已卸载
       if (!isMountedRef.current) return;
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || '生成失败');
-      }
-
-      setSubtitleText(data.subtitle);
+      setSubtitleText(data.subtitle || '');
       
       // 如果返回了分段信息，也更新新字幕配置
-      if (data.segments && data.segments.length > 0) {
+      const generatedSegments = data.segments;
+      if (generatedSegments && generatedSegments.length > 0) {
         setSubtitleConfig(prev => ({
           ...prev,
           enabled: true,
-          segments: data.segments,
+          segments: generatedSegments,
         }));
       }
     } catch (error) {
@@ -883,9 +889,8 @@ export function VideoGenerationForm({
       throw new Error('请先输入视频描述');
     }
 
-    const response = await fetch('/api/video/generate-subtitle', {
+    const data = await clientApiFetch<VideoGenerationFormApiResponse>('/api/video/generate-subtitle', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         prompt: getFinalPrompt(),
         duration: parseInt(duration),
@@ -894,23 +899,19 @@ export function VideoGenerationForm({
         language: language,
         generateSegments: true,
       }),
+      timeoutMs: VIDEO_FORM_REQUEST_TIMEOUT_MS,
     });
 
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || '生成失败');
-    }
-
     // 更新新字幕配置
-    if (data.segments && data.segments.length > 0) {
+    const generatedSegments = data.segments;
+    if (generatedSegments && generatedSegments.length > 0) {
       setSubtitleConfig(prev => ({
         ...prev,
-        segments: data.segments,
+        segments: generatedSegments,
       }));
     }
 
-    return data.subtitle;
+    return data.subtitle || '';
   };
 
   // 字幕配音试听
@@ -1012,7 +1013,7 @@ export function VideoGenerationForm({
     extraData?: {
       subtitleSegments?: Array<{ text: string; startTime: number; endTime: number }>;
       narrationScript?: string;
-      shots?: any[];
+      shots?: PromptBasedShot[];
     }
   ) => {
     if (generatedPrompt) {
@@ -1092,7 +1093,7 @@ export function VideoGenerationForm({
       // 2. 如果用户关闭了语音旁白，不生成语音
       // 3. 背景音乐单独处理（目前仅记录选择，后续可以添加音乐生成）
       
-      let audioEnabled = audioSettings.enableVoiceNarration;
+      const audioEnabled = audioSettings.enableVoiceNarration;
       let audioPrompt: string | undefined;
       
       if (audioEnabled) {
@@ -1112,11 +1113,8 @@ export function VideoGenerationForm({
         }
       }
       
-      const response = await fetch('/api/storyboard/submit', {
+      const data = await clientApiFetch<VideoGenerationFormApiResponse>('/api/storyboard/submit', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           storyboard: currentStoryboard,
           async: runInBackground,
@@ -1138,20 +1136,15 @@ export function VideoGenerationForm({
             globalVolume: sfxGlobalVolume,
           } : undefined, // ★ 特效音配置
         }),
+        timeoutMs: VIDEO_FORM_REQUEST_TIMEOUT_MS,
       });
 
-      console.log('[Storyboard] Response status:', response.status);
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[Storyboard] API error:', errorText);
-        throw new Error(`提交分镜头任务失败: ${response.status}`);
-      }
-
-      const data = await response.json();
       console.log('[Storyboard] API response:', data);
       
       const { taskId } = data;
+      if (runInBackground && !taskId) {
+        throw new Error('后台任务提交失败：缺少任务ID');
+      }
       
       if (runInBackground) {
         // 后台模式：添加任务到任务中心
