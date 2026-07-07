@@ -1,21 +1,60 @@
 'use client';
 
-import type { Dispatch, RefObject, SetStateAction } from 'react';
+import dynamic from 'next/dynamic';
+import { useEffect, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { ArrowLeft, Film } from 'lucide-react';
 
-import AIVideoCreationPanel from '@/components/ai-video-creation-panel';
-import { FilmCreationPanel } from '@/components/film-creation-panel';
-import { ImageCreationPanel } from '@/components/image-creation-panel';
-import { GenerateWorkspace } from '@/components/generate/generate-workspace';
-import { AssetsLibrary } from '@/components/assets/assets-library';
-import { AvatarGenerator } from '@/components/avatar/AvatarGenerator';
-import { VoiceGenerator } from '@/components/voice/voice-generator';
 import { DreamboxHomeSection } from '@/components/home/dreambox-home-section';
 import { type MediaSubSection } from '@/components/home/dreambox-media-section';
 import { DreamboxResultDialogs } from '@/components/home/dreambox-result-dialogs';
 import { DreamboxSettingsSection } from '@/components/home/dreambox-settings-section';
 import { DreamboxTasksSection } from '@/components/home/dreambox-tasks-section';
 import type { FilmScript } from '@/types/film';
+
+const loadAIVideoCreationPanel = () => import('@/components/ai-video-creation-panel').then(mod => mod.default);
+const loadFilmCreationPanel = () => import('@/components/film-creation-panel').then(mod => mod.FilmCreationPanel);
+const loadImageCreationPanel = () => import('@/components/image-creation-panel').then(mod => mod.ImageCreationPanel);
+const loadGenerateWorkspace = () => import('@/components/generate/generate-workspace').then(mod => mod.GenerateWorkspace);
+const loadAssetsLibrary = () => import('@/components/assets/assets-library').then(mod => mod.AssetsLibrary);
+const loadAvatarGenerator = () => import('@/components/avatar/AvatarGenerator').then(mod => mod.AvatarGenerator);
+const loadVoiceGenerator = () => import('@/components/voice/voice-generator').then(mod => mod.VoiceGenerator);
+
+function WorkspacePanelLoading({ label }: { label: string }) {
+  return (
+    <div className="flex h-full min-h-[320px] items-center justify-center bg-background text-sm text-muted-foreground">
+      {label}
+    </div>
+  );
+}
+
+const AIVideoCreationPanel = dynamic(loadAIVideoCreationPanel, {
+  ssr: false,
+  loading: () => <WorkspacePanelLoading label="视频工作台加载中..." />,
+});
+const FilmCreationPanel = dynamic(loadFilmCreationPanel, {
+  ssr: false,
+  loading: () => <WorkspacePanelLoading label="影视创作加载中..." />,
+});
+const ImageCreationPanel = dynamic(loadImageCreationPanel, {
+  ssr: false,
+  loading: () => <WorkspacePanelLoading label="图像创作加载中..." />,
+});
+const GenerateWorkspace = dynamic(loadGenerateWorkspace, {
+  ssr: false,
+  loading: () => <WorkspacePanelLoading label="生成工作台加载中..." />,
+});
+const AssetsLibrary = dynamic(loadAssetsLibrary, {
+  ssr: false,
+  loading: () => <WorkspacePanelLoading label="资产库加载中..." />,
+});
+const AvatarGenerator = dynamic(loadAvatarGenerator, {
+  ssr: false,
+  loading: () => <WorkspacePanelLoading label="数字人加载中..." />,
+});
+const VoiceGenerator = dynamic(loadVoiceGenerator, {
+  ssr: false,
+  loading: () => <WorkspacePanelLoading label="配音工具加载中..." />,
+});
 
 interface DreamboxMainContentProps {
   activeSection: string;
@@ -201,6 +240,30 @@ export function DreamboxMainContent(props: DreamboxMainContentProps) {
     toggleColorMode,
     updateUserSettings,
   } = props;
+
+  useEffect(() => {
+    if (activeSection !== 'home') return;
+
+    const warmPrimaryWorkspaces = () => {
+      void loadGenerateWorkspace();
+      void loadFilmCreationPanel();
+      void loadImageCreationPanel();
+      void loadAIVideoCreationPanel();
+    };
+
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+      cancelIdleCallback?: (handle: number) => void;
+    };
+
+    if (typeof idleWindow.requestIdleCallback === 'function') {
+      const handle = idleWindow.requestIdleCallback(warmPrimaryWorkspaces, { timeout: 3000 });
+      return () => idleWindow.cancelIdleCallback?.(handle);
+    }
+
+    const handle = window.setTimeout(warmPrimaryWorkspaces, 1200);
+    return () => window.clearTimeout(handle);
+  }, [activeSection]);
 
   return (
     <>
