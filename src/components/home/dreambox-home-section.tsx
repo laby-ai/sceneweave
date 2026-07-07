@@ -47,6 +47,8 @@ export function DreamboxHomeSection({
                   <img
                     src={withBasePath("/home/huiying-hero-cosmic-reel-v2.png")}
                     alt="绘影宇宙胶卷制作流"
+                    loading="eager"
+                    decoding="async"
                     className="absolute inset-0 h-full w-full object-cover object-center"
                     draggable={false}
                   />
@@ -143,15 +145,27 @@ export function DreamboxHomeSection({
                         <video
                           src={`${withBasePath(item.videoSrc)}#t=0.5`}
                           poster={withBasePath(item.src)}
-                          autoPlay
                           muted
                           loop
                           playsInline
-                          preload="auto"
+                          preload="none"
+                          onMouseEnter={(event) => {
+                            void event.currentTarget.play().catch(() => undefined);
+                          }}
+                          onMouseLeave={(event) => {
+                            event.currentTarget.pause();
+                            event.currentTarget.currentTime = 0;
+                          }}
                           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                         />
                       ) : (
-                        <img src={withBasePath(item.src)} alt={item.title} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                        <img
+                          src={withBasePath(item.src)}
+                          alt={item.title}
+                          loading="lazy"
+                          decoding="async"
+                          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        />
                       )}
                       {Boolean(item.videoSrc || ['短片', '短片概念', '真实视频', '视频', '镜头', '广告', '真实片段资产'].includes(item.type)) && (
                         <>
