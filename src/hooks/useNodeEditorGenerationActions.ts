@@ -5,6 +5,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { Edge, Node } from 'reactflow';
 import { MarkerType } from 'reactflow';
 import type { CustomNodeData } from '@/components/node-editor/node-editor-shared';
+import { clientApiFetch } from '@/lib/client-api';
 
 type GenerationActionsInput = {
   nodes: Node<CustomNodeData>[];
@@ -17,11 +18,39 @@ type GenerationActionsInput = {
   updateNodeData: (nodeId: string, data: Partial<CustomNodeData>) => void;
 };
 
-function pickImageUrl(data: any): string | undefined {
+type ImageGenerateResponse = {
+  imageUrl?: string;
+  imageUrls?: string[];
+};
+
+type VideoSubmitResponse = {
+  success?: boolean;
+  videoUrl?: string;
+  error?: string;
+};
+
+type VideoComposeResponse = {
+  success?: boolean;
+  videoUrl?: string;
+};
+
+type StoryboardItem = {
+  id: string;
+  description?: string;
+  duration?: number;
+  cameraAngle?: string;
+  prompt?: string;
+};
+
+const NODE_EDITOR_IMAGE_TIMEOUT_MS = 120_000;
+const NODE_EDITOR_VIDEO_TIMEOUT_MS = 30_000;
+const NODE_EDITOR_COMPOSE_TIMEOUT_MS = 60_000;
+
+function pickImageUrl(data: ImageGenerateResponse): string | undefined {
   return data?.imageUrls?.[0] || data?.imageUrl;
 }
 
-function buildImagePrompt(sb: any, nodes: Node<CustomNodeData>[], edges: Edge[], storyboardNodeId: string) {
+function buildImagePrompt(sb: StoryboardItem, nodes: Node<CustomNodeData>[], edges: Edge[], storyboardNodeId: string) {
   if (sb.prompt) return sb.prompt;
   const connected = edges
     .filter((edge) => edge.target === storyboardNodeId)
@@ -35,7 +64,7 @@ function buildImagePrompt(sb: any, nodes: Node<CustomNodeData>[], edges: Edge[],
   const sceneText = scene?.data.sceneName
     ? `场景照片：${scene.data.sceneName}，${scene.data.sceneDescription || ''}。`
     : '';
-  return `${characterText}${sceneText}${sb.description}。高清写实照片，真实自然，专业摄影，光线柔和自然，构图平衡。`;
+  return `${characterText}${sceneText}${sb.description || ''}。高清写实照片，真实自然，专业摄影，光线柔和自然，构图平衡。`;
 }
 
 function buildVideoPrompt(source: {
@@ -65,33 +94,30 @@ function buildVideoPrompt(source: {
 }
 
 async function requestImage(prompt: string) {
-  const response = await fetch('/api/image/generate', {
+  const data = await clientApiFetch<ImageGenerateResponse>('/api/image/generate', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ prompt, size: '2K' }),
+    timeoutMs: NODE_EDITOR_IMAGE_TIMEOUT_MS,
   });
-  if (!response.ok) throw new Error(`图片 API 请求失败：${response.status}`);
-  const data = await response.json();
   const imageUrl = pickImageUrl(data);
   if (!imageUrl) throw new Error('图片 API 未返回 URL');
   return imageUrl;
 }
 
 async function requestVideo(prompt: string, duration: number, imageUrl?: string) {
-  const response = await fetch('/api/video/submit', {
+  const data = await clientApiFetch<VideoSubmitResponse>('/api/video/submit', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       prompt,
       duration,
       materials: imageUrl ? [imageUrl] : [],
     }),
+    timeoutMs: NODE_EDITOR_VIDEO_TIMEOUT_MS,
   });
-  const data = await response.json().catch(() => null);
-  if (!response.ok || !data?.success || !data.videoUrl) {
-    throw new Error(data?.error || `视频 API 请求失败：${response.status}`);
+  if (!data?.success || !data.videoUrl) {
+    throw new Error(data?.error || '视频 API 请求失败');
   }
-  return data.videoUrl as string;
+  return data.videoUrl;
 }
 
 export function useNodeEditorGenerationActions({
@@ -206,7 +232,7 @@ export function useNodeEditorGenerationActions({
     }
   }, [nodes, shouldCancel, setIsGenerating, updateNodeData]);
 
-  const createImageNode = useCallback((storyboardNode: Node<CustomNodeData>, sb: any, index: number) => {
+  const createImageNode = useCallback((storyboardNode: Node<CustomNodeData>, sb: StoryboardItem, index: number) => {
     const imageNodeId = `image_${Date.now()}_${index}`;
     const prompt = buildImagePrompt(sb, nodes, edges, storyboardNode.id);
     return {
@@ -527,12 +553,11 @@ export function useNodeEditorGenerationActions({
       const videoUrls = videoNodes.map((node) => node.data.generatedVideo).filter((url): url is string => Boolean(url));
       let finalVideo = videoUrls[0];
       if (videoUrls.length > 1) {
-        const response = await fetch('/api/video/compose', {
+        const data = await clientApiFetch<VideoComposeResponse>('/api/video/compose', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ videoUrls }),
+          timeoutMs: NODE_EDITOR_COMPOSE_TIMEOUT_MS,
         });
-        const data = await response.json().catch(() => null);
         finalVideo = data?.success && data.videoUrl ? data.videoUrl : finalVideo;
       }
       updateNodeData(finalNodeId, { status: 'success', generatedVideo: finalVideo });
