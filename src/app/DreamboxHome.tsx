@@ -82,6 +82,12 @@ interface ProductionCaseAsset {
   source: 'productionProject.assets.videoSegment' | 'productionProject.assets.finalVideo';
 }
 
+interface ProductionCaseAssetsResponse {
+  success?: boolean;
+  message?: string;
+  cases?: ProductionCaseAsset[];
+}
+
 interface HistoricalMediaAsset {
   id: string;
   kind: 'image' | 'video';
@@ -471,9 +477,11 @@ export function DreamboxHome() {
 
     async function loadProductionCaseAssets() {
       try {
-        const response = await fetch('/api/production/case-assets?limit=6', { cache: 'no-store' });
-        const data = await response.json();
-        if (!cancelled && response.ok && Array.isArray(data.cases)) {
+        const data = await clientApiFetch<ProductionCaseAssetsResponse>('/api/production/case-assets?limit=6');
+        if (data.success !== true) {
+          throw new Error(data.message || '首页制作案例资产加载失败');
+        }
+        if (!cancelled && Array.isArray(data.cases)) {
           setProductionCaseAssets(data.cases);
         }
       } catch (error) {
