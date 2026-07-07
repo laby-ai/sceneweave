@@ -1,11 +1,36 @@
 import { useCallback, type MutableRefObject } from 'react';
 import { getBYOKRequestHeaders } from '@/lib/byok-client';
+import { clientApiRequest } from '@/lib/client-api';
 import type { Material } from '@/components/material-upload';
 import type { SubtitleConfig } from '@/constants/subtitles';
 import type { LibraryTrack } from '@/constants/music-library';
 import type { SfxBinding } from '@/constants/sfx-types';
 import type { VideoConfig } from '@/lib/video-generation-form-model';
 import type { BackgroundTask } from '@/types/task';
+
+type VideoSubmitTaskResponse = {
+  taskId?: string;
+  error?: string;
+};
+
+type VideoTaskStatusResponse = {
+  task?: {
+    status: BackgroundTask['status'];
+    progress: number;
+    stage?: string;
+    message?: string;
+    result?: BackgroundTask['result'] & {
+      videoUrl?: string;
+      hasSubtitle?: boolean;
+    };
+    error?: string;
+    completedAt?: number;
+  };
+  error?: string;
+};
+
+const VIDEO_SUBMIT_TIMEOUT_MS = 30_000;
+const VIDEO_TASK_POLL_TIMEOUT_MS = 15_000;
 
 type UseVideoGenerationSubmitArgs = {
   abortControllerRef: MutableRefObject<AbortController | null>;
@@ -251,13 +276,13 @@ export function useVideoGenerationSubmit(args: UseVideoGenerationSubmitArgs) {
           console.log('  - subtitleConfig:', subtitleConfig);
           console.log('  - generateVoice:', generateVoice);
 
-          const response = await fetch(endpoint, {
+          const response = await clientApiRequest(endpoint, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...getBYOKRequestHeaders(),
-            },
+            headers: getBYOKRequestHeaders(),
             body: JSON.stringify(submitParams),
+            signal: abortControllerRef.current?.signal,
+            timeoutMs: VIDEO_SUBMIT_TIMEOUT_MS,
+            redirectOnUnauthorized: false,
           });
 
           if (response.ok) {
@@ -296,7 +321,8 @@ export function useVideoGenerationSubmit(args: UseVideoGenerationSubmitArgs) {
         throw new Error(errorData.error || '提交任务失败');
       }
 
-      const { taskId } = await submitResponse.json();
+      const { taskId } = await submitResponse.json() as VideoSubmitTaskResponse;
+      if (!taskId) throw new Error('任务提交成功但未返回 taskId');
       let successMessage = '任务已提交，正在生成中...';
       if (usedEndpoint) {
         const apiName = usedEndpoint.includes('nine-grid') ? '九宫格模式' :
@@ -364,8 +390,10 @@ export function useVideoGenerationSubmit(args: UseVideoGenerationSubmitArgs) {
         }
 
         try {
-          const response = await fetch(`/api/tasks/${taskId}`, {
+          const response = await clientApiRequest(`/api/tasks/${taskId}`, {
             signal: abortControllerRef.current?.signal,
+            timeoutMs: VIDEO_TASK_POLL_TIMEOUT_MS,
+            redirectOnUnauthorized: false,
           });
 
           if (response.status === 404) {
@@ -377,12 +405,13 @@ export function useVideoGenerationSubmit(args: UseVideoGenerationSubmitArgs) {
             throw new Error('任务不存在，可能已被删除');
           }
 
+          const taskData = await response.json().catch(() => ({})) as VideoTaskStatusResponse;
+
           if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || `获取任务状态失败: ${response.status}`);
+            throw new Error(taskData.error || `获取任务状态失败: ${response.status}`);
           }
 
-          const { task } = await response.json();
+          const { task } = taskData;
 
           if (!task) {
             throw new Error('任务数据为空');
@@ -405,13 +434,16 @@ export function useVideoGenerationSubmit(args: UseVideoGenerationSubmitArgs) {
           });
 
           if (task.status === 'completed') {
+            const generatedVideoUrl = task.result?.videoUrl;
+            if (!generatedVideoUrl) throw new Error('视频生成完成但未返回视频地址');
+
             setGenerationProgress(100);
             setGenerationStage('完成！');
             setGenerationMessage('视频生成成功！');
 
             onGenerate({
               id: Date.now().toString(),
-              videoUrl: task.result?.videoUrl,
+              videoUrl: generatedVideoUrl,
               prompt: finalPrompt,
               createdAt: Date.now(),
               duration,
