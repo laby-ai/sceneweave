@@ -1,6 +1,7 @@
 import { useCallback, type Dispatch, type SetStateAction } from 'react';
 import type { FilmHistoryItem } from '@/hooks/useFilmHistory';
 import { getBYOKRequestHeaders } from '@/lib/byok-client';
+import { clientApiFetch, clientApiRequest } from '@/lib/client-api';
 import { buildFilmEntityCardsFromScript } from '@/lib/film-script-to-entity-cards';
 import { entityCardToSnapshot, type ChatMessage, type EntityCard, type WorkflowPhase } from '@/lib/film-creation-panel-model';
 import type { FilmDirectorAnalysis } from '@/components/film/film-quality-panels';
@@ -19,6 +20,46 @@ type UploadedFilmFile = {
   size: number;
   uploading?: boolean;
 };
+
+type AutoDirectorResponse = {
+  success?: boolean;
+  data?: {
+    story?: {
+      typeName?: string;
+      contentType?: string;
+      template?: { keywords?: string[] };
+    };
+    direction?: {
+      shots?: Array<{
+        cameraMovement?: string;
+        camera?: string;
+        shotType?: string;
+        transition?: string;
+        transitionStyle?: string;
+        tags?: string[];
+        style?: string;
+      }>;
+      totalDuration?: number;
+      emotionCurve?: string | Array<{ emotion?: string; intensity?: number }>;
+    };
+    scheduling?: {
+      decisions?: Array<{
+        cameraMovement?: string;
+        camera?: string;
+        shotType?: string;
+        transition?: string;
+        transitionStyle?: string;
+        tags?: string[];
+        style?: string;
+      }>;
+    };
+    qualityAssessment?: Array<{ issues?: string[]; feedback?: string }>;
+    modelRoutings?: Array<{ serviceType?: string; selectedModel?: string; taskType?: string }>;
+  };
+};
+
+const FILM_PLAN_DIRECTOR_TIMEOUT_MS = 30_000;
+const FILM_PLAN_SCRIPT_TIMEOUT_MS = 120_000;
 
 type UseFilmPlanCreationArgs = {
   addWorkflowMsg: (
@@ -124,9 +165,8 @@ export function useFilmPlanCreation(args: UseFilmPlanCreationArgs) {
 
       setProgressMsg('自动化导演分析中...');
       try {
-        const directorRes = await fetch('/api/film/auto-director', {
+        const directorData = await clientApiFetch<AutoDirectorResponse>('/api/film/auto-director', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             input: fullInput,
             duration: (extractedParams.targetDuration as number) || targetDuration || 60,
@@ -139,10 +179,9 @@ export function useFilmPlanCreation(args: UseFilmPlanCreationArgs) {
             enableModelRouting: true,
             enableQualityCheck: true,
           }),
+          timeoutMs: FILM_PLAN_DIRECTOR_TIMEOUT_MS,
         });
-        if (directorRes.ok) {
-          const directorData = await directorRes.json();
-          if (directorData.success) {
+        if (directorData.success) {
             const plan = directorData.data || {};
             const story = plan.story || {};
             const direction = plan.direction || {};
@@ -171,6 +210,7 @@ export function useFilmPlanCreation(args: UseFilmPlanCreationArgs) {
                 [s.transition, s.transitionStyle].filter(Boolean) as string[])
               .filter((v: string, i: number, a: string[]) => a.indexOf(v) === i)
               .slice(0, 5);
+            const styleKeywords = story.template?.keywords || [];
 
             setDirectorAnalysis({
               contentType: story.typeName || story.contentType || '通用',
@@ -184,8 +224,8 @@ export function useFilmPlanCreation(args: UseFilmPlanCreationArgs) {
                     ).join(' → ')
                   : '平稳起伏',
               modelRecommendation: modelRec,
-              styleTags: (story.template?.keywords || []).length > 0
-                ? (story.template.keywords as string[]).slice(0, 6)
+              styleTags: styleKeywords.length > 0
+                ? styleKeywords.slice(0, 6)
                 : shots
                     .flatMap((s: { tags?: string[]; style?: string }) => s.tags || (s.style ? [s.style] : []))
                     .filter((v: string, i: number, a: string[]) => a.indexOf(v) === i)
@@ -195,7 +235,6 @@ export function useFilmPlanCreation(args: UseFilmPlanCreationArgs) {
               transitionStyles,
             });
             setShowDirectorPanel(true);
-          }
         }
       } catch {
         // 导演分析失败不影响主流程
@@ -214,9 +253,9 @@ export function useFilmPlanCreation(args: UseFilmPlanCreationArgs) {
         transitionStyles: directorAnalysis.transitionStyles,
       } : undefined;
 
-      const res = await fetch('/api/film/create-script', {
+      const res = await clientApiRequest('/api/film/create-script', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getBYOKRequestHeaders() },
+        headers: getBYOKRequestHeaders(),
         body: JSON.stringify({
           text: fullInput,
           style: (extractedParams.visualStyle as string) || visualStyle || style,
@@ -224,6 +263,7 @@ export function useFilmPlanCreation(args: UseFilmPlanCreationArgs) {
           directorGuidance,
           filmVisualStyle: filmVisualStyle || undefined,
         }),
+        timeoutMs: FILM_PLAN_SCRIPT_TIMEOUT_MS,
       });
 
       if (!res.ok) {

@@ -79,7 +79,7 @@ async function parseResponseBody(response: Response): Promise<unknown> {
   return response.text().catch(() => '');
 }
 
-export async function clientApiFetch<T>(path: string, options: ClientApiOptions = {}): Promise<T> {
+export async function clientApiRequest(path: string, options: ClientApiOptions = {}): Promise<Response> {
   const {
     timeoutMs = DEFAULT_TIMEOUT_MS,
     redirectOnUnauthorized = true,
@@ -108,6 +108,11 @@ export async function clientApiFetch<T>(path: string, options: ClientApiOptions 
     throw unauthorizedError();
   }
 
+  return response;
+}
+
+export async function clientApiFetch<T>(path: string, options: ClientApiOptions = {}): Promise<T> {
+  const response = await clientApiRequest(path, options);
   const payload = await parseResponseBody(response);
   if (!response.ok) {
     const message =
