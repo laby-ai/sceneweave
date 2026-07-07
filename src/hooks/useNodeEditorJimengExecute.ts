@@ -5,6 +5,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import { MarkerType, type Edge, type Node } from 'reactflow';
 
 import type { CustomNodeData } from '@/components/node-editor/node-editor-shared';
+import { clientApiFetch } from '@/lib/client-api';
 
 type UseNodeEditorJimengExecuteOptions = {
   nodes: Node<CustomNodeData>[];
@@ -125,20 +126,13 @@ export function useNodeEditorJimengExecute({
         progress: '正在调用Agent转换API...',
       });
 
-      const response = await fetch('/api/script/jimeng-convert', {
+      const data = await clientApiFetch<JimengConvertResponse>('/api/script/jimeng-convert', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           script: scriptContent,
           targetDuration,
         }),
       });
-
-      if (!response.ok) {
-        throw new Error('Agent转换失败');
-      }
-
-      const data = (await response.json()) as JimengConvertResponse;
 
       console.log('[Jimeng] API返回数据:', {
         success: data.success,
