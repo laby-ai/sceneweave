@@ -2,11 +2,20 @@
 
 import { useState } from 'react';
 import { getBYOKRequestHeaders } from '@/lib/byok-client';
+import { clientApiRequest } from '@/lib/client-api';
 
 interface UseTaskCenterProviderRecoveryParams {
   taskId: string;
   onSync: () => Promise<void> | void;
 }
+
+type ProviderRecoveryResponse = {
+  success?: boolean;
+  status?: string;
+  error?: string;
+};
+
+const PROVIDER_RECOVERY_TIMEOUT_MS = 30_000;
 
 export function useTaskCenterProviderRecovery({
   taskId,
@@ -29,15 +38,14 @@ export function useTaskCenterProviderRecovery({
     const recoveryKey = `${taskId}:${segmentIndex}:provider`;
     setSegmentProviderRecoveryKey(recoveryKey);
     try {
-      const res = await fetch('/api/production/assembly-plan/segment/recover-provider-task', {
+      const res = await clientApiRequest('/api/production/assembly-plan/segment/recover-provider-task', {
         method: 'POST',
-        headers: {
-          ...byokHeaders,
-          'Content-Type': 'application/json',
-        },
+        headers: byokHeaders,
         body: JSON.stringify({ childTaskId }),
+        timeoutMs: PROVIDER_RECOVERY_TIMEOUT_MS,
+        redirectOnUnauthorized: false,
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({})) as ProviderRecoveryResponse;
       if (!res.ok || !data.success) {
         alert(data.error || '供应商任务续查失败');
         return;
