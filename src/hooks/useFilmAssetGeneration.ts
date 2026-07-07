@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import type { MutableRefObject } from 'react';
 import type { CharacterAnchor } from '@/lib/video-production/character-consistency-engine';
+import { clientApiFetch, clientApiRequest } from '@/lib/client-api';
 import { buildEnhancedNegative, buildStyleLockedPrompt } from '@/lib/visual-style-map';
 import type { EntityCard, WorkflowPhase } from '@/lib/film-creation-panel-model';
 import type { FilmScript } from '@/types/film';
@@ -12,6 +13,30 @@ type GenerationStage = FilmVisualGenerationStage;
 type GenerationProgress = { completed: number; total: number; currentName: string };
 type MiddleAiStatus = { text: string; type: 'thinking' | 'responding' | 'done' | 'error' } | null;
 type LogStatus = 'generating' | 'completed' | 'error' | 'waiting';
+
+type FilmImageGenerateResponse = {
+  imageUrl?: string;
+  imageUrls?: string[];
+};
+
+type FilmCharacterViewsResponse = {
+  imageUrl?: string;
+  views?: Array<{ imageUrl?: string }>;
+};
+
+type FilmConsistencyCheckResponse = {
+  result?: {
+    score?: number;
+    issues?: string[];
+  };
+};
+
+type FilmApiErrorResponse = {
+  error?: string;
+};
+
+const FILM_ASSET_IMAGE_TIMEOUT_MS = 120_000;
+const FILM_ASSET_DIRECTOR_TIMEOUT_MS = 60_000;
 
 type UseFilmAssetGenerationArgs = {
   addGenLog: (shotIndex: number, shotLabel: string, action: string, status: LogStatus, progress?: number, error?: string) => void;
@@ -75,9 +100,8 @@ export function useFilmAssetGeneration(args: UseFilmAssetGenerationArgs) {
         try {
           setEntityCards(prev => prev.map(c => c.id === card.id ? { ...c, isGenerating: true } : c));
           updateProgress('character', card.name);
-          const res = await fetch('/api/film/character-views', {
+          const data = await clientApiFetch<FilmCharacterViewsResponse>('/api/film/character-views', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               characterName: card.name,
               promptEn: card.promptEn,
@@ -85,9 +109,8 @@ export function useFilmAssetGeneration(args: UseFilmAssetGenerationArgs) {
               style: visualStyle || style,
               filmVisualStyle: filmVisualStyle || undefined,
             }),
+            timeoutMs: FILM_ASSET_IMAGE_TIMEOUT_MS,
           });
-          if (!res.ok) return [];
-          const data = await res.json();
           const imageUrl = data.imageUrl || (data.views?.[0]?.imageUrl);
           completedCount++;
           return imageUrl ? [{ type: 'character', cardId: card.id, imageUrl }] : [];
@@ -113,13 +136,11 @@ export function useFilmAssetGeneration(args: UseFilmAssetGenerationArgs) {
           const negPrompt = filmVisualStyle
             ? `${buildEnhancedNegative(filmVisualStyle)}, person, people, character, human, figure, man, woman, child, boy, girl`
             : 'person, people, character, human, figure, man, woman, child, boy, girl';
-          const res = await fetch('/api/image/generate', {
+          const data = await clientApiFetch<FilmImageGenerateResponse>('/api/image/generate', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ prompt, negative_prompt: negPrompt || undefined }),
+            timeoutMs: FILM_ASSET_IMAGE_TIMEOUT_MS,
           });
-          if (!res.ok) { completedCount++; return []; }
-          const data = await res.json();
           const imageUrl = data.imageUrls?.[0] || data.imageUrl;
           completedCount++;
           return imageUrl ? [{ type: 'scene', cardId: card.id, imageUrl }] : [];
@@ -143,13 +164,11 @@ export function useFilmAssetGeneration(args: UseFilmAssetGenerationArgs) {
           const negPrompt = filmVisualStyle
             ? `${buildEnhancedNegative(filmVisualStyle)}, person, people, character, human, hand, blurry, low quality`
             : 'person, people, character, human, hand, blurry, low quality';
-          const res = await fetch('/api/image/generate', {
+          const data = await clientApiFetch<FilmImageGenerateResponse>('/api/image/generate', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ prompt, negative_prompt: negPrompt || undefined }),
+            timeoutMs: FILM_ASSET_IMAGE_TIMEOUT_MS,
           });
-          if (!res.ok) { completedCount++; return []; }
-          const data = await res.json();
           const imageUrl = data.imageUrls?.[0] || data.imageUrl;
           completedCount++;
           return imageUrl ? [{ type: 'prop', cardId: card.id, imageUrl }] : [];
@@ -286,21 +305,21 @@ export function useFilmAssetGeneration(args: UseFilmAssetGenerationArgs) {
 
         // === 生成起始帧 ===
         addWorkflowMsg('assistant', `镜头${si + 1}/${shotCards.length}「${card.name}」生成起始帧...`, 'progress');
-        const startRes = await fetch('/api/image/generate', {
+        const startRes = await clientApiRequest('/api/image/generate', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             prompt: enhancedPrompt,
             negative_prompt: negativePrompt || undefined,
             image: primaryRef,
             materials: materialsRefs,
           }),
+          timeoutMs: FILM_ASSET_IMAGE_TIMEOUT_MS,
         });
 
         let startFrameUrl = '';
         if (startRes.ok) {
-          const startData = await startRes.json();
-          startFrameUrl = startData.imageUrls?.[0] || startData.imageUrl;
+          const startData = await startRes.json() as FilmImageGenerateResponse;
+          startFrameUrl = startData.imageUrls?.[0] || startData.imageUrl || '';
           if (startFrameUrl) {
             setEntityCards(prev => prev.map(c => c.id === card.id ? {
               ...c, startFrameUrl, startFrameGenerating: false,
@@ -309,7 +328,7 @@ export function useFilmAssetGeneration(args: UseFilmAssetGenerationArgs) {
             } : c));
           }
         } else {
-          const errData = await startRes.json().catch(() => ({ error: '起始帧生成失败' }));
+          const errData = await startRes.json().catch(() => ({ error: '起始帧生成失败' })) as FilmApiErrorResponse;
           console.error(`[Film] 起始帧生成失败(${card.name}):`, errData.error);
         }
 
@@ -329,19 +348,19 @@ export function useFilmAssetGeneration(args: UseFilmAssetGenerationArgs) {
         const endPrimaryRef = endRefImages.length > 0 ? endRefImages[0] : undefined;
         const endMaterialsRefs = endRefImages.length > 1 ? endRefImages.slice(1) : undefined;
 
-        const endRes = await fetch('/api/image/generate', {
+        const endRes = await clientApiRequest('/api/image/generate', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             prompt: endFramePrompt,
             negative_prompt: negativePrompt || undefined,
             image: endPrimaryRef,
             materials: endMaterialsRefs,
           }),
+          timeoutMs: FILM_ASSET_IMAGE_TIMEOUT_MS,
         });
 
         if (endRes.ok) {
-          const endData = await endRes.json();
+          const endData = await endRes.json() as FilmImageGenerateResponse;
           const endFrameUrl = endData.imageUrls?.[0] || endData.imageUrl;
           if (endFrameUrl) {
             setEntityCards(prev => prev.map(c => c.id === card.id ? {
@@ -351,7 +370,7 @@ export function useFilmAssetGeneration(args: UseFilmAssetGenerationArgs) {
             addWorkflowMsg('assistant', `镜头「${card.name}」首尾帧生成完成 ✓`, 'success', 'success');
           }
         } else {
-          const errData = await endRes.json().catch(() => ({ error: '结束帧生成失败' }));
+          const errData = await endRes.json().catch(() => ({ error: '结束帧生成失败' })) as FilmApiErrorResponse;
           console.error(`[Film] 结束帧生成失败(${card.name}):`, errData.error);
           setEntityCards(prev => prev.map(c => c.id === card.id ? { ...c, endFrameGenerating: false, isGenerating: false } : c));
         }
@@ -402,19 +421,17 @@ export function useFilmAssetGeneration(args: UseFilmAssetGenerationArgs) {
       }));
 
       // 调用一致性检查API
-      const checkRes = await fetch('/api/video/consistency-check', {
+      const checkData = await clientApiFetch<FilmConsistencyCheckResponse>('/api/video/consistency-check', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'check',
           shots: shotsForCheck,
           characterBibles,
           sceneBibles,
         }),
+        timeoutMs: FILM_ASSET_DIRECTOR_TIMEOUT_MS,
       });
 
-      if (checkRes.ok) {
-        const checkData = await checkRes.json();
         const result = checkData.result;
         if (result) {
           // 更新每个镜头的一致性评分和问题
@@ -434,7 +451,6 @@ export function useFilmAssetGeneration(args: UseFilmAssetGenerationArgs) {
             return c;
           }));
         }
-      }
 
       // ★ 剧本逻辑校验：检查每个镜头的分镜内容是否与剧本叙事一致
       if (script?.screenplay) {

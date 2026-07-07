@@ -2,12 +2,35 @@
 
 import { useCallback, type Dispatch, type SetStateAction } from 'react';
 import { getBYOKRequestHeaders } from '@/lib/byok-client';
+import { clientApiFetch } from '@/lib/client-api';
 import type { EntityCard } from '@/lib/film-creation-panel-model';
 import { VISUAL_STYLE_MAP } from '@/lib/visual-style-map';
 
 type WorkflowRole = 'system' | 'assistant' | 'user' | 'info' | 'success' | 'error';
 type WorkflowMessageType = 'progress' | 'success' | 'error' | 'info';
 type ConsistencyMode = 'first_frame' | 'first_last' | 'multi_ref';
+
+type VideoSubmitResponse = {
+  taskId?: string;
+};
+
+type TaskDetailResponse = {
+  task?: {
+    status?: string;
+    progress?: number;
+    stage?: string;
+    result?: {
+      videoUrl?: string;
+      url?: string;
+      subtitle?: string;
+      audioUrl?: string;
+      lastFrameUrl?: string;
+    };
+  };
+};
+
+const FILM_SHOT_VIDEO_SUBMIT_TIMEOUT_MS = 30_000;
+const FILM_SHOT_TASK_POLL_TIMEOUT_MS = 15_000;
 
 interface UseFilmShotVideoGenerationArgs {
   addWorkflowMsg: (
@@ -153,9 +176,9 @@ export function useFilmShotVideoGeneration({
         ...(sceneRefUrl ? [sceneRefUrl] : []),
       ])].filter(Boolean) as string[];
 
-      const res = await fetch('/api/video/submit', {
+      const data = await clientApiFetch<VideoSubmitResponse>('/api/video/submit', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getBYOKRequestHeaders() },
+        headers: getBYOKRequestHeaders(),
         body: JSON.stringify({
           prompt: fullPrompt,
           imageUrl,
@@ -172,10 +195,9 @@ export function useFilmShotVideoGeneration({
           ...(isFLF2V ? { flf2vMode: true, lastFrameUrl: firstFrameUrl } : {}),
           gridPromptMode: consistencyMode,
         }),
+        timeoutMs: FILM_SHOT_VIDEO_SUBMIT_TIMEOUT_MS,
       });
 
-      if (!res.ok) throw new Error('视频生成提交失败');
-      const data = await res.json();
       const taskId = data.taskId;
 
       if (taskId) {
@@ -192,8 +214,10 @@ export function useFilmShotVideoGeneration({
           }
 
           try {
-            const taskRes = await fetch(`/api/tasks/${taskId}`);
-            const taskData = await taskRes.json();
+            const taskData = await clientApiFetch<TaskDetailResponse>(`/api/tasks/${taskId}`, {
+              timeoutMs: FILM_SHOT_TASK_POLL_TIMEOUT_MS,
+              redirectOnUnauthorized: false,
+            });
             const task = taskData.task;
             if (!task) {
               clearInterval(pollInterval);

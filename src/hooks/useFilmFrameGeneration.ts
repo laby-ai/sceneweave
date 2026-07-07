@@ -3,6 +3,7 @@
 import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import type { FilmVisualGenerationStage } from '@/components/film/film-visual-progress-panel';
 import type { EntityCard } from '@/lib/film-creation-panel-model';
+import { clientApiFetch } from '@/lib/client-api';
 import { VISUAL_STYLE_MAP, buildEnhancedNegative, buildStyleLockedPrompt } from '@/lib/visual-style-map';
 
 type WorkflowMsgType = 'progress' | 'success' | 'error' | 'info';
@@ -18,6 +19,19 @@ type BridgeProgress = {
   total: number;
   phase: string;
 };
+
+type FilmFrameImageGenerateResponse = {
+  success?: boolean;
+  imageUrl?: string;
+  data?: Array<{ url?: string }> | { imageUrl?: string };
+};
+
+const FILM_FRAME_IMAGE_TIMEOUT_MS = 120_000;
+
+function getGeneratedImageUrl(data: FilmFrameImageGenerateResponse): string {
+  if (Array.isArray(data.data)) return data.data[0]?.url || '';
+  return data.data?.imageUrl || data.imageUrl || '';
+}
 
 type UseFilmFrameGenerationArgs = {
   addWorkflowMsg: (
@@ -84,9 +98,8 @@ export function useFilmFrameGeneration({
       const primaryRef = refImages.length > 0 ? refImages[0] : undefined;
       const materialsRefs = refImages.length > 1 ? refImages.slice(1) : [];
 
-      const res = await fetch('/api/image/generate', {
+      const data = await clientApiFetch<FilmFrameImageGenerateResponse>('/api/image/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prompt,
           aspectRatio: videoRatio,
@@ -95,15 +108,15 @@ export function useFilmFrameGeneration({
           image: primaryRef,
           materials: materialsRefs,
         }),
+        timeoutMs: FILM_FRAME_IMAGE_TIMEOUT_MS,
       });
-      if (!res.ok) throw new Error('起始帧生成失败');
-      const data = await res.json();
-      if (data.success && data.data?.[0]?.url) {
+      const imageUrl = getGeneratedImageUrl(data);
+      if (data.success && imageUrl) {
         setEntityCards(prev => prev.map(c =>
           c.id === cardId ? {
             ...c,
-            startFrameUrl: data.data[0].url,
-            imageUrl: data.data[0].url,
+            startFrameUrl: imageUrl,
+            imageUrl,
             startFrameGenerating: false,
             shotStatus: c.endFrameUrl ? 'end_ready' : 'start_ready',
           } : c
@@ -138,9 +151,8 @@ export function useFilmFrameGeneration({
       const primaryRef = refImages.length > 0 ? refImages[0] : undefined;
       const materialsRefs = refImages.length > 1 ? refImages.slice(1) : [];
 
-      const res = await fetch('/api/image/generate', {
+      const data = await clientApiFetch<FilmFrameImageGenerateResponse>('/api/image/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prompt: endPrompt,
           aspectRatio: videoRatio,
@@ -149,11 +161,10 @@ export function useFilmFrameGeneration({
           image: primaryRef,
           materials: materialsRefs,
         }),
+        timeoutMs: FILM_FRAME_IMAGE_TIMEOUT_MS,
       });
-      if (!res.ok) throw new Error('结束帧生成失败');
-      const data = await res.json();
-      if (data.success && data.data?.[0]?.url) {
-        const endUrl = data.data[0].url;
+      const endUrl = getGeneratedImageUrl(data);
+      if (data.success && endUrl) {
         setEntityCards(prev => {
           const updated = prev.map(c =>
             c.id === cardId ? (({
@@ -363,9 +374,8 @@ export function useFilmFrameGeneration({
         const bridgePrompt = `${lockPhrase ? lockPhrase + ', ' : ''}Transition shot continuing from previous scene, seamless visual continuity, ${anchorCtx}${stylePrefix ? ', ' + stylePrefix : ''}. Previous shot ended with a frame - this new frame should feel like the natural next moment.`;
 
         try {
-          const res = await fetch('/api/image/generate', {
+          const data = await clientApiFetch<FilmFrameImageGenerateResponse>('/api/image/generate', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               prompt: bridgePrompt,
               image: bridgeRefImages,
@@ -373,11 +383,10 @@ export function useFilmFrameGeneration({
               width: 1280,
               height: 720,
             }),
+            timeoutMs: FILM_FRAME_IMAGE_TIMEOUT_MS,
           });
 
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const data = await res.json();
-          const imageUrl = data?.data?.imageUrl || data?.imageUrl;
+          const imageUrl = getGeneratedImageUrl(data);
 
           if (imageUrl) {
             setEntityCards(prev => prev.map(c =>
