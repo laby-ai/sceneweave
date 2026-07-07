@@ -16,8 +16,10 @@ import { WorkDetailOverlay, type WorkDetailData } from '@/components/work-detail
 import { DreamboxMainContent } from '@/components/home/dreambox-main-content';
 import { DreamboxMediaSection, type MediaSubSection } from '@/components/home/dreambox-media-section';
 import { DreamboxNavigationShell } from '@/components/home/dreambox-navigation-shell';
+import { clientApiFetch } from '@/lib/client-api';
 
 type ApiProviderType = 'openai-compatible' | 'ark-plan';
+type MaterialInput = unknown;
 
 interface GeneratedVideo {
   id: string;
@@ -30,7 +32,7 @@ interface GeneratedVideo {
   filter?: string;
   resolution?: string;
   ratio?: string;
-  materials?: any[];
+  materials?: MaterialInput[];
   hasSubtitle?: boolean;
   enableSubtitle?: boolean;
   subtitleText?: string;
@@ -53,7 +55,7 @@ interface GeneratedImage {
   filter?: string;
   resolution?: string;
   quality?: string;
-  materials?: any[];
+  materials?: MaterialInput[];
   enableImageText?: boolean;
   imageText?: string;
 }
@@ -88,6 +90,35 @@ interface HistoricalMediaAsset {
   poster?: string;
   createdAt: number;
   source: 'historical';
+}
+
+interface HomeMediaLibraryResponse {
+  success?: boolean;
+  message?: string;
+  assets?: HistoricalMediaAsset[];
+}
+
+interface ServerTask {
+  id: string;
+  type: 'video' | 'image' | 'copywriting' | string;
+  status: string;
+  config: {
+    prompt?: string;
+    duration?: number | string;
+    resolution?: string;
+    ratio?: string;
+    size?: string;
+    quality?: string;
+    title?: string;
+  };
+  result?: {
+    videoUrl?: string;
+    imageUrls?: string[];
+    content?: string;
+    platform?: string;
+  };
+  completedAt?: number;
+  createdAt: number;
 }
 
 interface HomeGalleryItem {
@@ -214,7 +245,7 @@ export function DreamboxHome() {
   const [currentCopywriting, setCurrentCopywriting] = useState<GeneratedCopywriting | null>(null);
   const [showCopywritingDialog, setShowCopywritingDialog] = useState(false);
   const [showStoryboardDialog, setShowStoryboardDialog] = useState(false);
-  const [currentStoryboardTask, setCurrentStoryboardTask] = useState<any>(null);
+  const [currentStoryboardTask, setCurrentStoryboardTask] = useState<unknown>(null);
   const [productionCaseAssets, setProductionCaseAssets] = useState<ProductionCaseAsset[]>([]);
   const [homeHistoricalAssets, setHomeHistoricalAssets] = useState<HistoricalMediaAsset[]>([]);
   const storyboardVideoRef = useRef<HTMLVideoElement>(null);
@@ -461,9 +492,11 @@ export function DreamboxHome() {
 
     async function loadHomeHistoricalAssets() {
       try {
-        const response = await fetch('/api/assets/media-library?limit=32', { cache: 'no-store' });
-        const data = await response.json();
-        if (!cancelled && response.ok && Array.isArray(data.assets)) {
+        const data = await clientApiFetch<HomeMediaLibraryResponse>('/api/assets/media-library?limit=32');
+        if (data.success !== true) {
+          throw new Error(data.message || '首页历史精选资产加载失败');
+        }
+        if (!cancelled && Array.isArray(data.assets)) {
           setHomeHistoricalAssets(data.assets);
         }
       } catch (error) {
@@ -484,7 +517,7 @@ export function DreamboxHome() {
       const response = await fetch('/api/tasks');
       
       if (response.ok) {
-        const { tasks: serverTasks } = await response.json();
+        const { tasks: serverTasks = [] } = (await response.json()) as { tasks?: ServerTask[] };
         console.log(`[DreamboxHome] 收到 ${serverTasks.length} 个服务端任务`);
         
         // 如果服务端没有任务，直接清空本地显示
@@ -497,11 +530,11 @@ export function DreamboxHome() {
         
         // 转换视频任务
         const serverVideos = serverTasks
-          .filter((task: any) => task.type === 'video' && task.status === 'completed' && task.result?.videoUrl)
-          .map((task: any) => ({
+          .filter((task) => task.type === 'video' && task.status === 'completed' && task.result?.videoUrl)
+          .map((task) => ({
             id: task.id,
-            videoUrl: task.result.videoUrl,
-            prompt: task.config.prompt,
+            videoUrl: task.result?.videoUrl || '',
+            prompt: task.config.prompt || '',
             createdAt: task.completedAt || task.createdAt,
             duration: task.config.duration?.toString(),
             resolution: task.config.resolution,
@@ -510,11 +543,11 @@ export function DreamboxHome() {
         
         // 转换图片任务（如果有的话）
         const serverImages = serverTasks
-          .filter((task: any) => task.type === 'image' && task.status === 'completed' && task.result?.imageUrls)
-          .map((task: any) => ({
+          .filter((task) => task.type === 'image' && task.status === 'completed' && task.result?.imageUrls)
+          .map((task) => ({
             id: task.id,
-            imageUrls: task.result.imageUrls,
-            prompt: task.config.prompt,
+            imageUrls: task.result?.imageUrls || [],
+            prompt: task.config.prompt || '',
             createdAt: task.completedAt || task.createdAt,
             size: task.config.size,
             resolution: task.config.resolution,
@@ -523,13 +556,13 @@ export function DreamboxHome() {
         
         // 转换文案任务（如果有的话）
         const serverCopywritings = serverTasks
-          .filter((task: any) => task.type === 'copywriting' && task.status === 'completed')
-          .map((task: any) => ({
+          .filter((task) => task.type === 'copywriting' && task.status === 'completed')
+          .map((task) => ({
             id: task.id,
             content: task.result?.content,
             imageUrls: task.result?.imageUrls,
             platform: task.result?.platform,
-            prompt: task.config.prompt,
+            prompt: task.config.prompt || '',
             title: task.config.title,
             createdAt: task.completedAt || task.createdAt,
           }));
@@ -688,7 +721,7 @@ export function DreamboxHome() {
     });
   };
 
-  const handleRegenerateVideo = (videoOrPrompt: any) => {
+  const handleRegenerateVideo = (videoOrPrompt: GeneratedVideo | string) => {
     console.log('[DreamboxHome] handleRegenerateVideo called with:', videoOrPrompt);
     
     if (typeof videoOrPrompt === 'string') {
@@ -706,7 +739,7 @@ export function DreamboxHome() {
     console.log('[DreamboxHome] handleRegenerateVideo completed, states updated');
   };
 
-  const handleRegenerateImage = (imageOrPrompt: any) => {
+  const handleRegenerateImage = (imageOrPrompt: GeneratedImage | string) => {
     if (typeof imageOrPrompt === 'string') {
       setEditingImagePrompt(imageOrPrompt);
       setImageInitialConfig(null);
@@ -795,7 +828,7 @@ export function DreamboxHome() {
     console.log('Generated copywriting:', variations);
   };
 
-  const handlePosterGenerated = (imageData: any) => {
+  const handlePosterGenerated = (imageData: unknown) => {
     // 海报生成处理逻辑
     console.log('Generated poster:', imageData);
   };
