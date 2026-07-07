@@ -50,6 +50,7 @@
     "qa:production-case-assets": "node scripts/qa-production-case-assets.mjs",
     "qa:media-assets": "node scripts/qa-media-assets.mjs",
     "qa:home-media-policy": "node scripts/qa-home-media-policy.mjs",
+    "qa:home-resource-sample": "node scripts/qa-home-resource-sample.mjs",
     "qa:smart-vimax-agent-render": "node scripts/qa-smart-vimax-agent-render.mjs",
     "qa:canvas-open-source-alignment": "node scripts/qa-canvas-open-source-alignment.mjs",
     "qa:production-export": "node scripts/qa-production-export.mjs",
