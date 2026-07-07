@@ -2,10 +2,25 @@
 
 import { useCallback, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { getBYOKRequestHeaders } from '@/lib/byok-client';
+import { clientApiRequest } from '@/lib/client-api';
+import type { BgmTypeId } from '@/constants/bgm-types';
 import type { ChatMessage, EntityCard, WorkflowPhase } from '@/lib/film-creation-panel-model';
 import type { FilmScript } from '@/types/film';
 
 type WorkflowMessageType = 'progress' | 'success' | 'error' | 'info';
+type LogStatus = 'generating' | 'completed' | 'error' | 'waiting';
+type FilmWorkflowGenerationLogEntry = {
+  id: string;
+  shotIndex: number;
+  shotLabel: string;
+  action: string;
+  status: LogStatus;
+  progress: number;
+  startTime: string;
+  endTime?: string;
+  duration?: string;
+  error?: string;
+};
 type AddWorkflowMessage = (
   role: 'user' | 'assistant',
   content: string,
@@ -17,7 +32,9 @@ type AddWorkflowMessage = (
 type AsyncCardHandler = (cardId: string) => void | Promise<void>;
 type AsyncVoidHandler = () => void | Promise<void>;
 
-type FlexibleSetter<T = any> = (value: T | ((prev: T) => T)) => void;
+type FlexibleSetter<T = unknown> = (value: T | ((prev: T) => T)) => void;
+
+const FILM_CHAT_STREAM_TIMEOUT_MS = 120_000;
 
 type UseFilmChatFlowParams = {
   addWorkflowMsg: AddWorkflowMessage;
@@ -38,7 +55,7 @@ type UseFilmChatFlowParams = {
   visualStyle: string;
   setAssetCardsExpanded: FlexibleSetter<boolean>;
   setAutoGenerateAssets: FlexibleSetter<boolean>;
-  setBgmType: FlexibleSetter;
+  setBgmType: FlexibleSetter<BgmTypeId>;
   setChatInput: Dispatch<SetStateAction<string>>;
   setChatInputHighlight: FlexibleSetter<boolean>;
   setChatMessages: Dispatch<SetStateAction<ChatMessage[]>>;
@@ -49,7 +66,7 @@ type UseFilmChatFlowParams = {
   setExpandedShotIds: FlexibleSetter<Set<string>>;
   setExtractedParams: Dispatch<SetStateAction<Record<string, string | number | null>>>;
   setFilmVisualStyle: FlexibleSetter<string>;
-  setGenerationLogs: FlexibleSetter;
+  setGenerationLogs: FlexibleSetter<FilmWorkflowGenerationLogEntry[]>;
   setInputText: Dispatch<SetStateAction<string>>;
   setIsChatStreaming: FlexibleSetter<boolean>;
   setLogFilter: FlexibleSetter<string>;
@@ -276,9 +293,9 @@ export function useFilmChatFlow({
       contextParts.push(`画面风格: ${visualStyle}`);
       if (selectedService) contextParts.push(`当前服务: ${selectedService}`);
 
-      const res = await fetch('/api/film/chat', {
+      const res = await clientApiRequest('/api/film/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getBYOKRequestHeaders() },
+        headers: getBYOKRequestHeaders(),
         body: JSON.stringify({
           messages: chatMessages
             .filter(m => m.id !== 'welcome' && !m.isStreaming)
@@ -286,6 +303,7 @@ export function useFilmChatFlow({
             .map(m => ({ role: m.role, content: m.content })),
           context: contextParts.join('\n'),
         }),
+        timeoutMs: FILM_CHAT_STREAM_TIMEOUT_MS,
       });
 
       if (!res.ok) throw new Error('对话服务异常');
@@ -666,7 +684,7 @@ export function useFilmWorkflowCommand({
       }
       handlePlanCreation(creativeInput);
     }
-  }, [addWorkflowMsg, inputText, chatInput, entityCards, handlePlanCreation, handleGenerateImage, handleGenerateShotVideo, handleComposeFilm, handleGenerateBridge, handleEnhanceCharacters, handleEnhanceScenes, handleGenerateCharacterViews, handleGenerateAllAssets, handleExtractLastFrame, handleGenerateProps, setChatMessages, setWorkflowInput, setChatInput, setComposeStatus, setFinalVideoUrl, setInputText, setShowChatMessages]);
+  }, [addWorkflowMsg, inputText, chatInput, chatMessages, entityCards, handlePlanCreation, handleGenerateImage, handleGenerateShotVideo, handleComposeFilm, handleGenerateBridge, handleEnhanceCharacters, handleEnhanceScenes, handleGenerateCharacterViews, handleGenerateAllAssets, handleExtractLastFrame, handleGenerateProps, setChatMessages, setWorkflowInput, setChatInput, setComposeStatus, setFinalVideoUrl, setInputText, setShowChatMessages]);
 }
 
 
