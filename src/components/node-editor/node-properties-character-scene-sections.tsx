@@ -23,7 +23,27 @@ import {
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { getBgmTypeList } from '@/constants/bgm-types';
+import { clientApiFetch } from '@/lib/client-api';
 import type { NodePropertiesSectionProps } from './node-properties-types';
+
+type ImageGenerateResponse = {
+  imageUrl?: string;
+  imageUrls?: string[];
+};
+
+async function generateNodeReferenceImage(prompt: string): Promise<string> {
+  const data = await clientApiFetch<ImageGenerateResponse>('/api/image/generate', {
+    method: 'POST',
+    body: JSON.stringify({ prompt, size: '2K' }),
+  });
+  const imageUrl = data.imageUrls?.[0] || data.imageUrl;
+  if (!imageUrl) throw new Error('未返回图片URL');
+  return imageUrl;
+}
+
+function readStringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
 
 export function CharacterScenePropertiesSections({
   selectedNode,
@@ -50,6 +70,9 @@ export function CharacterScenePropertiesSections({
   selectedVideoTaskId,
   selectedVideoCanExport,
 }: NodePropertiesSectionProps) {
+  const characterUploads = readStringList(selectedNode.data.characterUploads);
+  const sceneUploads = readStringList(selectedNode.data.sceneUploads);
+
   return (
     <>
             {selectedNode.type === 'character' && (
@@ -134,28 +157,12 @@ export function CharacterScenePropertiesSections({
                               
                               console.log('[Character Image] 生成人物照片，提示词:', prompt);
                               
-                              const response = await fetch('/api/image/generate', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ prompt, size: '2K' })
+                              const imageUrl = await generateNodeReferenceImage(prompt);
+                              onUpdateNode(selectedNode.id, {
+                                characterImage: imageUrl,
+                                status: 'success'
                               });
-                              
-                              if (response.ok) {
-                                const data = await response.json();
-                                const imageUrl = data.imageUrls?.[0] || data.imageUrl;
-                                
-                                if (imageUrl) {
-                                  onUpdateNode(selectedNode.id, { 
-                                    characterImage: imageUrl, 
-                                    status: 'success' 
-                                  });
-                                  console.log('[Character Image] 人物照片生成完成:', imageUrl);
-                                } else {
-                                  throw new Error('未返回图片URL');
-                                }
-                              } else {
-                                throw new Error(`API请求失败: ${response.status}`);
-                              }
+                              console.log('[Character Image] 人物照片生成完成:', imageUrl);
                             } catch (error) {
                               console.error('[Character Image] 生成人物照片失败:', error);
                               onUpdateNode(selectedNode.id, { status: 'error' });
@@ -184,9 +191,9 @@ export function CharacterScenePropertiesSections({
                           </div>
                           <input id="char-upload-input" type="file" accept="image/*" multiple className="hidden" onChange={(e) => { if (e.target.files && e.target.files.length > 0) { handleCharacterUpload(e.target.files); e.target.value = ''; } }} />
                         </div>
-                        {(selectedNode.data as any).characterUploads && (selectedNode.data as any).characterUploads.length > 0 && (
+                        {characterUploads.length > 0 && (
                           <div className="grid grid-cols-3 gap-1.5">
-                            {(selectedNode.data as any).characterUploads.map((img: string, idx: number) => (
+                            {characterUploads.map((img, idx) => (
                               <div key={idx} className="relative group rounded overflow-hidden border border-border">
                                 <img src={img} alt={`上传${idx + 1}`} className="w-full h-16 object-cover" />
                                 <button className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-slate-700/90 text-foreground text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => removeCharacterUpload(idx)}>{'\u00d7'}</button>
@@ -213,28 +220,12 @@ export function CharacterScenePropertiesSections({
                               
                               console.log('[Character Image] 生成人物照片，提示词:', prompt);
                               
-                              const response = await fetch('/api/image/generate', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ prompt, size: '2K' })
+                              const imageUrl = await generateNodeReferenceImage(prompt);
+                              onUpdateNode(selectedNode.id, {
+                                characterImage: imageUrl,
+                                status: 'success'
                               });
-                              
-                              if (response.ok) {
-                                const data = await response.json();
-                                const imageUrl = data.imageUrls?.[0] || data.imageUrl;
-                                
-                                if (imageUrl) {
-                                  onUpdateNode(selectedNode.id, { 
-                                    characterImage: imageUrl, 
-                                    status: 'success' 
-                                  });
-                                  console.log('[Character Image] 人物照片生成完成:', imageUrl);
-                                } else {
-                                  throw new Error('未返回图片URL');
-                                }
-                              } else {
-                                throw new Error(`API请求失败: ${response.status}`);
-                              }
+                              console.log('[Character Image] 人物照片生成完成:', imageUrl);
                             } catch (error) {
                               console.error('[Character Image] 生成人物照片失败:', error);
                               onUpdateNode(selectedNode.id, { status: 'error' });
@@ -349,28 +340,12 @@ export function CharacterScenePropertiesSections({
                               
                               console.log('[Scene Image] 生成场景照片，提示词:', prompt);
                               
-                              const response = await fetch('/api/image/generate', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ prompt, size: '2K' })
+                              const imageUrl = await generateNodeReferenceImage(prompt);
+                              onUpdateNode(selectedNode.id, {
+                                sceneImage: imageUrl,
+                                status: 'success'
                               });
-                              
-                              if (response.ok) {
-                                const data = await response.json();
-                                const imageUrl = data.imageUrls?.[0] || data.imageUrl;
-                                
-                                if (imageUrl) {
-                                  onUpdateNode(selectedNode.id, { 
-                                    sceneImage: imageUrl, 
-                                    status: 'success' 
-                                  });
-                                  console.log('[Scene Image] 场景照片生成完成:', imageUrl);
-                                } else {
-                                  throw new Error('未返回图片URL');
-                                }
-                              } else {
-                                throw new Error(`API请求失败: ${response.status}`);
-                              }
+                              console.log('[Scene Image] 场景照片生成完成:', imageUrl);
                             } catch (error) {
                               console.error('[Scene Image] 生成场景照片失败:', error);
                               onUpdateNode(selectedNode.id, { status: 'error' });
@@ -399,9 +374,9 @@ export function CharacterScenePropertiesSections({
                           </div>
                           <input id="scene-upload-input" type="file" accept="image/*" multiple className="hidden" onChange={(e) => { if (e.target.files && e.target.files.length > 0) { handleSceneUpload(e.target.files); e.target.value = ''; } }} />
                         </div>
-                        {(selectedNode.data as any).sceneUploads && (selectedNode.data as any).sceneUploads.length > 0 && (
+                        {sceneUploads.length > 0 && (
                           <div className="grid grid-cols-3 gap-1.5">
-                            {(selectedNode.data as any).sceneUploads.map((img: string, idx: number) => (
+                            {sceneUploads.map((img, idx) => (
                               <div key={idx} className="relative group rounded overflow-hidden border border-border">
                                 <img src={img} alt={`上传${idx + 1}`} className="w-full h-16 object-cover" />
                                 <button className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-slate-700/90 text-foreground text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => removeSceneUpload(idx)}>{'\u00d7'}</button>
@@ -426,28 +401,12 @@ export function CharacterScenePropertiesSections({
                               
                               console.log('[Scene Image] 生成场景照片，提示词:', prompt);
                               
-                              const response = await fetch('/api/image/generate', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ prompt, size: '2K' })
+                              const imageUrl = await generateNodeReferenceImage(prompt);
+                              onUpdateNode(selectedNode.id, {
+                                sceneImage: imageUrl,
+                                status: 'success'
                               });
-                              
-                              if (response.ok) {
-                                const data = await response.json();
-                                const imageUrl = data.imageUrls?.[0] || data.imageUrl;
-                                
-                                if (imageUrl) {
-                                  onUpdateNode(selectedNode.id, { 
-                                    sceneImage: imageUrl, 
-                                    status: 'success' 
-                                  });
-                                  console.log('[Scene Image] 场景照片生成完成:', imageUrl);
-                                } else {
-                                  throw new Error('未返回图片URL');
-                                }
-                              } else {
-                                throw new Error(`API请求失败: ${response.status}`);
-                              }
+                              console.log('[Scene Image] 场景照片生成完成:', imageUrl);
                             } catch (error) {
                               console.error('[Scene Image] 生成场景照片失败:', error);
                               onUpdateNode(selectedNode.id, { status: 'error' });
