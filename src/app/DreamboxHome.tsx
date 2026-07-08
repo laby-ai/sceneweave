@@ -127,6 +127,12 @@ interface ServerTask {
   createdAt: number;
 }
 
+interface TasksResponse {
+  success?: boolean;
+  error?: string;
+  tasks?: ServerTask[];
+}
+
 interface HomeGalleryItem {
   title: string;
   src: string;
@@ -522,10 +528,10 @@ export function DreamboxHome() {
   const syncTasksFromServer = useCallback(async (force = false) => {
     try {
       console.log('[DreamboxHome] 从服务端同步任务...');
-      const response = await fetch('/api/tasks');
-      
-      if (response.ok) {
-        const { tasks: serverTasks = [] } = (await response.json()) as { tasks?: ServerTask[] };
+      const data = await clientApiFetch<TasksResponse>('/api/tasks');
+
+      if (data.success === true) {
+        const serverTasks = Array.isArray(data.tasks) ? data.tasks : [];
         console.log(`[DreamboxHome] 收到 ${serverTasks.length} 个服务端任务`);
         
         // 如果服务端没有任务，直接清空本地显示
