@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { getBYOKRequestHeaders } from '@/lib/byok-client';
+import { clientApiRequest } from '@/lib/client-api';
 
 interface NodeActionStripData {
   generatedVideo?: string;
@@ -74,16 +75,16 @@ export const NodeActionStrip = ({ id, data }: { id: string; data: NodeActionStri
 
     try {
       const response = action === 'merge-segments'
-        ? await fetch(`/api/tasks/${encodeURIComponent(parentTaskId!)}/merge-segments`, {
+        ? await clientApiRequest(`/api/tasks/${encodeURIComponent(parentTaskId!)}/merge-segments`, {
           method: 'POST',
         })
-        : await fetch(action === 'recover-provider-task'
+        : await clientApiRequest(action === 'recover-provider-task'
           ? '/api/production/assembly-plan/segment/recover-provider-task'
           : action === 'recover-tail-frame'
             ? '/api/production/assembly-plan/segment/recover-tail-frame'
             : '/api/production/assembly-plan/segment/retry', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getBYOKRequestHeaders() },
+          headers: getBYOKRequestHeaders(),
           body: JSON.stringify(action === 'recover-provider-task' || action === 'recover-tail-frame'
             ? { childTaskId }
             : { parentTaskId, segmentIndex }),
