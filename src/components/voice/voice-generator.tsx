@@ -2,11 +2,18 @@
 
 import { useState } from 'react';
 import { Download, Loader2, Mic, Play } from 'lucide-react';
+import { clientApiFetch } from '@/lib/client-api';
 
 const VOICES = [
   '女声-温柔', '女声-活力', '女声-甜美', '女声-成熟', '女声-童声',
   '男声-沉稳', '男声-磁性', '男声-青年', '男声-老年', '男声-童声',
 ];
+
+interface TtsPreviewResponse {
+  success?: boolean;
+  error?: string;
+  url?: string;
+}
 
 export function VoiceGenerator() {
   const [text, setText] = useState('');
@@ -23,13 +30,11 @@ export function VoiceGenerator() {
     setError(null);
     setAudioUrl(null);
     try {
-      const response = await fetch('/api/tts/preview', {
+      const data = await clientApiFetch<TtsPreviewResponse>('/api/tts/preview', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ voiceType: voice, text: content, speechSpeed: speed }),
       });
-      const data = await response.json();
-      if (!response.ok || !data.success || !data.url) {
+      if (!data.success || !data.url) {
         throw new Error(data.error || '语音合成失败');
       }
       setAudioUrl(data.url);
