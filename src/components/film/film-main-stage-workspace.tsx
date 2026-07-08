@@ -30,6 +30,8 @@ type UploadedFileItem = {
   uploading?: boolean;
 };
 
+// The workspace shell still forwards a broad legacy prop bag; narrow the required surface below.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type FilmMainStageWorkspaceProps = Record<string, any> & {
   chatMessages: ChatMessage[];
   entityCards: EntityCard[];
@@ -360,9 +362,9 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
                                   </div>
                                   <div className="aspect-video rounded-lg overflow-hidden bg-accent/20 border border-blue-500/20 relative flex items-center justify-center">
                                     {card.startFrameUrl ? (
-                                      <img src={card.startFrameUrl} alt="Start Frame" className="w-full h-full object-cover" />
+                                      <img src={card.startFrameUrl} alt="Start Frame" className="w-full h-full object-cover" loading="lazy" decoding="async" />
                                     ) : card.imageUrl ? (
-                                      <img src={card.imageUrl} alt="Reference" className="w-full h-full object-cover opacity-60" />
+                                      <img src={card.imageUrl} alt="Reference" className="w-full h-full object-cover opacity-60" loading="lazy" decoding="async" />
                                     ) : (
                                       <div className="text-[9px] text-foreground/20">{!card.startFrameUrl ? '首帧未生成' : '参考图'}</div>
                                     )}
@@ -399,7 +401,7 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
                                   </div>
                                   <div className="aspect-video rounded-lg overflow-hidden bg-accent/20 border border-emerald-500/20 relative flex items-center justify-center">
                                     {card.endFrameUrl ? (
-                                      <img src={card.endFrameUrl} alt="End Frame" className="w-full h-full object-cover" />
+                                      <img src={card.endFrameUrl} alt="End Frame" className="w-full h-full object-cover" loading="lazy" decoding="async" />
                                     ) : (
                                       <div className="text-[9px] text-foreground/20">尾帧自动链入下一镜头</div>
                                     )}
@@ -423,13 +425,13 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
                               {/* 帧间动画指示器 */}
                               {card.startFrameUrl && card.endFrameUrl && (
                                 <div className="flex items-center justify-center gap-2 mt-2 py-1.5 rounded-lg bg-primary/5 border border-primary/20">
-                                  <img src={card.startFrameUrl} alt="" className="w-10 h-7 rounded object-cover" />
+                                  <img src={card.startFrameUrl} alt="" className="w-10 h-7 rounded object-cover" loading="lazy" decoding="async" />
                                   <div className="flex items-center gap-1">
                                     <ArrowRight className="w-3 h-3 text-primary" />
                                     <span className="text-[9px] text-primary font-medium">插值生成视频</span>
                                     <ArrowRight className="w-3 h-3 text-primary" />
                                   </div>
-                                  <img src={card.endFrameUrl} alt="" className="w-10 h-7 rounded object-cover" />
+                                  <img src={card.endFrameUrl} alt="" className="w-10 h-7 rounded object-cover" loading="lazy" decoding="async" />
                                   <button
                                     onClick={() => handleGenerateShotVideo(card.id)}
                                     disabled={card.isGenerating}
@@ -456,7 +458,7 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
                                           card.nineGridSelectedIndex === i ? 'border-[#EF4444] ring-1 ring-[#EF4444]/30' : 'border-transparent'
                                         }`}
                                       >
-                                        <img src={img} alt={`候选${i + 1}`} className="w-full h-full object-cover" />
+                                        <img src={img} alt={`候选${i + 1}`} className="w-full h-full object-cover" loading="lazy" decoding="async" />
                                       </button>
                                     ))}
                                   </div>
@@ -522,9 +524,9 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
                               {/* 缩略图区 */}
                               <div className="aspect-video bg-accent/20 relative flex items-center justify-center">
                                 {hasVideo ? (
-                                  <video src={card.videoUrl} className="w-full h-full object-cover" muted />
+                                  <video src={card.videoUrl} className="w-full h-full object-cover" muted preload="none" playsInline />
                                 ) : hasImage ? (
-                                  <img src={card.startFrameUrl || card.imageUrl} alt={card.name} className="w-full h-full object-cover" />
+                                  <img src={card.startFrameUrl || card.imageUrl} alt={card.name} className="w-full h-full object-cover" loading="lazy" decoding="async" />
                                 ) : card.isGenerating || card.startFrameGenerating ? (
                                   <Loader2 className="w-5 h-5 animate-spin text-primary" />
                                 ) : (
@@ -589,7 +591,7 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
                                 <div className="flex items-center gap-1 text-[8px] text-foreground/30">
                                   {card.shotType && <span>{card.shotType}</span>}
                                   {card.duration && <span>{card.duration}s</span>}
-                                  {card.dialogue && <span className="truncate max-w-[60px]">"{card.dialogue}"</span>}
+                                  {card.dialogue && <span className="truncate max-w-[60px]">“{card.dialogue}”</span>}
                                 </div>
                               </div>
                             </div>
@@ -617,7 +619,7 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
                             {/* 序号+缩略图 */}
                             <div className="flex items-center gap-1">
                               <span className="text-foreground/30 font-mono">{idx + 1}</span>
-                              {card.imageUrl && <img src={card.imageUrl} alt="" className="w-5 h-5 rounded object-cover" />}
+                              {card.imageUrl && <img src={card.imageUrl} alt="" className="w-5 h-5 rounded object-cover" loading="lazy" decoding="async" />}
                             </div>
                             {/* 名称+元数据标签 */}
                             <div className="space-y-0.5">
@@ -731,7 +733,7 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
                               </span>
                             </div>
                             {card.imageUrl ? (
-                              <img src={card.imageUrl} alt={card.name} className="w-full h-full object-cover" />
+                              <img src={card.imageUrl} alt={card.name} className="w-full h-full object-cover" loading="lazy" decoding="async" />
                             ) : card.isGenerating ? (
                               <div className="flex flex-col items-center gap-2">
                                 <Loader2 className="w-6 h-6 animate-spin text-primary" />
@@ -833,7 +835,7 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
                                     title={outfit.name}
                                   >
                                     {outfit.imageUrl ? (
-                                      <img src={outfit.imageUrl} alt={outfit.name} className="w-full h-full object-cover" />
+                                      <img src={outfit.imageUrl} alt={outfit.name} className="w-full h-full object-cover" loading="lazy" decoding="async" />
                                     ) : (
                                       <div className="w-full h-full bg-accent/20 flex items-center justify-center text-[6px] text-foreground/20">{outfit.name[0]}</div>
                                     )}
@@ -980,7 +982,7 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
                       {uploadedFiles.map(f => (
                         <div key={f.id} className="relative group flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-secondary/50 text-[10px] max-w-[120px]">
                           {f.type === 'image' && f.localPreview ? (
-                            <img src={f.localPreview} alt={f.name} className="w-4 h-4 rounded object-cover flex-shrink-0" />
+                            <img src={f.localPreview} alt={f.name} className="w-4 h-4 rounded object-cover flex-shrink-0" loading="lazy" decoding="async" />
                           ) : f.type === 'video' ? (
                             <Video className="w-3 h-3 text-red-400 flex-shrink-0" />
                           ) : (
@@ -1128,7 +1130,7 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
               {uploadedFiles.map(f => (
                 <div key={f.id} className="relative group flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-secondary/50 text-[10px] max-w-[120px]">
                   {f.type === 'image' && f.localPreview ? (
-                    <img src={f.localPreview} alt={f.name} className="w-4 h-4 rounded object-cover flex-shrink-0" />
+                    <img src={f.localPreview} alt={f.name} className="w-4 h-4 rounded object-cover flex-shrink-0" loading="lazy" decoding="async" />
                   ) : f.type === 'video' ? (
                     <Video className="w-3 h-3 text-red-400 flex-shrink-0" />
                   ) : (
