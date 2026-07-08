@@ -17,7 +17,8 @@ import {
 } from 'lucide-react';
 
 // ★ v2.0: BGM类型已迁移到 @/constants/bgm-types，此处使用集中定义
-import { BGM_TYPES_V2, getBgmTypeList, type BgmTypeId } from '@/constants/bgm-types';
+import { getBgmTypeList } from '@/constants/bgm-types';
+import { clientApiFetch } from '@/lib/client-api';
 
 // 向后兼容：从集中定义提取旧格式
 const BGM_TYPES: Record<string, { name: string; description: string }> = {};
@@ -32,6 +33,23 @@ interface BgmItem {
   name: string;
   fileName: string;
   url: string;
+}
+
+interface BgmListResponse {
+  success?: boolean;
+  list?: BgmItem[];
+  error?: string;
+}
+
+interface BgmInitResponse {
+  success?: boolean;
+  error?: string;
+}
+
+interface BgmExportResponse {
+  success?: boolean;
+  url?: string;
+  error?: string;
 }
 
 interface Props {
@@ -57,8 +75,7 @@ export default function BgmPlayer({ videoUrl, onSelectBgm, onExport }: Props) {
   const loadBgmList = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/bgm/list?type=${currentType}`);
-      const data = await res.json();
+      const data = await clientApiFetch<BgmListResponse>(`/api/bgm/list?type=${encodeURIComponent(currentType)}`);
       
       if (data.success) {
         setBgmList(data.list || []);
@@ -76,10 +93,9 @@ export default function BgmPlayer({ videoUrl, onSelectBgm, onExport }: Props) {
   const initBgm = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/bgm/init?action=init');
-      const data = await res.json();
+      const data = await clientApiFetch<BgmInitResponse>('/api/bgm/init?action=init');
       console.log('BGM初始化结果:', data);
-      setIsInitialized(data.success);
+      setIsInitialized(Boolean(data.success));
       
       if (data.success) {
         await loadBgmList();
@@ -119,9 +135,8 @@ export default function BgmPlayer({ videoUrl, onSelectBgm, onExport }: Props) {
     setExportProgress('正在合并音视频...');
 
     try {
-      const res = await fetch('/api/bgm/export', {
+      const data = await clientApiFetch<BgmExportResponse>('/api/bgm/export', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           videoUrl,
           audioUrl: selectedBgm.url,
@@ -129,9 +144,7 @@ export default function BgmPlayer({ videoUrl, onSelectBgm, onExport }: Props) {
         }),
       });
 
-      const data = await res.json();
-      
-      if (data.success) {
+      if (data.success && data.url) {
         setExportProgress('导出成功!');
         onExport?.(data.url, selectedBgm.url);
         
@@ -143,8 +156,9 @@ export default function BgmPlayer({ videoUrl, onSelectBgm, onExport }: Props) {
       } else {
         setExportProgress(`导出失败: ${data.error}`);
       }
-    } catch (error: any) {
-      setExportProgress(`导出失败: ${error.message}`);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : '未知错误';
+      setExportProgress(`导出失败: ${message}`);
     } finally {
       setIsExporting(false);
     }
@@ -160,7 +174,10 @@ export default function BgmPlayer({ videoUrl, onSelectBgm, onExport }: Props) {
 
     try {
       // 创建AudioContext
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      const AudioContextClass =
+        window.AudioContext ||
+        (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextClass) return;
       audioContextRef.current = new AudioContextClass();
 
       // 获取视频和音频源
