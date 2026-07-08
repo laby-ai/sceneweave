@@ -34,6 +34,7 @@ import {
 // BGM类型定义（复用集中定义）
 import { getBgmTypeList, type BgmTypeId } from '@/constants/bgm-types';
 import type { LibraryTrack, LibrarySearchResult } from '@/constants/music-library';
+import { clientApiFetch } from '@/lib/client-api';
 
 // ============================================================
 // 类型定义
@@ -48,6 +49,11 @@ interface Props {
   onSelectTrack: (track: LibraryTrack) => void;
   /** 当前已选曲目ID（用于高亮） */
   selectedId?: string;
+}
+
+interface MusicLibraryResponse {
+  success?: boolean;
+  data?: LibrarySearchResult;
 }
 
 // ============================================================
@@ -122,10 +128,9 @@ export default function MusicLibraryBrowser({ open, onClose, onSelectTrack, sele
       params.set('page', String(p ?? page));
       params.set('pageSize', '12');
 
-      const res = await fetch(`/api/bgm/library?${params.toString()}`);
-      const data = await res.json();
+      const data = await clientApiFetch<MusicLibraryResponse>(`/api/bgm/library?${params.toString()}`);
 
-      if (data.success) {
+      if (data.success && data.data) {
         setResult(data.data);
       }
     } catch (error) {
