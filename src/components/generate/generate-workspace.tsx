@@ -18,6 +18,7 @@ import {
   Wand2,
 } from 'lucide-react';
 
+import { clientApiFetch, clientApiRequest } from '@/lib/client-api';
 import { genId, loadChatHistory, saveChatHistory, saveMessages, type ChatHistoryEntry, type ChatMessage } from '@/lib/smart-assistant-panel-model';
 import {
   useVimaxShortDramaSkill,
@@ -81,8 +82,10 @@ function parseVimaxDurationSpec(text: string) {
 
 interface GenerateWorkspaceProps {
   initialPrompt?: string;
-  onNavigate?: (section: string, prompt?: string) => void;
+  onNavigate?: (section: string, prompt?: string, transfer?: { imageRefs?: string[] }) => void;
 }
+
+type SubjectItem = { id: string; name: string; type: 'character' | 'scene' | 'object'; imageUrl: string };
 
 export function GenerateWorkspace({ initialPrompt, onNavigate }: GenerateWorkspaceProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -93,6 +96,10 @@ export function GenerateWorkspace({ initialPrompt, onNavigate }: GenerateWorkspa
   const [skillMenuOpen, setSkillMenuOpen] = useState(false);
   const [mediaModelMenuOpen, setMediaModelMenuOpen] = useState(false);
   const [atMenuOpen, setAtMenuOpen] = useState(false);
+  const [subjects, setSubjects] = useState<SubjectItem[]>([]);
+  const [subjectsLoading, setSubjectsLoading] = useState(false);
+  const [subjectError, setSubjectError] = useState<string | null>(null);
+  const [subjectOpeningId, setSubjectOpeningId] = useState<string | null>(null);
   const [selectedRatio, setSelectedRatio] = useState('16:9');
   const [selectedQuality, setSelectedQuality] = useState('高清');
   const [history, setHistory] = useState<ChatHistoryEntry[]>([]);
@@ -149,6 +156,47 @@ export function GenerateWorkspace({ initialPrompt, onNavigate }: GenerateWorkspa
   });
 
   const activeMode = CREATION_MODES.find(item => item.id === mode) || CREATION_MODES[0];
+
+  const openSubjectMenu = useCallback(async () => {
+    setModeMenuOpen(false);
+    setSkillMenuOpen(false);
+    setMediaModelMenuOpen(false);
+    setAtMenuOpen(open => !open);
+    if (atMenuOpen || subjects.length > 0 || subjectsLoading) return;
+    setSubjectsLoading(true);
+    try {
+      const payload = await clientApiFetch<{ subjects?: SubjectItem[] }>('/api/subjects');
+      setSubjects(payload.subjects || []);
+      setSubjectError(null);
+    } catch (error) {
+      setSubjectError(error instanceof Error ? error.message : '主体库加载失败');
+    } finally {
+      setSubjectsLoading(false);
+    }
+  }, [atMenuOpen, subjects.length, subjectsLoading]);
+
+  const selectSubject = useCallback(async (subject: SubjectItem) => {
+    if (!onNavigate || subjectOpeningId) return;
+    setSubjectOpeningId(subject.id);
+    try {
+      const response = await clientApiRequest(`/api/subjects/${encodeURIComponent(subject.id)}`, { timeoutMs: 20_000 });
+      if (!response.ok) throw new Error('主体参考图不可用');
+      const blob = await response.blob();
+      if (!blob.type.startsWith('image/') || blob.size === 0) throw new Error('主体参考图不可用');
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error('主体参考图读取失败'));
+        reader.readAsDataURL(blob);
+      });
+      setAtMenuOpen(false);
+      onNavigate('image', input.trim() || `基于主体「${subject.name}」创作新画面`, { imageRefs: [dataUrl] });
+    } catch (error) {
+      setSubjectError(error instanceof Error ? error.message : '主体参考图不可用');
+    } finally {
+      setSubjectOpeningId(null);
+    }
+  }, [input, onNavigate, subjectOpeningId]);
 
   const handleSend = useCallback(async (overrideText?: string) => {
     const text = (overrideText ?? input).trim();
@@ -440,16 +488,29 @@ export function GenerateWorkspace({ initialPrompt, onNavigate }: GenerateWorkspa
           <div className="relative">
             <button
               type="button"
-              onClick={() => { setModeMenuOpen(false); setSkillMenuOpen(false); setMediaModelMenuOpen(false); setAtMenuOpen(open => !open); }}
+              onClick={() => void openSubjectMenu()}
               className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-foreground"
               title="添加主体"
             >
               <AtSign className="h-4 w-4" />
             </button>
             {atMenuOpen && (
-              <div className="absolute top-full left-0 z-20 mt-2 w-56 overflow-hidden rounded-xl border border-border bg-popover p-2 shadow-xl">
+              <div className="absolute top-full left-0 z-20 mt-2 max-h-72 w-64 overflow-y-auto rounded-xl border border-border bg-popover p-2 shadow-xl">
                 <p className="pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">引用主体</p>
-                <p className="px-1 py-2 text-xs text-muted-foreground">暂无可引用主体。在「生成」里创建角色 / 场景后，可在这里 @ 引用，保持跨镜头一致。</p>
+                {subjectsLoading ? (
+                  <p className="px-1 py-3 text-xs text-muted-foreground">正在加载主体库…</p>
+                ) : subjectError ? (
+                  <p className="px-1 py-3 text-xs text-red-400">{subjectError}</p>
+                ) : subjects.length === 0 ? (
+                  <p className="px-1 py-2 text-xs text-muted-foreground">暂无可引用主体。可在素材库的生成历史中保存真实图片。</p>
+                ) : subjects.map(subject => (
+                  <button key={subject.id} type="button" disabled={Boolean(subjectOpeningId)} onClick={() => void selectSubject(subject)} className="flex w-full items-center gap-2 rounded-lg p-2 text-left hover:bg-accent/60 disabled:opacity-50">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={subject.imageUrl} alt="" className="h-10 w-10 rounded-md object-cover" />
+                    <span className="min-w-0 flex-1"><span className="block truncate text-sm">{subject.name}</span><span className="text-[11px] text-muted-foreground">{subject.type === 'character' ? '角色' : subject.type === 'scene' ? '场景' : '物件'}</span></span>
+                    {subjectOpeningId === subject.id && <span className="text-xs text-muted-foreground">读取中</span>}
+                  </button>
+                ))}
               </div>
             )}
           </div>

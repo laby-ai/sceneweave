@@ -332,8 +332,9 @@ export function DreamboxMainContent(props: DreamboxMainContentProps) {
             <div className="h-[calc(100vh-72px)] -m-6">
               <GenerateWorkspace
                 initialPrompt={pendingPrompt}
-                onNavigate={(section, prompt) => {
+                onNavigate={(section, prompt, transfer) => {
                   if (prompt) setPendingPrompt(prompt);
+                  setPendingImageRefs(transfer?.imageRefs || []);
                   setShouldAutoGenerate(true);
                   setActiveSection(section);
                 }}
