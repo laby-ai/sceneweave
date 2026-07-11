@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckSquare, Download, GitBranch, Layers, Search, Square, Trash2, Users, Video as VideoIcon } from 'lucide-react';
+import { CheckSquare, Download, GitBranch, Layers, Loader2, Search, Square, Trash2, UserPlus, Users, Video as VideoIcon, X } from 'lucide-react';
 
 import { useVideoHistory } from '@/hooks/useVideoHistory';
 import { clientApiFetch } from '@/lib/client-api';
@@ -44,6 +44,28 @@ interface MediaLibraryResponse {
   assets?: UnifiedAsset[];
 }
 
+type SubjectType = 'character' | 'scene' | 'object';
+type SubjectItem = {
+  id: string;
+  name: string;
+  type: SubjectType;
+  source: 'generated' | 'uploaded';
+  createdAt: string;
+  imageUrl: string;
+};
+
+interface SubjectResponse {
+  success?: boolean;
+  subjects?: SubjectItem[];
+  subject?: SubjectItem;
+}
+
+const SUBJECT_TYPE_LABELS: Record<SubjectType, string> = {
+  character: '角色',
+  scene: '场景',
+  object: '物件',
+};
+
 const TYPE_FILTERS: Array<{ id: TypeFilter; label: string }> = [
   { id: 'all', label: '全部' },
   { id: 'image', label: '图片' },
@@ -75,6 +97,11 @@ export function AssetsLibrary({ finalVideoCaseAssets = [], segmentCaseAssets = [
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [historicalAssets, setHistoricalAssets] = useState<UnifiedAsset[]>([]);
   const [historicalAssetError, setHistoricalAssetError] = useState<string | null>(null);
+  const [subjects, setSubjects] = useState<SubjectItem[]>([]);
+  const [subjectsLoading, setSubjectsLoading] = useState(false);
+  const [subjectError, setSubjectError] = useState<string | null>(null);
+  const [subjectDraft, setSubjectDraft] = useState<{ asset: UnifiedAsset; name: string; type: SubjectType } | null>(null);
+  const [subjectSaving, setSubjectSaving] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,6 +129,57 @@ export function AssetsLibrary({ finalVideoCaseAssets = [], segmentCaseAssets = [
       cancelled = true;
     };
   }, []);
+
+  const loadSubjects = async () => {
+    setSubjectsLoading(true);
+    try {
+      const payload = await clientApiFetch<SubjectResponse>('/api/subjects');
+      setSubjects(payload.subjects || []);
+      setSubjectError(null);
+    } catch (error) {
+      setSubjectError(error instanceof Error ? error.message : '主体库加载失败');
+    } finally {
+      setSubjectsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (tab === 'subjects') void loadSubjects();
+  }, [tab]);
+
+  const saveSubject = async () => {
+    if (!subjectDraft || !subjectDraft.name.trim()) return;
+    setSubjectSaving(true);
+    try {
+      const payload = await clientApiFetch<SubjectResponse>('/api/subjects', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: subjectDraft.name.trim(),
+          type: subjectDraft.type,
+          referenceUrl: subjectDraft.asset.url,
+          source: 'generated',
+        }),
+        timeoutMs: 25_000,
+      });
+      if (!payload.subject) throw new Error('主体保存失败');
+      setSubjects(current => [payload.subject!, ...current.filter(item => item.id !== payload.subject!.id)]);
+      setSubjectDraft(null);
+      setSubjectError(null);
+    } catch (error) {
+      setSubjectError(error instanceof Error ? error.message : '主体保存失败');
+    } finally {
+      setSubjectSaving(false);
+    }
+  };
+
+  const removeSubject = async (id: string) => {
+    try {
+      await clientApiFetch(`/api/subjects/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      setSubjects(current => current.filter(item => item.id !== id));
+    } catch (error) {
+      setSubjectError(error instanceof Error ? error.message : '主体删除失败');
+    }
+  };
 
   const assets = useMemo<UnifiedAsset[]>(() => {
     const list: UnifiedAsset[] = [];
@@ -247,11 +325,16 @@ export function AssetsLibrary({ finalVideoCaseAssets = [], segmentCaseAssets = [
                   <h3 className="mb-3 text-sm font-semibold">{label}</h3>
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6">
                     {items.map(asset => (
-                      <button
+                      <div
                         key={asset.id}
-                        onClick={() => selectMode ? toggleSelect(asset.id) : window.open(asset.url, '_blank')}
                         className="group relative aspect-square overflow-hidden rounded-xl border border-border bg-card"
                       >
+                        <button
+                          type="button"
+                          aria-label={`打开${asset.title}`}
+                          onClick={() => selectMode ? toggleSelect(asset.id) : window.open(asset.url, '_blank')}
+                          className="absolute inset-0 z-0"
+                        />
                         {asset.kind === 'image' ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={asset.poster || asset.url} alt={asset.title} loading="lazy" decoding="async" className="h-full w-full object-cover transition-transform group-hover:scale-105" />
@@ -275,10 +358,20 @@ export function AssetsLibrary({ finalVideoCaseAssets = [], segmentCaseAssets = [
                             {selected.has(asset.id) ? <CheckSquare className="h-5 w-5 text-[#70E0FF]" /> : <Square className="h-5 w-5" />}
                           </span>
                         )}
+                        {!selectMode && asset.kind === 'image' && (
+                          <button
+                            type="button"
+                            onClick={() => setSubjectDraft({ asset, name: asset.title, type: 'character' })}
+                            className="absolute right-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-lg bg-black/65 text-white opacity-0 backdrop-blur transition-opacity hover:bg-[#4F6CFF] group-hover:opacity-100 focus:opacity-100"
+                            title="保存为主体"
+                          >
+                            <UserPlus className="h-4 w-4" />
+                          </button>
+                        )}
                         <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/35 to-transparent px-2.5 pb-2.5 pt-8 text-left text-[11px] font-medium leading-tight text-white opacity-95">
                           <span className="line-clamp-2">{asset.title}</span>
                         </span>
-                      </button>
+                      </div>
                     ))}
                   </div>
                 </section>
@@ -289,9 +382,57 @@ export function AssetsLibrary({ finalVideoCaseAssets = [], segmentCaseAssets = [
       )}
 
       {tab === 'subjects' && (
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 text-center text-muted-foreground">
-          <Users className="h-10 w-10 opacity-40" />
-          <p className="text-sm">暂无主体。在「生成」里创建角色 / 场景后，会自动沉淀为可复用主体。</p>
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
+          {subjectError && <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">{subjectError}</div>}
+          {subjectsLoading ? (
+            <div className="flex h-40 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> 正在加载主体库</div>
+          ) : subjects.length === 0 ? (
+            <div className="flex h-56 flex-col items-center justify-center gap-3 text-center text-muted-foreground">
+              <Users className="h-10 w-10 opacity-40" />
+              <p className="text-sm">暂无主体。可在生成历史的图片卡片上选择“保存为主体”。</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6">
+              {subjects.map(subject => (
+                <article key={subject.id} className="group overflow-hidden rounded-xl border border-border bg-card">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={subject.imageUrl} alt={subject.name} loading="lazy" decoding="async" className="aspect-square w-full object-cover" />
+                  <div className="flex items-center gap-2 px-3 py-2.5">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{subject.name}</p>
+                      <p className="text-[11px] text-muted-foreground">{SUBJECT_TYPE_LABELS[subject.type]}</p>
+                    </div>
+                    <button type="button" onClick={() => void removeSubject(subject.id)} className="rounded-md p-1.5 text-muted-foreground hover:bg-red-500/10 hover:text-red-400" title="删除主体">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {subjectDraft && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-xl border border-border bg-card p-4 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-sm font-semibold">保存为主体</h3>
+              <button type="button" onClick={() => setSubjectDraft(null)} className="rounded-md p-1 text-muted-foreground hover:bg-accent"><X className="h-4 w-4" /></button>
+            </div>
+            <label className="mb-3 block text-xs text-muted-foreground">名称
+              <input value={subjectDraft.name} onChange={event => setSubjectDraft(current => current ? { ...current, name: event.target.value } : null)} maxLength={80} className="mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-[#4F6CFF]" />
+            </label>
+            <div className="mb-4">
+              <p className="mb-1.5 text-xs text-muted-foreground">类型</p>
+              <div className="grid grid-cols-3 gap-2">
+                {(Object.keys(SUBJECT_TYPE_LABELS) as SubjectType[]).map(type => <button key={type} type="button" onClick={() => setSubjectDraft(current => current ? { ...current, type } : null)} className={`rounded-lg border px-2 py-2 text-xs ${subjectDraft.type === type ? 'border-[#4F6CFF] bg-[#4F6CFF]/15 text-[#70E0FF]' : 'border-border text-muted-foreground'}`}>{SUBJECT_TYPE_LABELS[type]}</button>)}
+              </div>
+            </div>
+            <button type="button" onClick={() => void saveSubject()} disabled={subjectSaving || !subjectDraft.name.trim()} className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#4F6CFF] px-3 py-2 text-sm text-white disabled:opacity-40">
+              {subjectSaving && <Loader2 className="h-4 w-4 animate-spin" />} 保存主体
+            </button>
+          </div>
         </div>
       )}
 
