@@ -4,6 +4,17 @@ export type FilmComposeStreamEvent =
   | { type: 'complete'; videoUrl: string }
   | { type: 'error'; message: string };
 
+export function filmComposeFailureMessage(payload: unknown, status: number): string {
+  if (payload && typeof payload === 'object') {
+    const data = payload as { code?: unknown; error?: unknown };
+    if (data.code === 'film_compose_storage_not_ready') {
+      return '最终成片暂时无法稳定保存。已生成镜头均已保留，请稍后重试。';
+    }
+    if (typeof data.error === 'string' && data.error.trim()) return data.error;
+  }
+  return `合成请求失败（HTTP ${status}）`;
+}
+
 export function parseFilmComposeStreamLine(line: string): FilmComposeStreamEvent {
   if (!line.startsWith('data: ')) return { type: 'ignore' };
 
