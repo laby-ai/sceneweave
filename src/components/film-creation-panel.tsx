@@ -335,7 +335,7 @@ export function FilmCreationPanel({
       try {
         const formData = new FormData();
         formData.append('file', file);
-        const res = await fetch('/api/upload/material', { method: 'POST', body: formData });
+        const res = await clientApiRequest('/api/upload/material', { method: 'POST', body: formData });
         const data = await res.json();
         if (data.success) {
           setUploadedFiles(prev => prev.map(f =>
@@ -471,7 +471,7 @@ export function FilmCreationPanel({
     setSearchSummary('');
     setShowSearchResults(true);
     try {
-      const res = await fetch('/api/film/search', {
+      const res = await clientApiRequest('/api/film/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: searchQuery.trim(), type: searchType, count: 8 }),
@@ -521,7 +521,7 @@ export function FilmCreationPanel({
         `用户输入：${prompt}`,
       ].join('\n');
 
-      const response = await fetch('/api/compliance/check', {
+      const response = await clientApiRequest('/api/compliance/check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -652,7 +652,7 @@ export function FilmCreationPanel({
     setProgressMsg('增强角色描述...');
 
     try {
-      const res = await fetch('/api/film/character-prompt', {
+      const res = await clientApiRequest('/api/film/character-prompt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getBYOKRequestHeaders() },
         body: JSON.stringify({
@@ -708,7 +708,7 @@ export function FilmCreationPanel({
     addWorkflowMsg('assistant', `正在生成角色「${card.name}」三视图...`, 'progress');
 
     try {
-      const res = await fetch('/api/film/character-views', {
+      const res = await clientApiRequest('/api/film/character-views', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -763,7 +763,7 @@ export function FilmCreationPanel({
     setProgressMsg('增强场景描述...');
 
     try {
-      const res = await fetch('/api/film/scene-generate', {
+      const res = await clientApiRequest('/api/film/scene-generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getBYOKRequestHeaders() },
         body: JSON.stringify({
@@ -834,7 +834,7 @@ export function FilmCreationPanel({
 
     addWorkflowMsg('assistant', `正在提取镜头「${card.name}」最后一帧...`, undefined, 'progress');
     try {
-      const res = await fetch('/api/video/extract-last-frame', {
+      const res = await clientApiRequest('/api/video/extract-last-frame', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ videoUrl: card.videoUrl }),
@@ -869,7 +869,7 @@ export function FilmCreationPanel({
     ));
 
     try {
-      const res = await fetch('/api/prompt/enhance', {
+      const res = await clientApiRequest('/api/prompt/enhance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: card.promptCn }),
@@ -1039,7 +1039,7 @@ export function FilmCreationPanel({
       // 分镜类型：生成首帧+尾帧（FLF2V模式）
       if (card.type === 'shot') {
         // 1. 生成首帧（起始帧）
-        const startRes = await fetch('/api/image/generate', {
+        const startRes = await clientApiRequest('/api/image/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1054,7 +1054,7 @@ export function FilmCreationPanel({
         const startFrameUrl = startData.imageUrls?.[0] || startData.imageUrl;
 
         // 2. 生成尾帧（结束帧），参考首帧确保连贯性
-        const endRes = await fetch('/api/image/generate', {
+        const endRes = await clientApiRequest('/api/image/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1085,7 +1085,7 @@ export function FilmCreationPanel({
         }
       } else {
         // 非分镜类型：只生成单张图
-        const res = await fetch('/api/image/generate', {
+        const res = await clientApiRequest('/api/image/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1128,7 +1128,7 @@ export function FilmCreationPanel({
     ));
 
     try {
-      const res = await fetch('/api/video/consistency-check', {
+      const res = await clientApiRequest('/api/video/consistency-check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1160,7 +1160,7 @@ export function FilmCreationPanel({
 
     setConsistencyChecking(true);
     try {
-      const res = await fetch('/api/video/consistency-check', {
+      const res = await clientApiRequest('/api/video/consistency-check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1202,7 +1202,7 @@ export function FilmCreationPanel({
 
     addWorkflowMsg('assistant', `正在扩展「${card.name}」提示词...`, undefined, 'progress');
     try {
-      const res = await fetch('/api/video/consistency-check', {
+      const res = await clientApiRequest('/api/video/consistency-check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1249,7 +1249,7 @@ export function FilmCreationPanel({
         return;
       }
 
-      const res = await fetch('/api/film/prop-generate', {
+      const res = await clientApiRequest('/api/film/prop-generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1403,7 +1403,7 @@ export function FilmCreationPanel({
       ];
       for (let i = 0; i < 9; i++) {
         const variantPrompt = `${card.promptEn}, ${angles[i]}, cinematic composition, ${visualStyle}`;
-        const res = await fetch('/api/image/generate', {
+        const res = await clientApiRequest('/api/image/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1566,7 +1566,7 @@ export function FilmCreationPanel({
       const prompt = filmVisualStyle ? buildStyleLockedPrompt(rawPrompt, filmVisualStyle) : `${rawPrompt}, ${visualStyle}`;
       const negPrompt = filmVisualStyle ? buildEnhancedNegative(filmVisualStyle) : '';
       // 注入角色已有图片作为参考，确保造型一致性
-      const res = await fetch('/api/image/generate', {
+      const res = await clientApiRequest('/api/image/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1681,7 +1681,7 @@ export function FilmCreationPanel({
         ? [sceneRef.description, sceneRef.promptEn].filter(Boolean).join('. ')
         : '';
 
-      const res = await fetch('/api/film/bridge-generate', {
+      const res = await clientApiRequest('/api/film/bridge-generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1726,7 +1726,7 @@ export function FilmCreationPanel({
             return;
           }
           try {
-            const taskRes = await fetch(`/api/tasks/${bridgeTaskId}`);
+            const taskRes = await clientApiRequest(`/api/tasks/${bridgeTaskId}`);
             const taskData = await taskRes.json();
             const task = taskData.task;
             const progress = task.progress || 0;
@@ -1813,7 +1813,7 @@ export function FilmCreationPanel({
       // Web Audio 生成失败，降级到预设API
     }
     try {
-      const res = await fetch(`/api/bgm/preset?type=${type}&random=true`);
+      const res = await clientApiRequest(`/api/bgm/preset?type=${type}&random=true`);
       const data = await res.json();
       if (data.success && data.url) {
         if (bgmAudioRef.current) {
@@ -1848,7 +1848,7 @@ export function FilmCreationPanel({
     setVoicePreviewPlaying(voiceName);
 
     try {
-      const res = await fetch('/api/tts/preview', {
+      const res = await clientApiRequest('/api/tts/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ voiceType: voiceName }),

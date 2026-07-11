@@ -37,6 +37,7 @@ import {
   IMAGE_QUALITY_OPTIONS 
 } from '@/constants/filters';
 import { RemixButton } from '@/components/remix-button';
+import { clientApiDownloadBlob } from '@/lib/client-api';
 import {
   Dialog,
   DialogContent,
@@ -63,7 +64,7 @@ interface ImagePreviewProps {
   onRemix?: () => void;
   onPublish?: (images: GeneratedImage, title: string, description: string, tags: string[], isPublic: boolean) => void;
   onEdit?: () => void;
-  onRegenerate?: (imageOrPrompt: any) => void;
+  onRegenerate?: (imageOrPrompt: string | GeneratedImage) => void;
 }
 
 export function ImagePreview({ images, isGenerating, onRemix, onPublish, onEdit, onRegenerate }: ImagePreviewProps) {
@@ -205,8 +206,7 @@ export function ImagePreview({ images, isGenerating, onRemix, onPublish, onEdit,
 
   const downloadImage = async (url: string, index: number) => {
     try {
-      const response = await fetch(url);
-      const blob = await response.blob();
+      const blob = await clientApiDownloadBlob(url, { timeoutMs: 60_000 });
       const blobUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = blobUrl;

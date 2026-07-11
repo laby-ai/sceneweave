@@ -47,6 +47,7 @@ jobs:
       - name: Check account and member isolation
         run: |
           pnpm run test:cross-app-auth-contract
+          pnpm run test:client-request-contract
           pnpm run test:member-subject-library
           pnpm run test:member-final-video-store
 
