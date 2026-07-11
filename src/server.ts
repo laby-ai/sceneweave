@@ -2,11 +2,11 @@ import { createServer } from 'http';
 import next from 'next';
 
 const dev = process.env.COZE_PROJECT_ENV !== 'PROD';
-const hostname = process.env.HOSTNAME || 'localhost';
+const bindHost = process.env.BIND_HOST || (dev ? 'localhost' : '127.0.0.1');
 const port = parseInt(process.env.PORT || '5000', 10);
 
 // Create Next.js app
-const app = next({ dev, hostname, port });
+const app = next({ dev, hostname: bindHost, port });
 const handle = app.getRequestHandler();
 
 function parseRequestUrl(reqUrl: string, baseUrl: string): NonNullable<Parameters<typeof handle>[2]> {
@@ -59,7 +59,7 @@ app.prepare().then(() => {
         req.headers['x-yh-image-model'] = ARK_IMG;
         req.headers['x-yh-video-model'] = ARK_VID;
       }
-      const parsedUrl = parseRequestUrl(req.url || '/', `http://${req.headers.host || `${hostname}:${port}`}`);
+      const parsedUrl = parseRequestUrl(req.url || '/', `http://${req.headers.host || `${bindHost}:${port}`}`);
       await handle(req, res, parsedUrl);
     } catch (err) {
       console.error('Error occurred handling', req.url, err);
@@ -71,9 +71,9 @@ app.prepare().then(() => {
     console.error(err);
     process.exit(1);
   });
-  server.listen(port, () => {
+  server.listen(port, bindHost, () => {
     console.log(
-      `> Server listening at http://${hostname}:${port} as ${
+      `> Server listening at http://${bindHost}:${port} as ${
         dev ? 'development' : process.env.COZE_PROJECT_ENV
       }`,
     );
