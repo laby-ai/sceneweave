@@ -1,0 +1,36 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+const workflowPath = resolve(process.cwd(), ".github/workflows/ci.yml");
+const workflow = readFileSync(workflowPath, "utf8");
+
+const requiredSnippets = [
+  "pull_request:",
+  "codex/sync-huiying-prod-20260629",
+  "permissions:",
+  "contents: read",
+  "timeout-minutes: 20",
+  "cancel-in-progress: true",
+  "node-version: 20",
+  "corepack prepare pnpm@10.28.1 --activate",
+  "pnpm install --frozen-lockfile",
+  "pnpm run test:ci-workflow",
+  "pnpm run ts-check",
+  "pnpm run test:film-mobile-workspace",
+  "pnpm run test:film-mobile-viewport",
+  "pnpm run qa:smart-vimax-agent-render",
+  "pnpm run test:film-compose-durability",
+  "NEXT_PUBLIC_BASE_PATH: /huiying",
+  "pnpm next build",
+  "pnpm tsup src/server.ts",
+];
+
+for (const snippet of requiredSnippets) {
+  assert.ok(workflow.includes(snippet), `CI workflow must include: ${snippet}`);
+}
+
+assert.ok(!workflow.includes("secrets."), "deterministic CI must not read repository secrets");
+assert.ok(!workflow.includes("qa:real-"), "deterministic CI must not call paid provider smoke tests");
+
+console.log("CI workflow contract passed");
