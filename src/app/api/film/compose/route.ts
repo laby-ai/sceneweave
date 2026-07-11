@@ -193,11 +193,9 @@ export async function POST(request: NextRequest) {
           } catch (concatError) {
             console.error('[Film Compose] 拼接失败:', concatError);
             sendEvent({
-              stage: 'complete',
-              success: true,
-              videoUrl: ownVideoUrls[0],
-              message: '视频拼接服务暂不可用，已返回首个分镜视频',
-              fallback: true,
+              stage: 'error',
+              success: false,
+              error: `视频拼接失败: ${concatError instanceof Error ? concatError.message : '未知错误'}`,
             });
             controller.close();
             return;

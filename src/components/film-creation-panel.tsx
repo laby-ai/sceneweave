@@ -28,6 +28,8 @@ import { getBYOKRequestHeaders } from '@/lib/byok-client';
 import { getBgmTypeList, matchBgmByKeywords, type BgmTypeId } from '@/constants/bgm-types';
 import type { CharacterAnchor, GridPromptInput, ConsistencyCheckResult } from '@/lib/video-production/character-consistency-engine';
 import { buildFilmAnchorContext, buildFilmReferenceImages } from '@/lib/film-reference-context';
+import { clientApiRequest } from '@/lib/client-api';
+import { parseFilmComposeStreamLine } from '@/lib/film-compose-stream';
 import { FilmEditableField, type FilmEditableFieldProps } from '@/components/film/film-editable-field';
 import { FilmChatMessage } from '@/components/film/film-creation-chat';
 import {
@@ -1875,6 +1877,7 @@ export function FilmCreationPanel({
     }
 
     setComposeStatus('merging');
+    setFinalVideoUrl(null);
     setIsGenerating(true);
     setProgressMsg('正在合成最终影片...');
     addWorkflowMsg('assistant', `开始合成影片，共 ${shotCards.length} 个镜头...`, undefined, 'progress');
@@ -1892,9 +1895,8 @@ export function FilmCreationPanel({
         cameraMovement: card.cameraMovement || '',
       }));
 
-      const res = await fetch('/api/film/compose', {
+      const res = await clientApiRequest('/api/film/compose', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           shots: composeShots,
           enableSubtitle: true,
@@ -1905,15 +1907,24 @@ export function FilmCreationPanel({
           sfxVolume,
           style: visualStyle || style,
         }),
+        timeoutMs: 10 * 60_000,
       });
+
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(payload?.error || `合成请求失败（HTTP ${res.status}）`);
+      }
 
       // 单视频直接返回JSON
       if (shotCards.length === 1) {
         const data = await res.json();
-        if (data.videoUrl) {
+        if (data.success === true && data.videoUrl) {
           setFinalVideoUrl(data.videoUrl);
           setComposeStatus('completed');
           onVideoGenerated?.(data.videoUrl);
+          addWorkflowMsg('assistant', '影片合成完成 ✅', undefined, 'success', '可以下载或分享影片');
+        } else {
+          throw new Error(data.error || '合成服务未返回最终视频');
         }
         return;
       }
@@ -1936,20 +1947,13 @@ export function FilmCreationPanel({
 
         for (const line of lines) {
           if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              if (data.stage === 'complete') {
-                finalData = data;
-              } else if (data.stage === 'error') {
-                throw new Error(data.error || '合成失败');
-              } else {
-                // 更新进度消息
-                const msg = data.message || '';
-                const progress = data.progress || 0;
-                setProgressMsg(`${msg} (${progress}%)`);
-              }
-            } catch {
-              // 忽略解析错误
+            const event = parseFilmComposeStreamLine(line);
+            if (event.type === 'complete') {
+              finalData = { videoUrl: event.videoUrl };
+            } else if (event.type === 'error') {
+              throw new Error(event.message);
+            } else if (event.type === 'progress') {
+              setProgressMsg(`${event.message} (${event.progress}%)`);
             }
           }
         }
@@ -1980,28 +1984,18 @@ export function FilmCreationPanel({
           finalVideoUrl: finalData.videoUrl as string,
         });
       } else {
-        // 降级：用最后一个分镜视频
-        const lastVideo = shotCards[shotCards.length - 1]?.videoUrl;
-        if (lastVideo) {
-          setFinalVideoUrl(lastVideo);
-          setComposeStatus('completed');
-          onVideoGenerated?.(lastVideo);
-        }
+        throw new Error('合成服务未返回最终视频');
       }
     } catch (err) {
-      // 降级：直接使用分镜视频展示
-      const firstVideo = shotCards[0]?.videoUrl;
-      if (firstVideo) {
-        setFinalVideoUrl(firstVideo);
-        setComposeStatus('completed');
-      }
+      setComposeStatus('idle');
+      setFinalVideoUrl(null);
       setError(err instanceof Error ? err.message : '合成失败');
       addWorkflowMsg('assistant', `影片合成失败：${err instanceof Error ? err.message : '未知错误'}`, undefined, 'error');
     } finally {
       setIsGenerating(false);
       setProgressMsg('');
     }
-  }, [entityCards, visualStyle, style, onVideoGenerated, inputText, script, targetDuration, upsertFilmHistory, addWorkflowMsg, handleExtractLastFrame, handleGenerateBridge, chatMessages, filmVisualStyle]);
+  }, [addWorkflowMsg, bgmType, bgmVolume, chatMessages, entityCards, filmVisualStyle, inputText, onVideoGenerated, script, sfxType, sfxVolume, style, upsertFilmHistory, videoDuration, visualStyle]);
 
   // 生成所有分镜视频
   // parallel: 并行模式(先顺序确定首尾帧→再并行生成视频)
