@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - codex/sync-huiying-prod-20260629
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sceneweave-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deterministic-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CI: true
+      NEXT_PUBLIC_BASE_PATH: /huiying
+      NODE_OPTIONS: --max-old-space-size=4096
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Activate locked pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.1 --activate
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify CI contract
+        run: pnpm run test:ci-workflow
+
+      - name: Check TypeScript
+        run: pnpm run ts-check
+
+      - name: Check mobile Film contracts
+        run: |
+          pnpm run test:film-mobile-workspace
+          pnpm run test:film-mobile-viewport
+
+      - name: Check Vimax boundary
+        run: pnpm run qa:smart-vimax-agent-render
+
+      - name: Check compose durability
+        run: pnpm run test:film-compose-durability
+
+      - name: Build production artifacts
+        run: |
+          pnpm next build
+          pnpm tsup src/server.ts --format cjs --platform node --target node20 --outDir dist --no-splitting --no-minify
