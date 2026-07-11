@@ -10,6 +10,11 @@ import path from 'path';
 export type TaskType = 'video' | 'image' | 'copywriting' | 'poster' | 'avatar' | 'storyboard';
 export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
+export interface TaskOwner {
+  tenantId: string;
+  memberId: string;
+}
+
 export interface TaskConfig {
   prompt?: string;
   duration?: string;
@@ -151,6 +156,8 @@ export interface BackgroundTask {
   startedAt?: number;
   completedAt?: number;
   lastUpdatedAt?: number; // 最后更新时间，用于判断僵尸任务
+  // 服务端可信会话派生的所有权。旧任务没有 owner 时一律对用户接口隐藏。
+  owner?: TaskOwner;
   // 注意：abortController 不能序列化，不存储到文件
   abortController?: AbortController;
 }
@@ -283,18 +290,29 @@ function getTaskStore(): Map<string, BackgroundTask> {
  * 1. createTask(type, config) - 传统方式
  * 2. createTask({ type, params }) - 对象方式（用于向后兼容）
  */
-export function createTask(typeOrOptions: TaskType | { type: TaskType; params?: TaskConfig }, config?: TaskConfig): string {
+export function createTask(
+  typeOrOptions: TaskType | { type: TaskType; params?: TaskConfig; owner?: TaskOwner },
+  config?: TaskConfig,
+  explicitOwner?: TaskOwner,
+): string {
   let type: TaskType;
   let taskConfig: TaskConfig;
+  let owner: TaskOwner | undefined;
   
   if (typeof typeOrOptions === 'string') {
     // 方式1: createTask(type, config)
     type = typeOrOptions;
     taskConfig = config || {};
+    owner = explicitOwner;
   } else {
     // 方式2: createTask({ type, params })
     type = typeOrOptions.type;
     taskConfig = typeOrOptions.params || {};
+    owner = typeOrOptions.owner;
+  }
+
+  if (!owner && typeof taskConfig.parentTaskId === 'string') {
+    owner = getTaskStore().get(taskConfig.parentTaskId)?.owner;
   }
   
   const taskId = uuidv4();
@@ -305,6 +323,7 @@ export function createTask(typeOrOptions: TaskType | { type: TaskType; params?: 
     config: taskConfig,
     progress: 0,
     createdAt: Date.now(),
+    ...(owner ? { owner: { tenantId: owner.tenantId, memberId: owner.memberId } } : {}),
   };
   
   const store = getTaskStore();
@@ -350,6 +369,26 @@ export function getAllTasksFresh(): BackgroundTask[] {
   taskCache = store;
   lastLoadTime = Date.now();
   return Array.from(store.values()).sort((a, b) => b.createdAt - a.createdAt);
+}
+
+function taskBelongsToOwner(task: BackgroundTask | undefined, owner: TaskOwner): task is BackgroundTask {
+  return Boolean(task?.owner
+    && task.owner.tenantId === owner.tenantId
+    && task.owner.memberId === owner.memberId);
+}
+
+export function getTaskForOwner(taskId: string, owner: TaskOwner): BackgroundTask | undefined {
+  const task = getTaskFresh(taskId);
+  return taskBelongsToOwner(task, owner) ? task : undefined;
+}
+
+export function getAllTasksForOwner(owner: TaskOwner): BackgroundTask[] {
+  return getAllTasksFresh().filter(task => taskBelongsToOwner(task, owner));
+}
+
+export function deleteTaskForOwner(taskId: string, owner: TaskOwner): boolean {
+  if (!taskBelongsToOwner(getTaskFresh(taskId), owner)) return false;
+  return deleteTask(taskId);
 }
 
 /**

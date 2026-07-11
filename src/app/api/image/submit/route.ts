@@ -13,6 +13,7 @@ import {
   updateTaskProgress,
   getTask
 } from '@/lib/task-manager';
+import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
 
 // 执行图片生成任务
 async function executeImageTask(
@@ -189,6 +190,8 @@ async function executeImageTask(
 }
 
 export async function POST(request: NextRequest) {
+  const owner = await resolveTaskOwnerFromRequest(request);
+  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
   try {
     const body = await request.json();
     const {
@@ -223,7 +226,7 @@ export async function POST(request: NextRequest) {
       resolution,
       quality,
       materials,
-    });
+    }, owner);
 
     // 标记任务开始
     startTask(taskId);

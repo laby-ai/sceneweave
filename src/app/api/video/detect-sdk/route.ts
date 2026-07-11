@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { monitorOwnerKey, resolveTaskOwnerFromRequest } from '@/lib/task-access';
 
 type DetectionStatus = 'idle' | 'running' | 'completed' | 'failed';
 type StepStatus = 'pending' | 'testing' | 'success' | 'failed' | 'skipped';
@@ -70,6 +71,8 @@ function buildReadinessSession(maxTestDuration: number): DetectionResult {
 }
 
 export async function POST(request: NextRequest) {
+  const owner = await resolveTaskOwnerFromRequest(request);
+  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
   try {
     const body = await request.json();
     const sessionId = typeof body.sessionId === 'string' && body.sessionId
@@ -78,7 +81,7 @@ export async function POST(request: NextRequest) {
     const maxTestDuration = Number(body.maxTestDuration || DEFAULT_MAX_DURATION);
     const session = buildReadinessSession(maxTestDuration);
 
-    detectionSessions.set(sessionId, session);
+    detectionSessions.set(`${monitorOwnerKey(owner)}:${sessionId}`, session);
 
     return NextResponse.json({
       success: true,
@@ -96,6 +99,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  const owner = await resolveTaskOwnerFromRequest(request);
+  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
   const { searchParams } = new URL(request.url);
   const sessionId = searchParams.get('sessionId');
 
@@ -103,7 +108,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: '缺少sessionId参数' }, { status: 400 });
   }
 
-  const session = detectionSessions.get(sessionId);
+  const session = detectionSessions.get(`${monitorOwnerKey(owner)}:${sessionId}`);
   if (!session) {
     return NextResponse.json({ error: '未找到检测会话' }, { status: 404 });
   }
@@ -112,13 +117,18 @@ export async function GET(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const owner = await resolveTaskOwnerFromRequest(request);
+  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
   const { searchParams } = new URL(request.url);
   const sessionId = searchParams.get('sessionId');
 
   if (sessionId) {
-    detectionSessions.delete(sessionId);
+    detectionSessions.delete(`${monitorOwnerKey(owner)}:${sessionId}`);
   } else {
-    detectionSessions.clear();
+    const prefix = `${monitorOwnerKey(owner)}:`;
+    for (const key of detectionSessions.keys()) {
+      if (key.startsWith(prefix)) detectionSessions.delete(key);
+    }
   }
 
   return NextResponse.json({ success: true });

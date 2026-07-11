@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { aiService } from '@/lib/ai-service-adapter';
-import { updateTask, getTask, updateTaskProgress } from '@/lib/task-manager';
+import { updateTask, getTaskForOwner, updateTaskProgress } from '@/lib/task-manager';
+import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
 import { throwStoryboardVideoPathDisabled } from '@/lib/video-generation-path-guidance';
 
 // 生成九宫格图片（自动降级: Minimax → Coze）
@@ -75,6 +76,8 @@ async function generateVideo(
 }
 
 export async function POST(request: NextRequest) {
+  const owner = await resolveTaskOwnerFromRequest(request);
+  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
   try {
     const body = await request.json();
     const { 
@@ -93,7 +96,7 @@ export async function POST(request: NextRequest) {
     console.log(`[Storyboard Regenerate Shot] 再生成分镜头: 任务${taskId}, 分镜头${shotId}`);
 
     // 获取任务
-    const task = getTask(taskId);
+    const task = getTaskForOwner(taskId, owner);
     if (!task) {
       return NextResponse.json(
         { error: '任务不存在' },

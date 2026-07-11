@@ -6,6 +6,7 @@ import {
   failTask,
   updateTaskProgress,
 } from '@/lib/task-manager';
+import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
 import {
   generateNineGridImages,
 } from '@/lib/generate-nine-grid-images';
@@ -23,6 +24,8 @@ import {
 export const maxDuration = 3600; // 1小时
 
 export async function POST(request: NextRequest) {
+  const owner = await resolveTaskOwnerFromRequest(request);
+  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
   try {
     const body = await request.json();
     const {
@@ -87,7 +90,7 @@ export async function POST(request: NextRequest) {
       generateVoice,
       language,
       isNineGrid: true,
-    });
+    }, owner);
 
     // 启动任务
     startTask(taskId);

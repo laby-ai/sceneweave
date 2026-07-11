@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   cleanupExpiredTasks,
-  getTask,
+  getTaskForOwner,
   type BackgroundTask,
   type TaskStatus,
 } from '@/lib/task-manager';
+import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -58,8 +59,9 @@ function getWaitingHint(task: BackgroundTask, elapsedSeconds: number): string {
 }
 
 function serializeTask(task: BackgroundTask) {
-  const { abortController, ...taskInfo } = task;
+  const { abortController, owner: _owner, ...taskInfo } = task;
   void abortController;
+  void _owner;
 
   const startedAt = task.startedAt ?? task.createdAt;
   const elapsedSeconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
@@ -81,10 +83,12 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ taskId: string }> }
 ) {
+  const owner = await resolveTaskOwnerFromRequest(request);
+  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
   const { taskId } = await params;
 
   cleanupExpiredTasks();
-  if (!getTask(taskId)) {
+  if (!getTaskForOwner(taskId, owner)) {
     return NextResponse.json(
       {
         success: false,
@@ -122,7 +126,7 @@ export async function GET(
 
       const emitTask = () => {
         cleanupExpiredTasks();
-        const task = getTask(taskId);
+        const task = getTaskForOwner(taskId, owner);
 
         if (!task) {
           send('error', {

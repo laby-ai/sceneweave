@@ -14,6 +14,7 @@ import {
   updateTaskProgress,
   getTask
 } from '@/lib/task-manager';
+import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
 
 // 执行社交媒体生成任务
 async function executeSocialTask(
@@ -180,6 +181,8 @@ async function executeSocialTask(
 }
 
 export async function POST(request: NextRequest) {
+  const owner = await resolveTaskOwnerFromRequest(request);
+  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
   try {
     const body = await request.json();
     const { topic, title, platform, async: runAsync = true } = body;
@@ -200,7 +203,7 @@ export async function POST(request: NextRequest) {
       prompt: topic,
       title,
       platform,
-    });
+    }, owner);
 
     // 标记任务开始
     startTask(taskId);

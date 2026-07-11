@@ -12,6 +12,7 @@ import {
   updateTask,
   updateTaskProgress,
 } from '@/lib/task-manager';
+import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
 import { 
   getCurrentStrategy, 
   DEFAULT_STRATEGY_MODE
@@ -82,6 +83,8 @@ const calculateSegments = (totalDuration: number) => {
  * }
  */
 export async function POST(request: NextRequest) {
+  const owner = await resolveTaskOwnerFromRequest(request);
+  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
   try {
     const body = await request.json();
     let byokConnection: BYOKConnection | undefined;
@@ -170,7 +173,7 @@ export async function POST(request: NextRequest) {
       isSegmented: true,
       segmentCount: numSegments,
       segmentDuration: segmentDuration,
-    });
+    }, owner);
 
     startTask(taskId);
 

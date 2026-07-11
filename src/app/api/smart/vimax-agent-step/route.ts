@@ -4,6 +4,7 @@ import { buildProductionAssemblyPlan } from '@/lib/production-assembly-plan';
 import { buildProductionProject } from '@/lib/production-project';
 import { generateShotsFromUserPrompt } from '@/lib/storyboard-generator';
 import { extractLastFrameForHandoff } from '@/lib/video-frame-extraction';
+import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -758,6 +759,8 @@ async function callSeedanceVideo(
 }
 
 export async function POST(request: NextRequest) {
+  const owner = await resolveTaskOwnerFromRequest(request);
+  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
   try {
     const body = (await request.json().catch(() => ({}))) as VimaxAgentStepBody;
     const phase = body.phase || 'plan';

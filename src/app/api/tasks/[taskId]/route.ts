@@ -1,14 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cancelTask, getTask, getTaskFresh, retryTask } from '@/lib/task-manager';
+import { cancelTask, getTaskForOwner, retryTask } from '@/lib/task-manager';
+import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
+
+function publicTask(task: NonNullable<ReturnType<typeof getTaskForOwner>>) {
+  const { abortController: _abortController, owner: _owner, ...taskInfo } = task;
+  void _abortController;
+  void _owner;
+  return taskInfo;
+}
 
 // 获取单个任务详情（含进度）
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ taskId: string }> }
 ) {
   try {
+    const owner = await resolveTaskOwnerFromRequest(request);
+    if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
     const { taskId } = await params;
-    const task = getTaskFresh(taskId);
+    const task = getTaskForOwner(taskId, owner);
 
     if (!task) {
       return NextResponse.json(
@@ -18,7 +28,7 @@ export async function GET(
     }
 
     // 返回任务信息（排除不可序列化的 abortController）
-    const { abortController, ...taskInfo } = task;
+    const taskInfo = publicTask(task);
 
     return NextResponse.json({
       success: true,
@@ -42,12 +52,14 @@ export async function GET(
 
 // 取消单个任务
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ taskId: string }> }
 ) {
   try {
+    const owner = await resolveTaskOwnerFromRequest(request);
+    if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
     const { taskId } = await params;
-    const task = getTask(taskId);
+    const task = getTaskForOwner(taskId, owner);
 
     if (!task) {
       return NextResponse.json(
@@ -64,11 +76,11 @@ export async function DELETE(
     }
 
     const cancelled = cancelTask(taskId);
-    const updatedTask = getTask(taskId);
+    const updatedTask = getTaskForOwner(taskId, owner);
 
     return NextResponse.json({
       success: cancelled,
-      task: updatedTask,
+      task: updatedTask ? publicTask(updatedTask) : null,
       message: cancelled ? '任务已取消' : '取消任务失败',
     }, { status: cancelled ? 200 : 500 });
   } catch (error) {
@@ -86,6 +98,8 @@ export async function POST(
   { params }: { params: Promise<{ taskId: string }> }
 ) {
   try {
+    const owner = await resolveTaskOwnerFromRequest(request);
+    if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
     const { taskId } = await params;
     const body = await request.json().catch(() => ({}));
     const action = body.action;
@@ -97,7 +111,7 @@ export async function POST(
       );
     }
 
-    const task = getTask(taskId);
+    const task = getTaskForOwner(taskId, owner);
     if (!task) {
       return NextResponse.json(
         { success: false, error: '任务不存在', task: null },
@@ -108,14 +122,14 @@ export async function POST(
     const retriedTask = retryTask(taskId);
     if (!retriedTask) {
       return NextResponse.json(
-        { success: false, error: '任务不存在或状态不允许重试', task },
+        { success: false, error: '任务不存在或状态不允许重试', task: publicTask(task) },
         { status: 400 }
       );
     }
 
     return NextResponse.json({
       success: true,
-      task: retriedTask,
+      task: publicTask(retriedTask),
       message: '任务已重新排队',
     });
   } catch (error) {

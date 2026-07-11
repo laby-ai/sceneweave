@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createTask, startTask, getTask } from '@/lib/task-manager';
 import { executeStoryboardTask } from '@/lib/storyboard-submit-executor';
+import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
 
 export async function POST(request: NextRequest) {
+  const owner = await resolveTaskOwnerFromRequest(request);
+  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
   try {
     const body = await request.json();
     // 解构参数，包括音频和字幕的启用状态
@@ -66,6 +69,7 @@ export async function POST(request: NextRequest) {
     // 创建任务
     const taskId = createTask({
       type: 'storyboard',
+      owner,
       params: {
         prompt: storyboard.title || '分镜头视频',
         storyboardId: storyboard.id,

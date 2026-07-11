@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createTask, startTask, updateTaskProgress, completeTask, failTask } from '@/lib/task-manager';
 import { aiService } from '@/lib/ai-service-adapter';
+import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
 
 /**
  * POST /api/film/bridge-generate
@@ -23,6 +24,8 @@ import { aiService } from '@/lib/ai-service-adapter';
  * 任务结果：{ bridgeImages: [url1, url2, url3] }
  */
 export async function POST(request: NextRequest) {
+  const owner = await resolveTaskOwnerFromRequest(request);
+  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
   try {
     const body = await request.json();
     const { prevShot, currentShot, sceneContext, characters } = body;
@@ -37,6 +40,7 @@ export async function POST(request: NextRequest) {
     // 创建后台任务
     const taskId = createTask({
       type: 'image',
+      owner,
       params: {
         prompt: `桥接图: ${prevShot.name || '前镜头'} → ${currentShot.name || '后镜头'}`,
         prevShotId: prevShot.id,

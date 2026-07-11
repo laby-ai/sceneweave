@@ -95,6 +95,7 @@
     "test:media-library-preview-fastpath": "tsx scripts/test-media-library-preview-fastpath.ts",
     "test:home-gallery-freshness": "tsx scripts/test-home-gallery-freshness.ts",
     "test:member-subject-library": "tsx scripts/test-member-subject-library.ts",
+    "test:member-task-isolation": "tsx scripts/test-member-task-isolation.ts",
     "test:subject-store-readiness": "tsx scripts/test-subject-store-readiness.ts",
     "qa:film-generation-mode-visibility": "node scripts/qa-film-generation-mode-visibility.mjs",
     "test:film-mobile-workspace": "tsx scripts/test-film-mobile-workspace.ts",

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { patchProductionAssetFromCanvas } from '@/lib/production-asset-writeback';
+import { getTaskForOwner } from '@/lib/task-manager';
+import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -7,8 +9,13 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ taskId: string; assetId: string }> },
 ) {
+  const owner = await resolveTaskOwnerFromRequest(request);
+  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
   try {
     const { taskId, assetId } = await params;
+    if (!getTaskForOwner(taskId, owner)) {
+      return NextResponse.json({ success: false, error: '任务不存在' }, { status: 404 });
+    }
     const body = await request.json().catch(() => ({}));
 
     const result = patchProductionAssetFromCanvas({

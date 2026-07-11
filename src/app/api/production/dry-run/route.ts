@@ -8,6 +8,7 @@ import {
   startTask,
   updateTaskProgress,
 } from '@/lib/task-manager';
+import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -29,6 +30,8 @@ function toNumber(value: unknown, fallback: number) {
 }
 
 export async function POST(request: NextRequest) {
+  const owner = await resolveTaskOwnerFromRequest(request);
+  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
   try {
     const body = (await request.json().catch(() => ({}))) as DryRunBody;
     const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
@@ -53,7 +56,7 @@ export async function POST(request: NextRequest) {
       ratio,
       sceneType,
       workflow: 'production-dry-run',
-    });
+    }, owner);
 
     startTask(taskId);
     updateTaskProgress(taskId, 18, '拆解创意', '正在把创意拆成短剧制作结构');

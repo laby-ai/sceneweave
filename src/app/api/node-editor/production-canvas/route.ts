@@ -2,27 +2,30 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { buildProductionCanvas } from '@/lib/production-canvas';
 import { evaluateStoryReadability, type StoryReadabilityScore } from '@/lib/production-story-readability';
-import { getAllTasksFresh, getTaskFresh } from '@/lib/task-manager';
+import { getAllTasksForOwner, getTaskForOwner, type TaskOwner } from '@/lib/task-manager';
 import type { ProductionAssemblyPlan } from '@/lib/production-assembly-plan';
 import type { DirectorChainResult } from '@/lib/smart-director-chain';
 import type { ProductionProject } from '@/lib/production-project';
+import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
 
-function getProductionProjectFromTask(taskId?: string) {
+function getProductionProjectFromTask(owner: TaskOwner, taskId?: string) {
   if (taskId) {
-    const task = getTaskFresh(taskId);
+    const task = getTaskForOwner(taskId, owner);
     if (!task?.result?.productionProject) return null;
     return task;
   }
 
-  return getAllTasksFresh()
+  return getAllTasksForOwner(owner)
     .filter(task => Boolean(task.result?.productionProject))
     .sort((a, b) => (b.lastUpdatedAt || b.completedAt || b.createdAt) - (a.lastUpdatedAt || a.completedAt || a.createdAt))[0] || null;
 }
 
 export async function GET(request: NextRequest) {
+  const owner = await resolveTaskOwnerFromRequest(request);
+  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
   try {
     const taskId = request.nextUrl.searchParams.get('taskId') || undefined;
-    const task = getProductionProjectFromTask(taskId);
+    const task = getProductionProjectFromTask(owner, taskId);
 
     if (!task?.result?.productionProject) {
       return NextResponse.json({

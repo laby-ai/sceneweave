@@ -6,6 +6,7 @@ import {
 } from '@/lib/byok-provider';
 import { buildBYOKConfigErrorPayload, isBYOKConfigError } from '@/lib/byok-response';
 import { runBYOKVideoSubmit } from '@/lib/video-submit-provider';
+import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
 // 导入视频后处理工具
 import {
   processBackgroundMusic,
@@ -49,6 +50,8 @@ function guessBgmType(text: string): string {
 }
 
 export async function POST(request: NextRequest) {
+  const owner = await resolveTaskOwnerFromRequest(request);
+  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
   try {
     const body = await request.json();
     const customHeaders = extractForwardHeaders(request.headers);
@@ -189,6 +192,7 @@ export async function POST(request: NextRequest) {
     // 创建任务
     const taskId = createTask({
       type: 'video',
+      owner,
       params: {
         prompt: styleLockedPrompt.trim(),
         duration: duration,

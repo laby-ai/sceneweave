@@ -1,11 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAllTasks, deleteTask, cleanupExpiredTasks } from '@/lib/task-manager';
+import { getAllTasksForOwner, deleteTaskForOwner, cleanupExpiredTasks } from '@/lib/task-manager';
+import { monitorOwnerKey, resolveTaskOwnerFromRequest } from '@/lib/task-access';
 import { TaskMonitor, ContentSafety } from '@/lib/video-monitor';
 import type { MonitorTaskStatus } from '@/lib/video-monitor';
+
+function publicMonitorTask<T extends { userId: string }>(task: T): Omit<T, 'userId'> {
+  const { userId: _userId, ...publicTask } = task;
+  void _userId;
+  return publicTask;
+}
 
 // 获取所有任务列表（整合监控系统数据）
 export async function GET(request: NextRequest) {
   try {
+    const owner = await resolveTaskOwnerFromRequest(request);
+    if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
     const type = searchParams.get('type');
@@ -14,7 +23,7 @@ export async function GET(request: NextRequest) {
     const withSafety = searchParams.get('withSafety') === 'true';
 
     const cleanupCount = cleanupExpiredTasks();
-    let tasks = getAllTasks();
+    let tasks = getAllTasksForOwner(owner);
 
     // 按状态筛选
     if (status) {
@@ -30,7 +39,9 @@ export async function GET(request: NextRequest) {
     tasks = tasks.slice(0, limit);
 
     // 返回任务信息（不包含abortController）
-    const sanitizedTasks = tasks.map(({ abortController, ...taskInfo }) => {
+    const sanitizedTasks = tasks.map(({ abortController, owner: _owner, ...taskInfo }) => {
+      void abortController;
+      void _owner;
       const enriched: Record<string, unknown> = { ...taskInfo };
 
       // 附加监控系统数据
@@ -47,13 +58,17 @@ export async function GET(request: NextRequest) {
     // 同时获取监控系统的任务
     const monitorStatus = searchParams.get('monitorStatus') as MonitorTaskStatus | null;
     const monitorTasks = monitorStatus
-      ? TaskMonitor.getAllTasks(monitorStatus)
-      : TaskMonitor.getAllTasks();
+      ? TaskMonitor.getUserTasks(monitorOwnerKey(owner)).filter(task => task.status === monitorStatus)
+      : TaskMonitor.getUserTasks(monitorOwnerKey(owner));
+    const sanitizedMonitorTasks = monitorTasks.map(({ userId: _userId, ...task }) => {
+      void _userId;
+      return task;
+    });
 
     return NextResponse.json({
       success: true,
       tasks: sanitizedTasks,
-      monitorTasks,
+      monitorTasks: sanitizedMonitorTasks,
       total: sanitizedTasks.length,
       cleanupCount,
     });
@@ -70,6 +85,8 @@ export async function GET(request: NextRequest) {
 // 批量删除任务
 export async function DELETE(request: NextRequest) {
   try {
+    const owner = await resolveTaskOwnerFromRequest(request);
+    if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
     const body = await request.json();
     const { taskIds } = body;
 
@@ -86,10 +103,10 @@ export async function DELETE(request: NextRequest) {
     };
 
     taskIds.forEach(taskId => {
-      const success = deleteTask(taskId);
-      // 同步删除监控任务
-      TaskMonitor.deleteTask(taskId);
-      if (success) {
+      const success = deleteTaskForOwner(taskId, owner);
+      const ownsMonitorTask = TaskMonitor.getTask(taskId)?.userId === monitorOwnerKey(owner);
+      if (ownsMonitorTask) TaskMonitor.deleteTask(taskId);
+      if (success || ownsMonitorTask) {
         results.success.push(taskId);
       } else {
         results.failed.push(taskId);
@@ -113,19 +130,24 @@ export async function DELETE(request: NextRequest) {
 // 创建监测任务 / 重试 / 安全检查
 export async function POST(request: NextRequest) {
   try {
+    const owner = await resolveTaskOwnerFromRequest(request);
+    if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
     const body = await request.json();
-    const { action, taskId, prompt, userId, projectName } = body;
+    const { action, taskId, prompt, projectName } = body;
 
     switch (action) {
       case 'create': {
         const monitorTask = TaskMonitor.createTask(
-          userId || 'anonymous',
+          monitorOwnerKey(owner),
           projectName,
         );
-        return NextResponse.json({ success: true, task: monitorTask });
+        return NextResponse.json({ success: true, task: publicMonitorTask(monitorTask) });
       }
 
       case 'retry': {
+        if (TaskMonitor.getTask(taskId)?.userId !== monitorOwnerKey(owner)) {
+          return NextResponse.json({ error: '任务不存在' }, { status: 404 });
+        }
         const result = TaskMonitor.retryTask(taskId);
         if (!result) {
           return NextResponse.json(
@@ -133,7 +155,7 @@ export async function POST(request: NextRequest) {
             { status: 400 },
           );
         }
-        return NextResponse.json({ success: true, task: result.task, decision: result.decision });
+        return NextResponse.json({ success: true, task: publicMonitorTask(result.task), decision: result.decision });
       }
 
       case 'safety_check': {
@@ -143,13 +165,16 @@ export async function POST(request: NextRequest) {
             { status: 400 },
           );
         }
+        if (taskId && TaskMonitor.getTask(taskId)?.userId !== monitorOwnerKey(owner)) {
+          return NextResponse.json({ error: '任务不存在' }, { status: 404 });
+        }
         const checks = await ContentSafety.fullCheck(prompt, undefined, taskId);
         return NextResponse.json({ success: true, checks });
       }
 
       case 'copyright_check': {
         const task = TaskMonitor.getTask(taskId);
-        if (!task) {
+        if (!task || task.userId !== monitorOwnerKey(owner)) {
           return NextResponse.json(
             { error: '任务不存在' },
             { status: 404 },
@@ -161,6 +186,9 @@ export async function POST(request: NextRequest) {
       }
 
       case 'reconnect': {
+        if (TaskMonitor.getTask(taskId)?.userId !== monitorOwnerKey(owner)) {
+          return NextResponse.json({ error: '任务不存在' }, { status: 404 });
+        }
         const lastKnownUpdatedAt = body.lastKnownUpdatedAt || 0;
         const reconnectData = TaskMonitor.reconnect(taskId, lastKnownUpdatedAt);
         if (!reconnectData) {
@@ -169,10 +197,17 @@ export async function POST(request: NextRequest) {
             { status: 404 },
           );
         }
-        return NextResponse.json({ success: true, ...reconnectData });
+        return NextResponse.json({
+          success: true,
+          ...reconnectData,
+          task: publicMonitorTask(reconnectData.task),
+        });
       }
 
       case 'transition': {
+        if (TaskMonitor.getTask(taskId)?.userId !== monitorOwnerKey(owner)) {
+          return NextResponse.json({ error: '任务不存在' }, { status: 404 });
+        }
         const event = body.event;
         const reason = body.reason;
         const result = TaskMonitor.transitionStatus(taskId, event, reason);

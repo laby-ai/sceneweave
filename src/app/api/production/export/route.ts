@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { buildProductionCutDraftJson } from '@/lib/production-export-package';
-import { getTaskFresh } from '@/lib/task-manager';
+import { getTaskForOwner } from '@/lib/task-manager';
+import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,6 +11,8 @@ function attachmentName(taskId: string) {
 }
 
 export async function GET(request: NextRequest) {
+  const owner = await resolveTaskOwnerFromRequest(request);
+  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
   try {
     const taskId = request.nextUrl.searchParams.get('taskId')?.trim();
     const format = request.nextUrl.searchParams.get('format') || 'cut-draft-json';
@@ -39,7 +42,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const task = getTaskFresh(taskId);
+    const task = getTaskForOwner(taskId, owner);
     if (!task) {
       return NextResponse.json(
         {

@@ -7,12 +7,15 @@ import {
   failTask,
   updateTaskProgress 
 } from '@/lib/task-manager';
+import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
 
 /**
  * 智能视频生成API
  * 自动优化复杂提示词，分段生成长视频
  */
 export async function POST(request: NextRequest) {
+  const owner = await resolveTaskOwnerFromRequest(request);
+  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
   try {
     const body = await request.json();
     const { 
@@ -81,7 +84,7 @@ export async function POST(request: NextRequest) {
       subtitleVoiceType,
       subtitleSpeechSpeed,
       generateVoice,
-    });
+    }, owner);
 
     // 在后台执行生成
     executeSmartVideoTask(taskId, optimizedPrompt, duration, {

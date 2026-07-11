@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { mergeVideosWithLocalFfmpeg } from '@/lib/local-video-merge';
 import { archiveCompletedVideoTaskById } from '@/lib/production-video-task-archive-service';
-import { getTaskFresh, updateTask } from '@/lib/task-manager';
+import { getTaskForOwner, getTaskFresh, updateTask } from '@/lib/task-manager';
+import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,11 +22,13 @@ function getSegmentUrls(task: ReturnType<typeof getTaskFresh>) {
 }
 
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ taskId: string }> },
 ) {
+  const owner = await resolveTaskOwnerFromRequest(request);
+  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
   const { taskId } = await params;
-  const task = getTaskFresh(taskId);
+  const task = getTaskForOwner(taskId, owner);
 
   if (!task) {
     return NextResponse.json({
