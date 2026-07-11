@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowUp,
   AtSign,
@@ -94,10 +94,20 @@ function CanvasProjectPreview({ project }: { project: CanvasProjectMeta }) {
 
 export default function CanvasHome() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const autoOpenRef = useRef(false);
   const [prompt, setPrompt] = useState("");
   const hydrated = useCanvasStore((s: { hydrated: boolean }) => s.hydrated) as boolean;
   const projects = useCanvasStore((s: { projects: CanvasProjectMeta[] }) => s.projects) as CanvasProjectMeta[];
   const createProject = useCanvasStore((s: { createProject: (title?: string) => string }) => s.createProject) as (title?: string) => string;
+
+  const mode = searchParams.get("mode");
+  const agentMode = mode === "new" || mode === "recent" || mode === "choose";
+  const agentQuery = agentMode ? `?${searchParams.toString()}` : "";
+  const enterProject = useCallback(
+    (id: string, query = agentQuery) => router.push(`/canvas/${id}${query}`),
+    [agentQuery, router],
+  );
 
   // 用真实 store 创建项目并进入；store 未水合完成前先不创建，避免被 rehydrate 覆盖丢失。
   const createAndEnter = (title?: string, agentPrompt?: string) => {
@@ -105,10 +115,26 @@ export default function CanvasHome() {
     const cleanTitle = title?.trim();
     const id = createProject(cleanTitle || `画布 ${projects.length + 1}`);
     const cleanPrompt = agentPrompt?.trim();
-    router.push(cleanPrompt ? `/canvas/${id}?agentPrompt=${encodeURIComponent(cleanPrompt)}` : `/canvas/${id}`);
+    enterProject(id, cleanPrompt ? `?agentPrompt=${encodeURIComponent(cleanPrompt)}` : agentQuery);
   };
-  const enterProject = (id: string) => router.push(`/canvas/${id}`);
   const submitAgentPrompt = () => createAndEnter(prompt || "30 秒短剧画布智能体", prompt || "30 秒短剧画布智能体");
+
+  useEffect(() => {
+    if (!hydrated || autoOpenRef.current || (mode !== "new" && mode !== "recent")) return;
+    autoOpenRef.current = true;
+    const id = mode === "new"
+      ? createProject(`画布 ${projects.length + 1}`)
+      : projects[0]?.id || createProject(`画布 ${projects.length + 1}`);
+    enterProject(id);
+  }, [createProject, enterProject, hydrated, mode, projects]);
+
+  if (hydrated && (mode === "new" || mode === "recent")) {
+    return (
+      <main className="flex h-full items-center justify-center bg-black text-sm text-white/58">
+        正在打开画布...
+      </main>
+    );
+  }
 
   return (
     <main className="relative h-full overflow-auto bg-black text-white">
