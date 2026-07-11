@@ -5,6 +5,10 @@ import {
   storeFilmComposeUrl,
   synthesizeFilmComposeVoice,
 } from '@/lib/film-compose-provider-clients';
+import {
+  FILM_COMPOSE_STORAGE_NOT_READY,
+  getFilmComposeDurabilityReadiness,
+} from '@/lib/film-compose-readiness';
 
 /**
  * 影视创作 - 合成Agent
@@ -28,6 +32,7 @@ interface ComposeShot {
 
 interface ComposeRequestBody {
   shots: ComposeShot[];
+  requireDurableOutput?: boolean;
   enableSubtitle?: boolean;
   enableVoice?: boolean;
   bgmType?: string;
@@ -85,7 +90,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body: ComposeRequestBody = await request.json();
-    const { shots, enableSubtitle = true, enableVoice = true, bgmType, bgmVolume = 'medium', sfxType, sfxVolume = 'medium' } = body;
+    const { shots, requireDurableOutput = true, enableSubtitle = true, enableVoice = true, bgmType, bgmVolume = 'medium', sfxType, sfxVolume = 'medium' } = body;
 
     // 收集所有已有视频的分镜
     const validShots = (shots || []).filter((s: ComposeShot) => s.videoUrl);
@@ -95,6 +100,22 @@ export async function POST(request: NextRequest) {
         JSON.stringify({ error: '没有可合成的视频素材' }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
+    }
+
+    if (requireDurableOutput) {
+      const durability = getFilmComposeDurabilityReadiness();
+      if (!durability.ready) {
+        return new Response(JSON.stringify({
+          success: false,
+          code: FILM_COMPOSE_STORAGE_NOT_READY,
+          error: durability.message,
+          retryable: durability.retryable,
+          clipsPreserved: true,
+        }), {
+          status: 503,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
     }
 
     // 如果只有一个视频，直接返回（无需拼接）

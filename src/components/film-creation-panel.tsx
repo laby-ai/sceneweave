@@ -29,7 +29,7 @@ import { getBgmTypeList, matchBgmByKeywords, type BgmTypeId } from '@/constants/
 import type { CharacterAnchor, GridPromptInput, ConsistencyCheckResult } from '@/lib/video-production/character-consistency-engine';
 import { buildFilmAnchorContext, buildFilmReferenceImages } from '@/lib/film-reference-context';
 import { clientApiRequest } from '@/lib/client-api';
-import { parseFilmComposeStreamLine } from '@/lib/film-compose-stream';
+import { filmComposeFailureMessage, parseFilmComposeStreamLine } from '@/lib/film-compose-stream';
 import { FilmEditableField, type FilmEditableFieldProps } from '@/components/film/film-editable-field';
 import { FilmChatMessage } from '@/components/film/film-creation-chat';
 import {
@@ -54,6 +54,7 @@ import { FilmMainStageWorkspace } from '@/components/film/film-main-stage-worksp
 import { FilmCreationDialogs } from '@/components/film/film-creation-dialogs';
 import {
   entityCardToSnapshot,
+  filmComposeHistoryFingerprint,
   renderSafe,
   snapshotToEntityCard,
   type ChatMessage,
@@ -392,7 +393,7 @@ export function FilmCreationPanel({
     // 仅在有实体卡片时才保存
     if (entityCards.length === 0) return;
     // 去重：相同数据不重复保存
-    const fingerprint = `${inputText}|${entityCards.length}|${entityCards.filter(c => c.imageUrl).length}|${phase}`;
+    const fingerprint = filmComposeHistoryFingerprint(inputText, phase, entityCards);
     if (fingerprint === lastSavedHistoryRef.current) return;
     lastSavedHistoryRef.current = fingerprint;
     // 延迟保存，避免频繁写入
@@ -1899,6 +1900,7 @@ export function FilmCreationPanel({
         method: 'POST',
         body: JSON.stringify({
           shots: composeShots,
+          requireDurableOutput: true,
           enableSubtitle: true,
           enableVoice: true,
           bgmType,
@@ -1911,8 +1913,8 @@ export function FilmCreationPanel({
       });
 
       if (!res.ok) {
-        const payload = await res.json().catch(() => null) as { error?: string } | null;
-        throw new Error(payload?.error || `合成请求失败（HTTP ${res.status}）`);
+        const payload = await res.json().catch(() => null);
+        throw new Error(filmComposeFailureMessage(payload, res.status));
       }
 
       // 单视频直接返回JSON

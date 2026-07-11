@@ -115,6 +115,15 @@ export interface FilmCreationPanelProps {
   onVideoGenerated?: (url: string, videoPrompt?: string) => void;
 }
 
+export function filmComposeHistoryFingerprint(
+  prompt: string,
+  phase: WorkflowPhase,
+  cards: EntityCard[],
+): string {
+  const generatedMedia = cards.map(card => [card.id, card.imageUrl || '', card.videoUrl || '']);
+  return JSON.stringify([prompt, phase, generatedMedia]);
+}
+
 export function entityCardToSnapshot(card: EntityCard): EntityCardSnapshot {
   return {
     id: card.id,

@@ -88,6 +88,7 @@
     "qa:video-nine-grid-provider-boundary": "node scripts/qa-video-nine-grid-provider-boundary.mjs",
     "qa:film-compose-provider-boundary": "node scripts/qa-film-compose-provider-boundary.mjs",
     "test:film-compose-client": "tsx scripts/test-film-compose-client.ts",
+    "test:film-compose-durability": "tsx scripts/test-film-compose-durability.ts",
     "test:film-media-preview": "tsx scripts/test-film-media-preview.ts",
     "test:media-library-preview-fastpath": "tsx scripts/test-media-library-preview-fastpath.ts",
     "test:home-gallery-freshness": "tsx scripts/test-home-gallery-freshness.ts",
