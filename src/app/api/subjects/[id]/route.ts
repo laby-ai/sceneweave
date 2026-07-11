@@ -1,14 +1,13 @@
-import path from 'node:path';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { resolveAccountSessionFromRequest } from '@/lib/account/account-session';
 import { deleteSubject, readSubjectImage } from '@/lib/subjects/subject-store';
+import { getSubjectStoreRoot } from '@/lib/subjects/subject-store-readiness';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const SUBJECT_ROOT = process.env.HUIYING_SUBJECT_STORE_PATH?.trim()
-  || path.join(process.cwd(), 'artifacts', 'subjects');
+const SUBJECT_ROOT = getSubjectStoreRoot();
 
 async function owner(request: NextRequest) {
   const session = await resolveAccountSessionFromRequest(request);
