@@ -83,21 +83,21 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
           {phase === 'planning' && (
             <div className="flex flex-col h-full">
               {/* 顶部标题区 — 剧本名称+统计+操作按钮 */}
-              <div className="flex-shrink-0 flex items-start justify-between px-6 pt-5 pb-3">
-                <div>
-                  <h2 className="text-xl font-bold text-[#1a1a1a] dark:text-white">{script?.title || '未命名剧本'}</h2>
+              <div className="flex-shrink-0 flex flex-col gap-2 px-3 pt-3 pb-2 md:flex-row md:items-start md:justify-between md:px-6 md:pt-5 md:pb-3">
+                <div className="min-w-0">
+                  <h2 className="truncate text-lg font-bold text-[#1a1a1a] dark:text-white md:text-xl">{script?.title || '未命名剧本'}</h2>
                   {(script || entityCards.length > 0) && (
                     <p className="text-sm text-[#666] dark:text-white/60 mt-0.5">
                       {stats.characters}个人物 · {stats.scenes}个场景 · {entityCards.filter(c => c.type === 'prop').length}个道具 · {stats.shots}个分镜
                     </p>
                   )}
                 </div>
-                <div className="flex items-center gap-2.5">
+                <div className="flex w-full items-center justify-end gap-1.5 md:w-auto md:gap-2.5">
                   {/* 预览剧本 */}
                   {(script || entityCards.length > 0) && (
                     <button
                       onClick={() => setShowScriptPreview(true)}
-                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#EF4444]/10 hover:bg-[#EF4444]/20 text-sm text-[#555] dark:text-white/70 transition-colors"
+                      className="flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#EF4444]/10 px-2.5 py-1.5 text-xs text-[#555] transition-colors hover:bg-[#EF4444]/20 dark:text-white/70 md:px-3.5 md:py-2 md:text-sm"
                     >
                       <Eye className="w-4 h-4 text-[#EF4444]" /> 预览剧本
                     </button>
@@ -106,7 +106,7 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
                   {(script || entityCards.length > 0) && (
                     <button
                       onClick={handleExportPDF}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#EF4444] hover:bg-[#DC2626] text-white text-sm font-medium transition-colors shadow-sm"
+                      className="flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#EF4444] px-2.5 py-1.5 text-xs font-medium text-white shadow-sm transition-colors hover:bg-[#DC2626] md:px-4 md:py-2 md:text-sm"
                     >
                       <FileDown className="w-4 h-4" /> 导出剧本
                     </button>
@@ -128,29 +128,29 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
               </div>
 
               {/* 状态统计条 — 规划阶段统计剧本要素完成情况 */}
-              <div className="flex-shrink-0 mx-6 mb-4 px-0 py-0 bg-white dark:bg-card rounded-lg border border-[#E5E7EB] dark:border-border overflow-hidden">
-                <div className="flex items-center divide-x divide-[#E5E7EB] dark:divide-border">
-                  <div className="flex items-center gap-1.5 px-4 py-2.5 flex-1">
+              <div className="mx-3 mb-2 flex-shrink-0 overflow-hidden rounded-lg border border-[#E5E7EB] bg-white px-0 py-0 dark:border-border dark:bg-card md:mx-6 md:mb-4">
+                <div className="grid grid-cols-2 md:flex md:items-center md:divide-x md:divide-[#E5E7EB] md:dark:divide-border">
+                  <div className="flex min-w-0 items-center gap-1.5 px-3 py-2 md:flex-1 md:px-4 md:py-2.5">
                     <CheckCircle2 className="w-4 h-4 text-green-500" />
-                    <span className="text-sm text-[#666] dark:text-white/60">已完成</span>
+                    <span className="whitespace-nowrap text-xs text-[#666] dark:text-white/60 md:text-sm">已完成</span>
                     <span className="text-sm font-semibold text-green-500">{entityCards.filter(c => c.type !== 'plot' && c.name && c.description).length}/{entityCards.filter(c => c.type !== 'plot').length}</span>
                   </div>
-                  <div className="flex items-center gap-1.5 px-4 py-2.5 flex-1">
+                  <div className="flex min-w-0 items-center gap-1.5 px-3 py-2 md:flex-1 md:px-4 md:py-2.5">
                     <Loader2 className="w-4 h-4 text-orange-500" />
-                    <span className="text-sm text-[#666] dark:text-white/60">生成中</span>
+                    <span className="whitespace-nowrap text-xs text-[#666] dark:text-white/60 md:text-sm">生成中</span>
                     <span className="text-sm font-semibold text-orange-500">{isGenerating ? 1 : 0}</span>
                   </div>
-                  <div className="flex items-center gap-1.5 px-4 py-2.5 flex-1">
+                  <div className="flex min-w-0 items-center gap-1.5 px-3 py-2 md:flex-1 md:px-4 md:py-2.5">
                     <Clock className="w-4 h-4 text-[#999] dark:text-white/40" />
-                    <span className="text-sm text-[#666] dark:text-white/60">等待</span>
+                    <span className="whitespace-nowrap text-xs text-[#666] dark:text-white/60 md:text-sm">等待</span>
                     <span className="text-sm font-semibold text-[#888] dark:text-white/50">{Math.max(0, entityCards.filter(c => c.type !== 'plot').length - entityCards.filter(c => c.type !== 'plot' && c.name && c.description).length - (isGenerating ? 1 : 0))}</span>
                   </div>
-                  <div className="flex items-center gap-1.5 px-4 py-2.5 flex-1">
+                  <div className="flex min-w-0 items-center gap-1.5 px-3 py-2 md:flex-1 md:px-4 md:py-2.5">
                     <AlertCircle className="w-4 h-4 text-red-500" />
-                    <span className="text-sm text-[#666] dark:text-white/60">失败</span>
+                    <span className="whitespace-nowrap text-xs text-[#666] dark:text-white/60 md:text-sm">失败</span>
                     <span className="text-sm font-semibold text-red-500">0</span>
                   </div>
-                  <div className="flex items-center justify-center px-4 py-2.5">
+                  <div className="hidden md:flex items-center justify-center px-4 py-2.5">
                     <button
                       onClick={() => setShowLogPanel((v: boolean) => !v)}
                       className="flex items-center gap-1 px-3 py-1.5 rounded-md bg-gray-50 dark:bg-accent/30 hover:bg-gray-100 dark:hover:bg-accent/50 transition-colors text-xs text-[#888] dark:text-white/50"
@@ -162,7 +162,7 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
               </div>
 
               {/* 滚动内容区 */}
-              <div className="flex-1 overflow-y-auto min-h-0 px-6 pb-4 space-y-3">
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-3 pb-3 md:px-6 md:pb-4">
               {/* 流式文本输出 + 进度条 — 中间栏实时展示 */}
               <FilmScriptProgressPanel
                 isGenerating={isGenerating}
@@ -179,7 +179,7 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
                 </div>
               )}
               {entityCards.length === 0 ? (
-                <div className="text-center py-16 text-foreground/30">
+                <div className="py-8 text-center text-foreground/30 md:py-16">
                   <Clapperboard className="w-12 h-12 mx-auto mb-3 opacity-30" />
                   <div className="text-sm font-medium mb-1">输入创作需求，开始影视创作</div>
                   <div className="text-xs">AI 将自动生成剧情、人物、场景、分镜等完整规划</div>
@@ -885,7 +885,7 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
 
               {/* AI 状态指示 */}
               {middleAiStatus && (
-                <div className="flex-shrink-0 mx-6 mb-3 px-4 py-3 bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-950/30 dark:to-orange-950/30 rounded-xl border border-red-100 dark:border-red-900/30">
+                <div className="mx-3 mb-3 flex-shrink-0 rounded-xl border border-red-100 bg-gradient-to-r from-red-50 to-orange-50 px-3 py-2.5 dark:border-red-900/30 dark:from-red-950/30 dark:to-orange-950/30 md:mx-6 md:px-4 md:py-3">
                   <div className="flex items-start gap-2.5">
                     <div className="w-7 h-7 rounded-full bg-red-500 flex items-center justify-center flex-shrink-0 mt-0.5">
                       <Sparkles className="w-3.5 h-3.5 text-white" />
@@ -938,7 +938,7 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
                     </div>
                   )}
                   {/* 快捷命令行 */}
-                  <div className="flex items-center gap-1.5 flex-wrap">
+                  <div className="flex flex-nowrap items-center gap-1.5 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible md:pb-0">
                     <button onClick={() => handleQuickCmd('generate_script')} className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-secondary dark:bg-accent/50 text-[11px] text-foreground/60 hover:text-primary hover:bg-primary/10 transition-colors">
                       <FileText className="w-3 h-3" />生成脚本
                     </button>
@@ -1019,7 +1019,7 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
 
         {/* ===== 对话栏（规划/画面阶段底部） ===== */}
         {phase !== 'compose' && (
-        <div className="flex-shrink-0 bg-card/90 dark:bg-card/90 flex flex-col" style={{ maxHeight: '40vh' }}>
+        <div className="flex max-h-[45dvh] flex-shrink-0 flex-col bg-card/90 dark:bg-card/90 md:max-h-[40vh]">
           {/* 对话消息区 + 快捷命令行 */}
           {chatMessages.length > 0 && (
             <div className="px-3 pt-2 space-y-0">
@@ -1033,7 +1033,7 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
                 </button>
               </div>
               {showChatMessages && (
-            <div className="overflow-y-auto px-2 py-1 space-y-1.5 flex-1 min-h-0" style={{ maxHeight: '22vh' }}>
+            <div className="max-h-[20dvh] min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain px-2 py-1 md:max-h-[22vh]">
               {chatMessages.map(m => <FilmChatMessage key={m.id} msg={m} onQuickOption={(opt) => { setChatInput(opt); setTimeout(() => handleSendChat(), 50); }} entityCards={entityCards} script={script} />)}
               <div ref={chatEndRef} />
             </div>
@@ -1043,7 +1043,7 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
           {/* 快捷命令行 + 输入行 */}
           <div className="flex-shrink-0 px-3 py-2 space-y-2">
           {/* 快捷命令行 - 与对话计数同行 */}
-          <div className="flex items-center gap-1.5 flex-wrap">
+          <div className="flex flex-nowrap items-center gap-1.5 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible md:pb-0">
             {phase === 'planning' && (
               <>
                 <button onClick={() => handleQuickCmd('generate_script')} className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-secondary dark:bg-accent/50 text-[11px] text-foreground/60 hover:text-primary hover:bg-primary/10 transition-colors">
@@ -1078,7 +1078,7 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
             )}
           </div>
           {/* 输入行 */}
-          <div className={`flex items-center gap-2 bg-accent/20 dark:bg-accent/30 rounded-xl px-4 py-2.5 border transition-all duration-300 ${chatInputHighlight ? 'border-primary ring-2 ring-primary/30' : 'border-border/50'}`}>
+          <div className={`flex items-center gap-2 rounded-xl border bg-accent/20 px-3 py-2 transition-all duration-300 dark:bg-accent/30 md:px-4 md:py-2.5 ${chatInputHighlight ? 'border-primary ring-2 ring-primary/30' : 'border-border/50'}`}>
             <input
               ref={chatInputRef}
               type="text"
@@ -1091,7 +1091,7 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
                 }
               }}
               placeholder={chatPlaceholder}
-              className="flex-1 bg-transparent outline-none text-sm text-foreground/80 placeholder:text-foreground/30"
+              className="min-w-0 flex-1 bg-transparent text-sm text-foreground/80 outline-none placeholder:text-foreground/30"
             />
             <div className="flex items-center gap-1 flex-shrink-0">
               {/* 附件 */}

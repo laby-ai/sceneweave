@@ -98,6 +98,7 @@
     "test:subject-store-readiness": "tsx scripts/test-subject-store-readiness.ts",
     "qa:film-generation-mode-visibility": "node scripts/qa-film-generation-mode-visibility.mjs",
     "test:film-mobile-workspace": "tsx scripts/test-film-mobile-workspace.ts",
+    "test:film-mobile-viewport": "tsx scripts/test-film-mobile-viewport.ts",
     "test:film-script-handoff": "tsx scripts/test-film-script-handoff.ts",
     "qa:entrypoint-routes": "node scripts/qa-entrypoint-routes.mjs",
     "qa:architecture-guard": "node scripts/qa-architecture-guard.mjs",
