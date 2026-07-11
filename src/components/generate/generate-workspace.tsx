@@ -294,7 +294,7 @@ export function GenerateWorkspace({ initialPrompt, onNavigate }: GenerateWorkspa
         }}
       />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_72%_20%,rgba(112,224,255,0.16),transparent_30%),radial-gradient(circle_at_38%_62%,rgba(79,108,255,0.13),transparent_34%),linear-gradient(180deg,rgba(0,0,0,0.24),rgba(0,0,0,0.86))]" />
-      <aside className="relative z-10 flex w-56 shrink-0 flex-col border-r border-white/10 bg-black/72 text-white backdrop-blur-xl">
+      <aside className="relative z-10 hidden w-56 shrink-0 flex-col border-r border-white/10 bg-black/72 text-white backdrop-blur-xl md:flex">
         <div className="flex items-center justify-between px-4 py-3">
           <span className="text-sm font-semibold">开启创作</span>
         </div>
@@ -495,7 +495,7 @@ export function GenerateWorkspace({ initialPrompt, onNavigate }: GenerateWorkspa
               <AtSign className="h-4 w-4" />
             </button>
             {atMenuOpen && (
-              <div className="absolute top-full left-0 z-20 mt-2 max-h-72 w-64 overflow-y-auto rounded-xl border border-border bg-popover p-2 shadow-xl">
+              <div className="absolute top-full right-0 z-20 mt-2 max-h-72 w-64 overflow-y-auto rounded-xl border border-border bg-popover p-2 shadow-xl sm:right-auto sm:left-0">
                 <p className="pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">引用主体</p>
                 {subjectsLoading ? (
                   <p className="px-1 py-3 text-xs text-muted-foreground">正在加载主体库…</p>

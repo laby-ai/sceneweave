@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getProviderHealthStatus, resetProviderHealth } from '@/lib/model-router';
 import { getProductionRuntimeReadiness } from '@/lib/runtime-readiness';
+import { getSubjectStoreReadiness } from '@/lib/subjects/subject-store-readiness';
 import type { ServiceType } from '@/lib/model-router';
 
 /**
@@ -10,7 +11,10 @@ import type { ServiceType } from '@/lib/model-router';
  */
 export async function GET() {
   const status = getProviderHealthStatus();
-  const runtimeReadiness = getProductionRuntimeReadiness();
+  const runtimeReadiness = {
+    ...getProductionRuntimeReadiness(),
+    subjectStore: await getSubjectStoreReadiness(),
+  };
   return NextResponse.json({
     providers: status,
     unhealthy: status.filter(s => !s.healthy).map(s => `${s.provider}(${s.failCount} failures)`),
