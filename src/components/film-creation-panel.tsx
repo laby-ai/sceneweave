@@ -53,6 +53,10 @@ import { FilmWorkflowSidebar } from '@/components/film/film-workflow-sidebar';
 import { FilmMainStageWorkspace } from '@/components/film/film-main-stage-workspace';
 import { FilmCreationDialogs } from '@/components/film/film-creation-dialogs';
 import {
+  FilmMobileWorkspaceTabs,
+  type FilmMobileWorkspaceView,
+} from '@/components/film/film-mobile-workspace-tabs';
+import {
   entityCardToSnapshot,
   filmComposeHistoryFingerprint,
   renderSafe,
@@ -88,6 +92,7 @@ export function FilmCreationPanel({
 
   // ---- 影视创作历史记录 ----
   const { filmHistory, upsertFilmHistory, deleteFilmHistory, clearFilmHistory } = useFilmHistory();
+  const [mobileWorkspaceView, setMobileWorkspaceView] = useState<FilmMobileWorkspaceView>('workspace');
   const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const [showLogPanel, setShowLogPanel] = useState(true);
   const [showChatMessages, setShowChatMessages] = useState(true);
@@ -2207,6 +2212,11 @@ export function FilmCreationPanel({
     setPhase(p);
   }, [entityCards]);
 
+  const handleMobilePhaseChange = useCallback((p: WorkflowPhase) => {
+    goToPhase(p);
+    setMobileWorkspaceView('workspace');
+  }, [goToPhase]);
+
   // ============================================================
   // 对话逻辑
   // ============================================================
@@ -2418,23 +2428,49 @@ export function FilmCreationPanel({
   // ============================================================
   return (
     <div className="flex flex-col h-full bg-card rounded-xl overflow-hidden border border-border/70">
+      <FilmMobileWorkspaceTabs
+        activeView={mobileWorkspaceView}
+        onViewChange={setMobileWorkspaceView}
+      />
       {/* 三栏主体 */}
       <div className="flex flex-1 min-h-0">
-      <FilmWorkflowSidebar
+      <div
+        id="film-mobile-panel-workflow"
+        role="tabpanel"
+        aria-labelledby="film-mobile-tab-workflow"
+        data-mobile-panel="workflow"
+        className={`${mobileWorkspaceView === 'workflow' ? 'flex' : 'hidden'} min-h-0 w-full min-w-0 [&>div]:w-full md:flex md:w-auto md:flex-none md:[&>div]:w-[320px]`}
+      >
+        <FilmWorkflowSidebar
         {...{
-          addWorkflowMsg, appendSearchRef, assetCardsExpanded, bgmAudioRef, bgmPreviewPlaying, bgmType, bgmVolume, cfgExpand, composeProgress, composeStatus, consistencyChecking, consistencyMode, consistencyResults, consistencySvcExpand, copyrightNotice, customCharStyle, customDuration, customPropStyle, customSceneStyle, customScriptType, enhancePanelOpen, entityCards, expandedPhaseSection, fileInputRef, filmTtsSpeed, formatDuration, generationMode, generationStage, goToPhase, handleBridgeFrames, handleComposeFilm, handleConsistencyCheck, handleEnhanceCharacters, handleEnhanceScenes, handleExtractLastFrame, handleFileUpload, handleFilmSearch, handleGenerateAllAssets, handleGenerateAllVideos, handleGenerateAnchor, handleGenerateEndFrame, handleGenerateImage, handleGenerateProps, handleGenerateShotVideo, handleGenerateStartFrame, handlePlanCreation, handlePreviewBgm, handlePreviewVoice, handleExtendPrompt, inputText, isBridging, isGenerating, isSearching, materialInput, materials, phase, refEntitiesExpanded, script, scriptDirectorRef, scriptScreenplayRef, scriptType, searchQuery, searchResults, searchSummary, searchType, selectedCardId, selectedService, setAssetCardsExpanded, setAutoGenerateAssets, setBgmPreviewPlaying, setBgmType, setBgmVolume, setCfgExpand, setConsistencyMode, setConsistencySvcExpand, setCustomCharStyle, setCustomDuration, setCustomPropStyle, setCustomSceneStyle, setCustomScriptType, setEnhancePanelOpen, setEntityCards, setExpandedPhaseSection, setFilmTtsSpeed, setGenerationMode, setInputText, setMaterialInput, setMaterials, setPhase, setRefEntitiesExpanded, setScript, setScriptType, setSearchQuery, setSearchType, setSelectedCardId, setSelectedService, setSfxType, setSfxVolume, setStoryTab, setTargetDuration, setUploadedFiles, setVideoDuration, setVideoRatio, setVisualStyle, setVoiceType, setWsFilter, setWsPreviewUrl, sfxType, sfxVolume, showSearchResults, stats, storyTab, targetDuration, typeConfig, uploadedFiles, videoDuration, videoRatio, visualStyle, voicePreviewPlaying, voiceType, wsFilter,
+          addWorkflowMsg, appendSearchRef, assetCardsExpanded, bgmAudioRef, bgmPreviewPlaying, bgmType, bgmVolume, cfgExpand, composeProgress, composeStatus, consistencyChecking, consistencyMode, consistencyResults, consistencySvcExpand, copyrightNotice, customCharStyle, customDuration, customPropStyle, customSceneStyle, customScriptType, enhancePanelOpen, entityCards, expandedPhaseSection, fileInputRef, filmTtsSpeed, formatDuration, generationMode, generationStage, goToPhase: handleMobilePhaseChange, handleBridgeFrames, handleComposeFilm, handleConsistencyCheck, handleEnhanceCharacters, handleEnhanceScenes, handleExtractLastFrame, handleFileUpload, handleFilmSearch, handleGenerateAllAssets, handleGenerateAllVideos, handleGenerateAnchor, handleGenerateEndFrame, handleGenerateImage, handleGenerateProps, handleGenerateShotVideo, handleGenerateStartFrame, handlePlanCreation, handlePreviewBgm, handlePreviewVoice, handleExtendPrompt, inputText, isBridging, isGenerating, isSearching, materialInput, materials, phase, refEntitiesExpanded, script, scriptDirectorRef, scriptScreenplayRef, scriptType, searchQuery, searchResults, searchSummary, searchType, selectedCardId, selectedService, setAssetCardsExpanded, setAutoGenerateAssets, setBgmPreviewPlaying, setBgmType, setBgmVolume, setCfgExpand, setConsistencyMode, setConsistencySvcExpand, setCustomCharStyle, setCustomDuration, setCustomPropStyle, setCustomSceneStyle, setCustomScriptType, setEnhancePanelOpen, setEntityCards, setExpandedPhaseSection, setFilmTtsSpeed, setGenerationMode, setInputText, setMaterialInput, setMaterials, setPhase, setRefEntitiesExpanded, setScript, setScriptType, setSearchQuery, setSearchType, setSelectedCardId, setSelectedService, setSfxType, setSfxVolume, setStoryTab, setTargetDuration, setUploadedFiles, setVideoDuration, setVideoRatio, setVisualStyle, setVoiceType, setWsFilter, setWsPreviewUrl, sfxType, sfxVolume, showSearchResults, stats, storyTab, targetDuration, typeConfig, uploadedFiles, videoDuration, videoRatio, visualStyle, voicePreviewPlaying, voiceType, wsFilter,
         }}
-      />
+        />
+      </div>
 
-      <FilmMainStageWorkspace
-        {...{
-          chatEndRef, chatInput, chatInputHighlight, chatInputRef, chatMessages, chatPlaceholder, complianceResult, composeProgress, directorAnalysis, entityCards, entityCardsGridRef, error, expandedShotIds, fileInputRef, filmHistory, filmVisualStyle, finalVideoUrl, generationProgress, generationStage, handleBatchGenerateFrames, handleComposeFilm, handleExportPDF, handleFileUpload, handleGenerateAllImages, handleGenerateEndFrame, handleGenerateImage, handleGenerateNineGrid, handleGeneratePrompt, handleSelectNineGridImage, handleGenerateStartFrame, handleGenerateShotVideo, handleQuickCmd, handleRegenerateVideo, handleSendChat, handleSwitchOutfit, inputText, isChatStreaming, isGenerating, middleAiStatus, phase, progressMsg, script, scriptDirectorRef, scriptScreenplayRef, selectedCardId, setChatInput, setComposeStatus, setError, setExpandedShotIds, setFilmVisualStyle, setFinalVideoUrl, setMiddleAiStatus, setNineGridDialogCardId, setPhase, setPromptManagerOpen, setSelectedCardId, setShowChatMessages, setShowDirectorPanel, setShowScriptPreview, setShowHistoryPanel, setShowLogPanel, setUploadedFiles, setShotViewMode, setWardrobeDialogCardId, setWsPreviewUrl, shotViewMode, showChatMessages, showDirectorPanel, showLogPanel, stats, streamingScriptText, typeConfig, updateCardField, uploadedFiles, videoDuration, goToPhase,
-        }}
-      />
+      <div
+        id="film-mobile-panel-workspace"
+        role="tabpanel"
+        aria-labelledby="film-mobile-tab-workspace"
+        data-mobile-panel="workspace"
+        className={`${mobileWorkspaceView === 'workspace' ? 'flex' : 'hidden'} min-h-0 w-full min-w-0 [&>div]:w-full md:flex md:flex-1`}
+      >
+        <FilmMainStageWorkspace
+          {...{
+            chatEndRef, chatInput, chatInputHighlight, chatInputRef, chatMessages, chatPlaceholder, complianceResult, composeProgress, directorAnalysis, entityCards, entityCardsGridRef, error, expandedShotIds, fileInputRef, filmHistory, filmVisualStyle, finalVideoUrl, generationProgress, generationStage, handleBatchGenerateFrames, handleComposeFilm, handleExportPDF, handleFileUpload, handleGenerateAllImages, handleGenerateEndFrame, handleGenerateImage, handleGenerateNineGrid, handleGeneratePrompt, handleSelectNineGridImage, handleGenerateStartFrame, handleGenerateShotVideo, handleQuickCmd, handleRegenerateVideo, handleSendChat, handleSwitchOutfit, inputText, isChatStreaming, isGenerating, middleAiStatus, phase, progressMsg, script, scriptDirectorRef, scriptScreenplayRef, selectedCardId, setChatInput, setComposeStatus, setError, setExpandedShotIds, setFilmVisualStyle, setFinalVideoUrl, setMiddleAiStatus, setNineGridDialogCardId, setPhase, setPromptManagerOpen, setSelectedCardId, setShowChatMessages, setShowDirectorPanel, setShowScriptPreview, setShowHistoryPanel, setShowLogPanel, setUploadedFiles, setShotViewMode, setWardrobeDialogCardId, setWsPreviewUrl, shotViewMode, showChatMessages, showDirectorPanel, showLogPanel, stats, streamingScriptText, typeConfig, updateCardField, uploadedFiles, videoDuration, goToPhase,
+          }}
+        />
+      </div>
       {/* ============================================ */}
       {/* 右栏: 创作日志 + 生成进度 */}
       {/* ============================================ */}
-      {showLogPanel && (
+      <div
+        id="film-mobile-panel-log"
+        role="tabpanel"
+        aria-labelledby="film-mobile-tab-log"
+        data-mobile-panel="log"
+        className={`${mobileWorkspaceView === 'log' ? 'flex' : 'hidden'} min-h-0 w-full min-w-0 [&>div]:w-full ${showLogPanel ? 'md:flex' : 'md:hidden'} md:w-auto md:flex-none md:[&>div]:w-[320px]`}
+      >
         <FilmCreationLogPanel
           panelRef={rightLogPanelRef}
           workflowMessages={workflowMessages}
@@ -2464,7 +2500,7 @@ export function FilmCreationPanel({
           onWorkflowCommand={handleWorkflowCommand}
           onExportPDF={handleExportPDF}
         />
-      )}
+      </div>
       </div>{/* 三栏主体结束 */}
 
 
