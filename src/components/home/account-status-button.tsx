@@ -26,6 +26,8 @@ export function AccountStatusButton() {
   const [tenantName, setTenantName] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
+  const [logoutPending, setLogoutPending] = useState(false);
+  const [logoutError, setLogoutError] = useState('');
   const [loginHref, setLoginHref] = useState('/account-login.html?next=%2Fhuiying');
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -62,20 +64,24 @@ export function AccountStatusButton() {
   }, [open]);
 
   const handleLogout = async () => {
+    setLogoutError('');
+    setLogoutPending(true);
     try {
       await clientApiFetch('/api/account/logout', {
         method: 'POST',
         timeoutMs: ACCOUNT_CHECK_TIMEOUT_MS,
         redirectOnUnauthorized: false,
       });
+      clearStoredAccountTokens();
+      setMember(null);
+      setTenantName('');
+      setOpen(false);
+      window.location.replace(accountLoginUrl());
     } catch {
-      /* 即使登出请求失败也刷新，回到未登录视图。 */
+      setLogoutError('暂时无法安全退出，请检查网络后重试。');
+    } finally {
+      setLogoutPending(false);
     }
-    clearStoredAccountTokens();
-    setMember(null);
-    setTenantName('');
-    setOpen(false);
-    window.location.replace(accountLoginUrl());
   };
 
   if (!member) {
@@ -112,14 +118,16 @@ export function AccountStatusButton() {
             </div>
           </div>
           {tenantName ? <div className="mt-2 truncate text-[11px] text-muted-foreground">所属团队：{tenantName}</div> : null}
+          {logoutError ? <div className="mt-2 text-xs leading-5 text-red-300" role="alert">{logoutError}</div> : null}
           <div className="mt-3 border-t border-white/10 pt-2">
             <button
               type="button"
               onClick={handleLogout}
-              className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-foreground/80 transition hover:bg-white/[0.06]"
+              disabled={logoutPending}
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-foreground/80 transition hover:bg-white/[0.06] disabled:cursor-wait disabled:opacity-60"
             >
               <LogOut className="h-4 w-4" />
-              退出登录
+              {logoutPending ? '正在安全退出…' : '退出登录'}
             </button>
           </div>
         </div>
