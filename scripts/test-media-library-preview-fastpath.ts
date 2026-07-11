@@ -62,8 +62,8 @@ assert.match(assetsSource, /poster=\{asset\.poster\}[\s\S]*?preload="none"/);
 assert.match(libraryRouteSource, /buildPublicMediaCandidate/);
 assert.match(libraryRouteSource, /await fs\.stat\(publicCandidate\.filePath\)/);
 assert.match(posterRouteSource, /resolvePackagedFfmpegPath\(process\.cwd\(\), process\.platform\)/);
-assert.match(homeSectionSource, /poster=\{previewImage\(item\.src, 256\)\}/);
-assert.match(homeSectionSource, /src=\{previewImage\(item\.src, 256\)\}/);
+assert.match(homeSectionSource, /poster=\{previewImage\(item\.src, selectHomeGalleryPreviewWidth\(item\.span\)\)\}/);
+assert.match(homeSectionSource, /src=\{previewImage\(item\.src, selectHomeGalleryPreviewWidth\(item\.span\)\)\}/);
 assert.doesNotMatch(
   posterRouteSource,
   /execFileAsync\(\s*'ffmpeg'/,
