@@ -1,10 +1,32 @@
 'use client';
 
-const ACCOUNT_TOKEN_KEYS = ['account_entitlement_token', 'huiying_account_token'];
+const ACCOUNT_TOKEN_KEYS = ["account_entitlement_token","huiying_account_token"];
 const DEFAULT_TIMEOUT_MS = 20_000;
 const FALLBACK_LOGIN_URL = '/account-login.html?next=%2Fhuiying';
 
-type ClientApiOptions = RequestInit & {
+export type ClientRequestErrorCode =
+  | 'unauthorized'
+  | 'forbidden'
+  | 'rate_limited'
+  | 'http_error'
+  | 'timeout'
+  | 'cancelled'
+  | 'network'
+  | 'invalid_payload'
+  | 'download_error';
+
+export class ClientRequestError extends Error {
+  constructor(
+    message: string,
+    public readonly code: ClientRequestErrorCode,
+    public readonly status?: number,
+    public readonly details?: unknown,
+  ) {
+    super(message);
+    this.name = 'ClientRequestError';
+  }
+}
+export type ClientApiOptions = RequestInit & {
   timeoutMs?: number;
   redirectOnUnauthorized?: boolean;
   skipAuth?: boolean;
@@ -19,9 +41,8 @@ export function detectClientBasePath(): string {
 
 export function clientApiPath(path: string): string {
   const basePath = detectClientBasePath();
-  if (!basePath) return path;
-  if (path.startsWith('/api') && !path.startsWith(`${basePath}/`)) return `${basePath}${path}`;
-  return path;
+  if (!basePath || !path.startsWith('/api') || path.startsWith(`${basePath}/`)) return path;
+  return `${basePath}${path}`;
 }
 
 export function getStoredAccountToken(): string {
@@ -29,8 +50,18 @@ export function getStoredAccountToken(): string {
   try {
     for (const storage of [window.localStorage, window.sessionStorage]) {
       for (const key of ACCOUNT_TOKEN_KEYS) {
-        const token = storage.getItem(key)?.trim();
-        if (token) return token;
+        const value = storage.getItem(key)?.trim();
+        if (!value) continue;
+        if (key.endsWith('-account-session')) {
+          try {
+            const token = (JSON.parse(value) as { token?: string }).token?.trim();
+            if (token) return token;
+          } catch {
+            continue;
+          }
+        } else {
+          return value;
+        }
       }
     }
   } catch {
@@ -65,26 +96,41 @@ export function accountLoginUrl(): string {
   return `/account-login.html?next=${encodeURIComponent(next)}`;
 }
 
-function unauthorizedError(): Error {
-  const error = new Error('unauthorized') as Error & { status?: number };
-  error.status = 401;
-  return error;
-}
-
 async function parseResponseBody(response: Response): Promise<unknown> {
   const contentType = response.headers.get('content-type') || '';
-  if (contentType.includes('application/json')) {
-    return response.json().catch(() => null);
-  }
+  if (contentType.includes('application/json')) return response.json().catch(() => null);
   return response.text().catch(() => '');
 }
 
-export async function clientApiRequest(path: string, options: ClientApiOptions = {}): Promise<Response> {
+function messageFromPayload(payload: unknown, fallback: string): string {
+  if (!payload || typeof payload !== 'object') return fallback;
+  const value = payload as { error?: unknown; msg?: unknown; message?: unknown };
+  return String(value.error || value.msg || value.message || fallback);
+}
+
+function httpError(response: Response, payload: unknown, codeOverride?: ClientRequestErrorCode): ClientRequestError {
+  const code = codeOverride || (response.status === 401
+    ? 'unauthorized'
+    : response.status === 403
+      ? 'forbidden'
+      : response.status === 429
+        ? 'rate_limited'
+        : 'http_error');
+  return new ClientRequestError(
+    messageFromPayload(payload, `request_failed_${response.status}`),
+    code,
+    response.status,
+    payload,
+  );
+}
+
+async function executeFetch(path: string, options: ClientApiOptions): Promise<Response> {
   const {
     timeoutMs = DEFAULT_TIMEOUT_MS,
     redirectOnUnauthorized = true,
     skipAuth = false,
     headers,
+    signal: callerSignal,
     ...init
   } = options;
   const requestHeaders = new Headers(headers);
@@ -94,33 +140,69 @@ export async function clientApiRequest(path: string, options: ClientApiOptions =
     requestHeaders.set('Content-Type', 'application/json');
   }
 
-  const response = await fetch(clientApiPath(path), {
-    ...init,
-    credentials: init.credentials ?? 'same-origin',
-    cache: init.cache ?? 'no-store',
-    headers: requestHeaders,
-    signal: init.signal ?? AbortSignal.timeout(timeoutMs),
-  });
+  const controller = new AbortController();
+  let timedOut = false;
+  const abortFromCaller = () => controller.abort(callerSignal?.reason);
+  if (callerSignal?.aborted) abortFromCaller();
+  else callerSignal?.addEventListener('abort', abortFromCaller, { once: true });
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort(new DOMException('Request timed out', 'TimeoutError'));
+  }, timeoutMs);
 
-  if (response.status === 401) {
-    clearStoredAccountTokens();
-    if (redirectOnUnauthorized) window.location.replace(accountLoginUrl());
-    throw unauthorizedError();
+  try {
+    const response = await fetch(clientApiPath(path), {
+      ...init,
+      credentials: init.credentials ?? 'same-origin',
+      cache: init.cache ?? 'no-store',
+      headers: requestHeaders,
+      signal: controller.signal,
+    });
+    if (response.status === 401) {
+      const payload = await parseResponseBody(response);
+      clearStoredAccountTokens();
+      if (redirectOnUnauthorized && typeof window !== 'undefined') window.location.replace(accountLoginUrl());
+      throw httpError(response, payload);
+    }
+    return response;
+  } catch (error) {
+    if (error instanceof ClientRequestError) throw error;
+    if (timedOut) throw new ClientRequestError('request_timeout', 'timeout');
+    if (callerSignal?.aborted) throw new ClientRequestError('request_cancelled', 'cancelled');
+    throw new ClientRequestError(
+      error instanceof Error ? error.message : 'network_error',
+      'network',
+      undefined,
+      error,
+    );
+  } finally {
+    clearTimeout(timeout);
+    callerSignal?.removeEventListener('abort', abortFromCaller);
   }
+}
 
-  return response;
+export async function clientApiRequest(path: string, options: ClientApiOptions = {}): Promise<Response> {
+  return executeFetch(path, options);
 }
 
 export async function clientApiFetch<T>(path: string, options: ClientApiOptions = {}): Promise<T> {
-  const response = await clientApiRequest(path, options);
+  const response = await executeFetch(path, options);
   const payload = await parseResponseBody(response);
-  if (!response.ok) {
-    const message =
-      payload && typeof payload === 'object' && 'error' in payload
-        ? String((payload as { error?: unknown }).error)
-        : `request_failed_${response.status}`;
-    throw new Error(message);
+  if (!response.ok) throw httpError(response, payload);
+  if (payload === null || payload === '') {
+    throw new ClientRequestError('invalid_response_payload', 'invalid_payload', response.status);
   }
-
   return payload as T;
+}
+
+export async function clientApiDownloadBlob(path: string, options: ClientApiOptions = {}): Promise<Blob> {
+  const response = await executeFetch(path, options);
+  if (!response.ok) throw httpError(response, await parseResponseBody(response), 'download_error');
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    throw httpError(response, await parseResponseBody(response), 'download_error');
+  }
+  const blob = await response.blob();
+  if (blob.size === 0) throw new ClientRequestError('empty_download', 'download_error', response.status);
+  return blob;
 }
