@@ -4,7 +4,8 @@ import type { ProductionAssemblyPlan } from '@/lib/production-assembly-plan';
 import type { ProductionProject } from '@/lib/production-project';
 import { evaluateAssemblyShotFrameReadiness } from '@/lib/production-shot-frame-contract';
 import { buildAssemblySegmentDependencyConfig } from '@/lib/production-segment-transition';
-import { createTask, getAllTasksFresh, getTaskFresh, updateTask } from '@/lib/task-manager';
+import { createTask, getAllTasksForOwner, getTaskForOwner, getTaskFresh, updateTask, type TaskOwner } from '@/lib/task-manager';
+import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -14,17 +15,19 @@ interface QueueRequestBody {
   reset?: boolean;
 }
 
-function pickTask(taskId?: string) {
-  if (taskId) return getTaskFresh(taskId) || null;
-  return getAllTasksFresh()
+function pickTask(owner: TaskOwner, taskId?: string) {
+  if (taskId) return getTaskForOwner(taskId, owner) || null;
+  return getAllTasksForOwner(owner)
     .filter(task => Boolean(task.result?.productionProject && task.result?.assemblyPlan))
     .sort((a, b) => (b.lastUpdatedAt || b.completedAt || b.createdAt) - (a.lastUpdatedAt || a.completedAt || a.createdAt))[0] || null;
 }
 
 export async function POST(request: NextRequest) {
+  const owner = await resolveTaskOwnerFromRequest(request);
+  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
   try {
     const body = await request.json().catch(() => ({})) as QueueRequestBody;
-    const task = pickTask(body.taskId);
+    const task = pickTask(owner, body.taskId);
 
     if (!task?.result?.productionProject || !task.result.assemblyPlan) {
       return NextResponse.json({
@@ -53,7 +56,7 @@ export async function POST(request: NextRequest) {
       }, { status: 409 });
     }
 
-    const existingTasks = getAllTasksFresh();
+    const existingTasks = getAllTasksForOwner(owner);
     const existingTaskIds = new Set(existingTasks.map(item => item.id));
 
     let previousChildTaskId: string | null = null;

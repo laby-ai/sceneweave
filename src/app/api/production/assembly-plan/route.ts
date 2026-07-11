@@ -2,23 +2,26 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { buildProductionAssemblyPlan } from '@/lib/production-assembly-plan';
 import { evaluateStoryReadability } from '@/lib/production-story-readability';
-import { getAllTasksFresh, getTaskFresh, updateTask } from '@/lib/task-manager';
+import { getAllTasksForOwner, getTaskForOwner, updateTask, type TaskOwner } from '@/lib/task-manager';
 import type { ProductionProject } from '@/lib/production-project';
+import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-function pickTask(taskId?: string) {
-  if (taskId) return getTaskFresh(taskId) || null;
-  return getAllTasksFresh()
+function pickTask(owner: TaskOwner, taskId?: string) {
+  if (taskId) return getTaskForOwner(taskId, owner) || null;
+  return getAllTasksForOwner(owner)
     .filter(task => Boolean(task.result?.productionProject))
     .sort((a, b) => (b.lastUpdatedAt || b.completedAt || b.createdAt) - (a.lastUpdatedAt || a.completedAt || a.createdAt))[0] || null;
 }
 
 export async function POST(request: NextRequest) {
+  const owner = await resolveTaskOwnerFromRequest(request);
+  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
   try {
     const body = await request.json().catch(() => ({})) as { taskId?: string; persist?: boolean };
-    const task = pickTask(body.taskId);
+    const task = pickTask(owner, body.taskId);
 
     if (!task?.result?.productionProject) {
       return NextResponse.json({

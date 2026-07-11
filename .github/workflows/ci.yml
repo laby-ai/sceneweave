@@ -51,6 +51,7 @@ jobs:
           pnpm run test:loopback-listener-contract
           pnpm run test:member-subject-library
           pnpm run test:member-final-video-store
+          pnpm run test:member-task-isolation
 
       - name: Check mobile Film contracts
         run: |

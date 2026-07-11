@@ -4,6 +4,7 @@ import { DegradeError } from '@/lib/model-router';
 import { createTask, startTask, updateTaskProgress, completeTask, failTask } from '@/lib/task-manager';
 import { extractBYOKConnection, type BYOKConnection } from '@/lib/byok-provider';
 import { BYOKApiBaseError } from '@/lib/byok-url';
+import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
 
 interface ImageGenerateBody {
   prompt?: string;
@@ -116,6 +117,8 @@ async function generateImageSync(body: ImageGenerateBody, byokConnection?: BYOKC
  * }
  */
 export async function POST(request: NextRequest) {
+  const owner = await resolveTaskOwnerFromRequest(request);
+  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
   try {
     const body = (await request.json()) as ImageGenerateBody;
     const byokConnection = extractBYOKConnection(request.headers);
@@ -152,6 +155,7 @@ export async function POST(request: NextRequest) {
     // 创建后台任务
     const taskId = createTask({
       type: 'image',
+      owner,
       params: { prompt, size, materials, n, image },
     });
 

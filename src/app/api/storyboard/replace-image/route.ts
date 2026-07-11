@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { aiService } from '@/lib/ai-service-adapter';
-import { updateTask, getTask } from '@/lib/task-manager';
+import { updateTask, getTaskForOwner } from '@/lib/task-manager';
+import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
 
 export async function POST(request: NextRequest) {
+  const owner = await resolveTaskOwnerFromRequest(request);
+  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
   try {
     const body = await request.json();
     const { 
@@ -23,7 +26,7 @@ export async function POST(request: NextRequest) {
     console.log(`[Storyboard Replace Image] 替换图片: 任务${taskId}, 分镜头${shotId}, 图片索引${imageIndex}`);
 
     // 获取任务
-    const task = getTask(taskId);
+    const task = getTaskForOwner(taskId, owner);
     if (!task) {
       return NextResponse.json(
         { error: '任务不存在' },

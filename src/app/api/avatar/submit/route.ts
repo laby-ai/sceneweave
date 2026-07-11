@@ -7,9 +7,12 @@ import {
   updateTaskProgress,
   getTask,
 } from '@/lib/task-manager';
+import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
 import { v4 as uuidv4 } from 'uuid';
 
 export async function POST(request: NextRequest) {
+  const owner = await resolveTaskOwnerFromRequest(request);
+  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
   try {
     const body = await request.json();
     const { 
@@ -42,7 +45,7 @@ export async function POST(request: NextRequest) {
       ratio: aspectRatio as any,
       useBackground,
       customImageUrl,
-    });
+    }, owner);
 
     console.log('[Avatar Submit] 创建后台任务:', taskId);
 

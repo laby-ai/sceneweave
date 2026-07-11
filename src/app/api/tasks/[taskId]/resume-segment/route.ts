@@ -8,8 +8,9 @@ import { summarizeLegacySegmentTask } from '@/lib/legacy-segment-task-summary';
 import { mergeVideosWithLocalFfmpeg } from '@/lib/local-video-merge';
 import { archiveCompletedVideoTaskById } from '@/lib/production-video-task-archive-service';
 import { evaluateLegacySegmentTransition } from '@/lib/production-segment-transition';
-import { getTaskFresh, updateTask } from '@/lib/task-manager';
+import { getTaskForOwner, getTaskFresh, updateTask } from '@/lib/task-manager';
 import type { TaskResult } from '@/lib/task-manager';
+import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -97,9 +98,15 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ taskId: string }> },
 ) {
+  const owner = await resolveTaskOwnerFromRequest(request);
+  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
   const { taskId } = await params;
+  const ownedTask = getTaskForOwner(taskId, owner);
+  if (!ownedTask) {
+    return NextResponse.json({ success: false, error: '任务不存在' }, { status: 404 });
+  }
   const body = await request.json().catch(() => ({})) as ResumeSegmentBody;
-  const task = getTaskFresh(taskId);
+  const task = ownedTask;
 
   if (!task) {
     return NextResponse.json({
