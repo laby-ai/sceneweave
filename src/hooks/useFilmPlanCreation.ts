@@ -4,6 +4,7 @@ import { getBYOKRequestHeaders } from '@/lib/byok-client';
 import { clientApiFetch, clientApiRequest } from '@/lib/client-api';
 import { buildFilmEntityCardsFromScript } from '@/lib/film-script-to-entity-cards';
 import { entityCardToSnapshot, type ChatMessage, type EntityCard, type WorkflowPhase } from '@/lib/film-creation-panel-model';
+import { resolveFilmPostScriptTransition } from '@/lib/film-workflow-transition';
 import type { FilmDirectorAnalysis } from '@/components/film/film-quality-panels';
 import type { CreateScriptResponse, FilmScript } from '@/types/film';
 
@@ -377,15 +378,20 @@ export function useFilmPlanCreation(args: UseFilmPlanCreationArgs) {
 
       onScriptGenerated?.(filmScript);
       const cards = buildFilmEntityCardsFromScript({ filmScript, resolvedStyle, videoDuration });
+      const transition = resolveFilmPostScriptTransition({
+        outcome: 'success',
+        entityCardCount: cards.length,
+      });
 
       setEntityCards(cards);
-      addWorkflowMsg('assistant', `创作规划已完成！共 ${cards.filter(c => c.type === 'character').length} 个角色、${cards.filter(c => c.type === 'scene').length} 个场景、${cards.filter(c => c.type === 'shot').length} 个分镜。自动开始生成...`, 'step');
+      setPhase(transition.phase);
+      addWorkflowMsg('assistant', `剧本已完成！共 ${cards.filter(c => c.type === 'character').length} 个角色、${cards.filter(c => c.type === 'scene').length} 个场景、${cards.filter(c => c.type === 'shot').length} 个分镜。已进入画面生成。`, 'step');
 
       upsertFilmHistory({
         title: (filmScript?.title || input.trim()).slice(0, 50),
         prompt: input.trim(),
         script: filmScript as unknown as Record<string, unknown>,
-        phase: 'planning',
+        phase: transition.phase,
         entityCards: cards.map(entityCardToSnapshot),
         chatMessages: chatMessages.map(m => ({
           id: m.id,
@@ -400,11 +406,13 @@ export function useFilmPlanCreation(args: UseFilmPlanCreationArgs) {
       });
       handleComplianceCheck(input.trim(), filmScript);
 
-      setTimeout(() => {
-        addWorkflowMsg('assistant', '自动开始生成角色/场景/道具图片...', 'progress');
-        setMiddleAiStatus({ type: 'responding', text: '自动生成角色/场景/道具图片...' });
-        setAutoGenerateAssets(true);
-      }, 800);
+      if (transition.queueAssetGeneration) {
+        setTimeout(() => {
+          addWorkflowMsg('assistant', '自动开始生成角色/场景/道具图片...', 'progress');
+          setMiddleAiStatus({ type: 'responding', text: '自动生成角色/场景/道具图片...' });
+          setAutoGenerateAssets(true);
+        }, 800);
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : '创作规划生成失败';
       setError(message);

@@ -107,13 +107,6 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
                       <FileDown className="w-4 h-4" /> 导出剧本
                     </button>
                   )}
-                  {/* 下一步：画面生成 */}
-                  <button
-                    onClick={() => goToPhase('visual')}
-                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#EF4444]/10 hover:bg-[#EF4444]/20 text-sm text-[#555] dark:text-white/70 transition-colors"
-                  >
-                    下一步：画面生成 <ArrowRight className="w-4 h-4" />
-                  </button>
                   {/* 历史记录 */}
                   <div className="relative flex flex-col items-center ml-1">
                     <button
