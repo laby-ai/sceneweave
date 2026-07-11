@@ -6,8 +6,10 @@ import process from 'node:process';
 const root = process.cwd();
 const routePath = 'src/app/api/film/compose/route.ts';
 const servicePath = 'src/lib/film-compose-provider-clients.ts';
+const storagePath = 'src/lib/huiying-object-storage.ts';
 const route = fs.readFileSync(path.join(root, routePath), 'utf8');
 const service = fs.readFileSync(path.join(root, servicePath), 'utf8');
+const storage = fs.readFileSync(path.join(root, storagePath), 'utf8');
 
 const failures = [];
 for (const pattern of [
@@ -40,8 +42,16 @@ for (const required of [
   }
 }
 
-if (!service.includes('coze-coding-dev-sdk') || !service.includes('VideoEditClient') || !service.includes('TTSClient') || !service.includes('S3Storage')) {
-  failures.push(`${servicePath} should own the film compose provider SDK boundary`);
+if (!service.includes('coze-coding-dev-sdk') || !service.includes('VideoEditClient') || !service.includes('TTSClient')) {
+  failures.push(`${servicePath} should own the film compose video and speech provider SDK boundary`);
+}
+
+if (!service.includes('createHuiyingObjectStorage')) {
+  failures.push(`${servicePath} should use the shared Huiying object storage boundary`);
+}
+
+if (!storage.includes('S3Storage') || !storage.includes('createHuiyingObjectStorage')) {
+  failures.push(`${storagePath} should own the Huiying object storage SDK boundary`);
 }
 
 if (failures.length > 0) {
@@ -53,5 +63,6 @@ console.log(JSON.stringify({
   ok: true,
   routePath,
   servicePath,
-  assertion: 'film compose route no longer imports or constructs provider SDK clients directly',
+  storagePath,
+  assertion: 'film compose route delegates video, speech, and shared object storage provider clients',
 }, null, 2));
