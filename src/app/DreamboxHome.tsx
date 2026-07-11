@@ -859,7 +859,7 @@ export function DreamboxHome() {
     ];
     const historicalItems: HomeGalleryItem[] = pickHomeHistoricalAssets(homeHistoricalAssets).map((asset, index) => ({
       title: asset.title,
-      src: asset.kind === 'video' ? (asset.poster || asset.url) : asset.url,
+      src: asset.poster || asset.url,
       videoSrc: asset.kind === 'video' ? asset.url : undefined,
       span: index < 4 ? 'col-span-2 row-span-2' : index < 8 ? 'row-span-2' : '',
       type: asset.kind === 'video' ? '真实视频' : '图像',

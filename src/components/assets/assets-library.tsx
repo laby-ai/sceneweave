@@ -254,14 +254,14 @@ export function AssetsLibrary({ finalVideoCaseAssets = [], segmentCaseAssets = [
                       >
                         {asset.kind === 'image' ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={asset.url} alt={asset.title} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
+                          <img src={asset.poster || asset.url} alt={asset.title} loading="lazy" decoding="async" className="h-full w-full object-cover transition-transform group-hover:scale-105" />
                         ) : (
                           <video
                             src={videoPreviewUrl(asset.url)}
                             poster={asset.poster}
                             muted
                             playsInline
-                            preload="metadata"
+                            preload="none"
                             className="h-full w-full object-cover"
                           />
                         )}

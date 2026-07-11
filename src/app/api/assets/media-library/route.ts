@@ -3,6 +3,8 @@ import path from 'node:path';
 
 import { NextResponse } from 'next/server';
 
+import { buildPublicMediaCandidate } from '@/lib/media-library-preview';
+
 export const runtime = 'nodejs';
 
 type CsvRow = Record<string, string>;
@@ -306,8 +308,19 @@ export async function GET(request: Request) {
     );
   }
 
-  const assets = rows.map((row, index) => {
-    const mediaUrl = `${basePath}/api/assets/media-file?path=${encodeURIComponent(row.full_path)}`;
+  const publicRoot = path.resolve(process.cwd(), 'public');
+  const assets = await Promise.all(rows.map(async (row, index) => {
+    const protectedMediaUrl = `${basePath}/api/assets/media-file?path=${encodeURIComponent(row.full_path)}`;
+    const publicCandidate = buildPublicMediaCandidate(row.full_path, publicRoot, basePath);
+    let mediaUrl = protectedMediaUrl;
+    if (publicCandidate) {
+      try {
+        const publicStat = await fs.stat(publicCandidate.filePath);
+        if (publicStat.isFile()) mediaUrl = publicCandidate.url;
+      } catch {
+        // Keep the protected streaming route when this release does not contain the asset.
+      }
+    }
     const posterUrl =
       row.type === 'video' && path.extname(row.full_path).toLowerCase() === '.mp4'
         ? `${basePath}/api/assets/video-poster?path=${encodeURIComponent(row.full_path)}`
@@ -324,7 +337,7 @@ export async function GET(request: Request) {
       source: 'historical',
       curated: true,
     };
-  });
+  }));
 
   return NextResponse.json({
     success: true,
