@@ -48,6 +48,7 @@ jobs:
         run: |
           pnpm run test:cross-app-auth-contract
           pnpm run test:client-request-contract
+          pnpm run test:loopback-listener-contract
           pnpm run test:member-subject-library
           pnpm run test:member-final-video-store
 
