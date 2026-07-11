@@ -1924,7 +1924,7 @@ export function FilmCreationPanel({
           setFinalVideoUrl(data.videoUrl);
           setComposeStatus('completed');
           onVideoGenerated?.(data.videoUrl);
-          addWorkflowMsg('assistant', '影片合成完成 ✅', undefined, 'success', '可以下载或分享影片');
+          addWorkflowMsg('assistant', data.message || '影片合成完成 ✅', undefined, 'success', '可以预览或下载影片');
         } else {
           throw new Error(data.error || '合成服务未返回最终视频');
         }
@@ -1937,7 +1937,7 @@ export function FilmCreationPanel({
 
       const decoder = new TextDecoder();
       let buffer = '';
-      let finalData: Record<string, unknown> | null = null;
+      let finalData: { videoUrl: string; message: string } | null = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -1951,7 +1951,7 @@ export function FilmCreationPanel({
           if (line.startsWith('data: ')) {
             const event = parseFilmComposeStreamLine(line);
             if (event.type === 'complete') {
-              finalData = { videoUrl: event.videoUrl };
+              finalData = { videoUrl: event.videoUrl, message: event.message };
             } else if (event.type === 'error') {
               throw new Error(event.message);
             } else if (event.type === 'progress') {
@@ -1966,7 +1966,7 @@ export function FilmCreationPanel({
         setFinalVideoUrl(finalData.videoUrl as string);
         setComposeStatus('completed');
         onVideoGenerated?.(finalData.videoUrl as string);
-        addWorkflowMsg('assistant', '影片合成完成 ✅', undefined, 'success', '可以下载或分享影片');
+        addWorkflowMsg('assistant', finalData.message, undefined, 'success', '可以预览或下载影片');
         // 保存历史 - 合成完成
         upsertFilmHistory({
           title: (script?.title || inputText.trim()).slice(0, 50),

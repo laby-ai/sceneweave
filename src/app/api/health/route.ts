@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getProviderHealthStatus, resetProviderHealth } from '@/lib/model-router';
 import { getProductionRuntimeReadiness } from '@/lib/runtime-readiness';
 import { getSubjectStoreReadiness } from '@/lib/subjects/subject-store-readiness';
+import { getFinalVideoStoreReadiness } from '@/lib/final-videos/member-final-video-store';
 import type { ServiceType } from '@/lib/model-router';
 
 /**
@@ -14,6 +15,7 @@ export async function GET() {
   const runtimeReadiness = {
     ...getProductionRuntimeReadiness(),
     subjectStore: await getSubjectStoreReadiness(),
+    finalVideoStore: await getFinalVideoStoreReadiness(),
   };
   return NextResponse.json({
     providers: status,

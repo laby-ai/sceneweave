@@ -9,8 +9,8 @@ assert.deepEqual(
   { type: 'progress', progress: 35, message: '拼接中' },
 );
 assert.deepEqual(
-  parseFilmComposeStreamLine('data: {"stage":"complete","success":true,"videoUrl":"https://cdn.example/final.mp4"}'),
-  { type: 'complete', videoUrl: 'https://cdn.example/final.mp4' },
+  parseFilmComposeStreamLine('data: {"stage":"complete","success":true,"videoUrl":"https://cdn.example/final.mp4","message":"本地合成完成"}'),
+  { type: 'complete', videoUrl: 'https://cdn.example/final.mp4', message: '本地合成完成' },
 );
 assert.deepEqual(
   parseFilmComposeStreamLine('data: {"stage":"error","success":false,"error":"provider failed"}'),
