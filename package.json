@@ -100,6 +100,7 @@
     "test:film-mobile-workspace": "tsx scripts/test-film-mobile-workspace.ts",
     "test:film-mobile-viewport": "tsx scripts/test-film-mobile-viewport.ts",
     "test:ci-workflow": "tsx scripts/test-ci-workflow.ts",
+    "test:cross-app-auth-contract": "tsx scripts/test-cross-app-auth-contract.ts",
     "test:film-script-handoff": "tsx scripts/test-film-script-handoff.ts",
     "qa:entrypoint-routes": "node scripts/qa-entrypoint-routes.mjs",
     "qa:architecture-guard": "node scripts/qa-architecture-guard.mjs",

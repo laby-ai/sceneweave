@@ -44,6 +44,12 @@ jobs:
       - name: Check TypeScript
         run: pnpm run ts-check
 
+      - name: Check account and member isolation
+        run: |
+          pnpm run test:cross-app-auth-contract
+          pnpm run test:member-subject-library
+          pnpm run test:member-final-video-store
+
       - name: Check mobile Film contracts
         run: |
           pnpm run test:film-mobile-workspace
