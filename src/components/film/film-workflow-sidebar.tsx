@@ -40,7 +40,6 @@ import {
   UserCircle,
   Users,
   X,
-  Zap,
 } from 'lucide-react';
 import { getBgmTypeList } from '@/constants/bgm-types';
 import type { EntityCard, WorkflowPhase } from '@/lib/film-creation-panel-model';
@@ -144,6 +143,43 @@ export function FilmWorkflowSidebar(props: FilmWorkflowSidebarProps) {
                 </button>
               );
             })}
+          </div>
+
+          <div
+            data-testid="film-generation-mode-control"
+            className="mt-2 flex items-center gap-2 rounded-md border border-border/50 bg-accent/20 p-1"
+          >
+            <span className="pl-1 text-[10px] font-medium text-foreground/55">生成模式</span>
+            <div className="ml-auto grid grid-cols-2 gap-1" role="group" aria-label="生成模式">
+              <button
+                type="button"
+                aria-pressed={generationMode === 'sequential'}
+                title="逐段生成，优先保持相邻镜头连续性"
+                onClick={() => setGenerationMode('sequential')}
+                className={`flex h-7 items-center gap-1 rounded px-2 text-[10px] font-medium transition-colors ${
+                  generationMode === 'sequential'
+                    ? 'bg-white text-[#FF5630] shadow-sm dark:bg-white/10'
+                    : 'text-foreground/45 hover:bg-white/60 hover:text-foreground/70 dark:hover:bg-white/5'
+                }`}
+              >
+                <Link2 className="h-3 w-3" />
+                连续
+              </button>
+              <button
+                type="button"
+                aria-pressed={generationMode === 'parallel'}
+                title="先确定首尾帧后并行生成，优先提升速度"
+                onClick={() => setGenerationMode('parallel')}
+                className={`flex h-7 items-center gap-1 rounded px-2 text-[10px] font-medium transition-colors ${
+                  generationMode === 'parallel'
+                    ? 'bg-white text-[#FF5630] shadow-sm dark:bg-white/10'
+                    : 'text-foreground/45 hover:bg-white/60 hover:text-foreground/70 dark:hover:bg-white/5'
+                }`}
+              >
+                <Sparkles className="h-3 w-3" />
+                并行
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1280,56 +1316,6 @@ export function FilmWorkflowSidebar(props: FilmWorkflowSidebarProps) {
             )}
           </div>
 
-          {/* ===== 生成模式 ===== */}
-          <div className="border-t border-[#F0F0F0] dark:border-border/30 pt-3">
-            <div
-              className="flex items-center gap-2.5 h-10 cursor-pointer rounded-md hover:bg-black/[0.02] transition-colors -mx-1 px-1"
-              onClick={() => setCfgExpand(cfgExpand === 'generation_mode' ? null : 'generation_mode')}
-            >
-              <div className="w-7 h-7 rounded-full bg-[#FFF3E0] flex items-center justify-center flex-shrink-0">
-                <Zap className="w-4 h-4 text-[#FF9800]" />
-              </div>
-              <span className="text-sm font-medium text-[#333] dark:text-white flex-1">生成模式</span>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#FFEBE6] text-[#FF5630] font-medium">{generationMode === 'sequential' ? '连续' : '并行'}</span>
-                {cfgExpand === 'generation_mode' ? <ChevronUp className="w-3.5 h-3.5 text-[#666]" /> : <ChevronDown className="w-3.5 h-3.5 text-[#666]" />}
-              </div>
-            </div>
-            {cfgExpand === 'generation_mode' && (
-              <div className="space-y-1.5 py-1.5">
-                <div className="flex gap-1.5">
-                  <button
-                    onClick={() => setGenerationMode('sequential')}
-                    className={`flex-1 flex flex-col items-center gap-0.5 px-2 py-2 text-[9px] rounded-lg transition-all border ${
-                      generationMode === 'sequential'
-                        ? 'bg-[#FFEBE6] text-[#FF5630] border-[#FF5630]/20 font-medium'
-                        : 'text-[#666] border-[#F0F0F0] hover:bg-black/[0.02] dark:border-border/40 dark:text-white/50'
-                    }`}
-                  >
-                    <Link2 className="w-4 h-4" />
-                    <span>连续</span>
-                  </button>
-                  <button
-                    onClick={() => setGenerationMode('parallel')}
-                    className={`flex-1 flex flex-col items-center gap-0.5 px-2 py-2 text-[9px] rounded-lg transition-all border ${
-                      generationMode === 'parallel'
-                        ? 'bg-[#FFEBE6] text-[#FF5630] border-[#FF5630]/20 font-medium'
-                        : 'text-[#666] border-[#F0F0F0] hover:bg-black/[0.02] dark:border-border/40 dark:text-white/50'
-                    }`}
-                  >
-                    <Sparkles className="w-4 h-4" />
-                    <span>并行</span>
-                  </button>
-                </div>
-                <div className="text-[8px] text-[#999] mt-1 px-0.5">
-                  {generationMode === 'sequential'
-                    ? '连续模式：逐段生成视频，上一段完成再生成下一段，最大视觉连续性'
-                    : '并行模式：先确定所有首尾帧，再并行生成视频，速度更快'}
-                </div>
-              </div>
-            )}
-          </div>
-
           {/* ===== 参考素材 ===== */}
           <div className="border-t border-[#F0F0F0] dark:border-border/30 pt-3">
             <div
@@ -1569,9 +1555,9 @@ export function FilmWorkflowSidebar(props: FilmWorkflowSidebarProps) {
           )}
         </div>
 
-        {/* 左栏底部：生成模式卡片 + 操作按钮 */}
+        {/* 左栏底部：素材增强 */}
         <div className="px-2.5 py-2 border-t border-[#F0F0F0] dark:border-border/70 mt-auto">
-          {/* 生成模式卡片 */}
+          {/* 素材增强卡片 */}
           <div className="rounded-lg bg-white dark:bg-card shadow-[0_1px_3px_rgba(0,0,0,0.06)] overflow-hidden mb-2">
             <div
               className="flex items-center gap-2.5 px-3 h-10 cursor-pointer hover:bg-black/[0.02] transition-colors"
