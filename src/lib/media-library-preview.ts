@@ -5,6 +5,18 @@ export interface PublicMediaCandidate {
   url: string;
 }
 
+export function resolvePackagedFfmpegPath(
+  applicationRoot: string,
+  platform: NodeJS.Platform,
+): string {
+  return path.join(
+    applicationRoot,
+    'node_modules',
+    'ffmpeg-static',
+    platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg',
+  );
+}
+
 export function buildPublicMediaCandidate(
   sourcePath: string,
   publicRoot: string,

@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { buildPublicMediaCandidate } from '../src/lib/media-library-preview';
+import {
+  buildPublicMediaCandidate,
+  resolvePackagedFfmpegPath,
+} from '../src/lib/media-library-preview';
 
 assert.deepEqual(
   buildPublicMediaCandidate(
@@ -21,6 +24,17 @@ assert.equal(
   buildPublicMediaCandidate('/opt/huiying/shared/private/frame.png', '/opt/huiying/current/public', '/huiying'),
   undefined,
   'paths outside a public tree must not become public URLs',
+);
+
+assert.equal(
+  resolvePackagedFfmpegPath('/opt/huiying/current', 'linux'),
+  path.join('/opt/huiying/current', 'node_modules', 'ffmpeg-static', 'ffmpeg'),
+  'Linux releases must resolve the packaged Linux binary at runtime',
+);
+assert.equal(
+  resolvePackagedFfmpegPath('C:\\huiying', 'win32'),
+  path.join('C:\\huiying', 'node_modules', 'ffmpeg-static', 'ffmpeg.exe'),
+  'Windows development must resolve the packaged Windows binary at runtime',
 );
 
 const homeSource = fs.readFileSync(path.join(process.cwd(), 'src/app/DreamboxHome.tsx'), 'utf8');
@@ -47,7 +61,7 @@ assert.match(assetsSource, /loading="lazy"\s+decoding="async"/);
 assert.match(assetsSource, /poster=\{asset\.poster\}[\s\S]*?preload="none"/);
 assert.match(libraryRouteSource, /buildPublicMediaCandidate/);
 assert.match(libraryRouteSource, /await fs\.stat\(publicCandidate\.filePath\)/);
-assert.match(posterRouteSource, /from 'ffmpeg-static'/);
+assert.match(posterRouteSource, /resolvePackagedFfmpegPath\(process\.cwd\(\), process\.platform\)/);
 assert.match(homeSectionSource, /poster=\{previewImage\(item\.src, 256\)\}/);
 assert.match(homeSectionSource, /src=\{previewImage\(item\.src, 256\)\}/);
 assert.doesNotMatch(
