@@ -153,7 +153,7 @@ export function DreamboxHomeSection({
                       {item.videoSrc ? (
                         <video
                           src={`${withBasePath(item.videoSrc)}#t=0.5`}
-                          poster={previewImage(item.src)}
+                          poster={previewImage(item.src, 256)}
                           muted
                           loop
                           playsInline
@@ -170,7 +170,7 @@ export function DreamboxHomeSection({
                         />
                       ) : (
                         <img
-                          src={previewImage(item.src)}
+                          src={previewImage(item.src, 256)}
                           alt={item.title}
                           loading="lazy"
                           decoding="async"

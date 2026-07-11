@@ -5,11 +5,13 @@ import path from 'node:path';
 import { Readable } from 'node:stream';
 import { promisify } from 'node:util';
 
+import ffmpegPath from 'ffmpeg-static';
 import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
 
 const execFileAsync = promisify(execFile);
+const FFMPEG_BINARY = ffmpegPath || 'ffmpeg';
 
 const ALLOWED_ROOTS = [
   path.resolve(process.cwd(), 'public'),
@@ -39,7 +41,7 @@ async function ensurePoster(filePath: string, posterPath: string): Promise<void>
 
   await fs.promises.mkdir(CACHE_DIR, { recursive: true });
   await execFileAsync(
-    'ffmpeg',
+    FFMPEG_BINARY,
     ['-y', '-ss', '1', '-i', filePath, '-frames:v', '1', '-vf', 'scale=640:-2', '-q:v', '4', posterPath],
     { timeout: 20000, windowsHide: true },
   );
