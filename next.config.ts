@@ -15,6 +15,7 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ['coze-coding-dev-sdk'],
   allowedDevOrigins: ['*.dev.coze.site', 'localhost', '127.0.0.1'],
   images: {
+    qualities: [54, 58, 68],
     remotePatterns: [
       {
         protocol: 'https',

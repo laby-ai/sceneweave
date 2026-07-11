@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { Film, GitBranch, Image as ImageIcon, Play, Video } from 'lucide-react';
+import { buildMediaPreviewImageUrl } from '@/lib/media-preview';
 
 interface HomeGalleryItem {
   title: string;
@@ -21,6 +22,14 @@ function withBasePath(url?: string) {
   if (!url) return url;
   if (!BASE_PATH || !url.startsWith('/') || url.startsWith(`${BASE_PATH}/`)) return url;
   return `${BASE_PATH}${url}`;
+}
+
+function previewImage(url: string, width: 256 | 640 | 1080 | 1920 = 640) {
+  return buildMediaPreviewImageUrl(withBasePath(url), {
+    width,
+    quality: width >= 1080 ? 68 : 58,
+    basePath: BASE_PATH,
+  });
 }
 
 export function DreamboxHomeSection({
@@ -45,7 +54,7 @@ export function DreamboxHomeSection({
               <section className="mx-auto w-full max-w-none px-3 pt-4 sm:px-5 xl:px-8 2xl:px-10">
                 <div className="relative min-h-[500px] overflow-hidden rounded-none border border-white/10 bg-[#03050a] md:min-h-[58vh] xl:min-h-[640px]">
                   <img
-                    src={withBasePath("/home/huiying-hero-cosmic-reel-v2.png")}
+                    src={previewImage('/home/huiying-hero-cosmic-reel-v2.png', 1920)}
                     alt="绘影宇宙胶卷制作流"
                     loading="eager"
                     decoding="async"
@@ -144,11 +153,12 @@ export function DreamboxHomeSection({
                       {item.videoSrc ? (
                         <video
                           src={`${withBasePath(item.videoSrc)}#t=0.5`}
-                          poster={withBasePath(item.src)}
+                          poster={previewImage(item.src)}
                           muted
                           loop
                           playsInline
-                          preload="none"
+                          autoPlay={item.source === 'static'}
+                          preload={item.source === 'static' ? 'metadata' : 'none'}
                           onMouseEnter={(event) => {
                             void event.currentTarget.play().catch(() => undefined);
                           }}
@@ -160,7 +170,7 @@ export function DreamboxHomeSection({
                         />
                       ) : (
                         <img
-                          src={withBasePath(item.src)}
+                          src={previewImage(item.src)}
                           alt={item.title}
                           loading="lazy"
                           decoding="async"

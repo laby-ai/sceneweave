@@ -88,6 +88,7 @@
     "qa:video-nine-grid-provider-boundary": "node scripts/qa-video-nine-grid-provider-boundary.mjs",
     "qa:film-compose-provider-boundary": "node scripts/qa-film-compose-provider-boundary.mjs",
     "test:film-compose-client": "tsx scripts/test-film-compose-client.ts",
+    "test:film-media-preview": "tsx scripts/test-film-media-preview.ts",
     "qa:film-generation-mode-visibility": "node scripts/qa-film-generation-mode-visibility.mjs",
     "test:film-script-handoff": "tsx scripts/test-film-script-handoff.ts",
     "qa:entrypoint-routes": "node scripts/qa-entrypoint-routes.mjs",
