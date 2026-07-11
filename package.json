@@ -53,6 +53,7 @@
     "qa:home-resource-sample": "node scripts/qa-home-resource-sample.mjs",
     "qa:smart-vimax-agent-render": "node scripts/qa-smart-vimax-agent-render.mjs",
     "qa:canvas-open-source-alignment": "node scripts/qa-canvas-open-source-alignment.mjs",
+    "qa:canvas-node-placement": "tsx scripts/qa-canvas-node-placement.ts",
     "qa:production-export": "node scripts/qa-production-export.mjs",
     "qa:asset-writeback": "node scripts/qa-production-asset-writeback.mjs",
     "qa:storyboard-writeback": "node scripts/qa-production-storyboard-writeback.mjs",

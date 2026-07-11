@@ -21,6 +21,7 @@ import { useAssetStore } from "@/icanvas/stores/use-asset-store";
 import { useThemeStore } from "@/icanvas/stores/use-theme-store";
 import { cropDataUrl, splitDataUrl, upscaleDataUrl } from "../utils/canvas-image-data";
 import { fitNodeSize, nodeSizeFromRatio } from "../utils/canvas-node-size";
+import { findUnoccupiedNodePosition } from "../utils/canvas-node-placement";
 import { App, Button, Dropdown, Modal } from "antd";
 import { NODE_DEFAULT_SIZE, getNodeSpec } from "../constants";
 import { ActiveConnectionPath, ConnectionPath } from "../components/canvas-connections";
@@ -440,7 +441,7 @@ function InfiniteCanvasPage() {
             setAgentMode("local");
             return;
         }
-        openAgent("local");
+        openAgent("online");
     }, [projectLoaded, searchParams]);
 
     useEffect(() => {
@@ -792,7 +793,12 @@ function InfiniteCanvasPage() {
     }, [agentUndoSnapshot, currentProject?.title, projectId]);
     const createNode = useCallback(
         (type: CanvasNodeType, position?: Position) => {
-            const targetPosition = position || getCanvasCenter();
+            const spec = getNodeSpec(type);
+            const targetPosition = position || findUnoccupiedNodePosition(
+                getCanvasCenter(),
+                { width: spec.width, height: spec.height },
+                nodesRef.current,
+            );
             const configMetadata =
                 type === CanvasNodeType.Config
                     ? {
@@ -803,6 +809,7 @@ function InfiniteCanvasPage() {
                     : undefined;
             const newNode = createCanvasNode(type, targetPosition, configMetadata);
 
+            nodesRef.current = [...nodesRef.current, newNode];
             setNodes((prev) => [...prev, newNode]);
             setSelectedNodeIds(new Set([newNode.id]));
             setSelectedConnectionId(null);
