@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { Film, GitBranch, Image as ImageIcon, Play, Video } from 'lucide-react';
+import { homeGalleryPreviewSizes, selectHomeGalleryPreviewWidth } from '@/lib/home-gallery-media';
 import { buildMediaPreviewImageUrl } from '@/lib/media-preview';
 
 interface HomeGalleryItem {
@@ -30,6 +31,12 @@ function previewImage(url: string, width: 256 | 640 | 1080 | 1920 = 640) {
     quality: width >= 1080 ? 68 : 58,
     basePath: BASE_PATH,
   });
+}
+
+function galleryPreviewSrcSet(url: string) {
+  return [256, 640, 1080]
+    .map(width => `${previewImage(url, width as 256 | 640 | 1080)} ${width}w`)
+    .join(', ');
 }
 
 export function DreamboxHomeSection({
@@ -153,7 +160,7 @@ export function DreamboxHomeSection({
                       {item.videoSrc ? (
                         <video
                           src={`${withBasePath(item.videoSrc)}#t=0.5`}
-                          poster={previewImage(item.src, 256)}
+                          poster={previewImage(item.src, selectHomeGalleryPreviewWidth(item.span))}
                           muted
                           loop
                           playsInline
@@ -170,7 +177,9 @@ export function DreamboxHomeSection({
                         />
                       ) : (
                         <img
-                          src={previewImage(item.src, 256)}
+                          src={previewImage(item.src, selectHomeGalleryPreviewWidth(item.span))}
+                          srcSet={galleryPreviewSrcSet(item.src)}
+                          sizes={homeGalleryPreviewSizes(item.span)}
                           alt={item.title}
                           loading="lazy"
                           decoding="async"

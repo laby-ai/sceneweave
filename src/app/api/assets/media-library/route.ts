@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import { NextResponse } from 'next/server';
 
+import { mediaFreshnessBonus } from '@/lib/home-gallery-media';
 import { buildPublicMediaCandidate } from '@/lib/media-library-preview';
 
 export const runtime = 'nodejs';
@@ -122,6 +123,7 @@ function scoreRow(row: CsvRow): number {
   if (fullPath.includes('huiying') || name.includes('huiying')) score += 35;
   if (fullPath.includes('seedance') || name.includes('seedance')) score += 25;
   if (fullPath.includes('outputs')) score += 15;
+  score += mediaFreshnessBonus(row.full_path, row.last_write_time);
   return score;
 }
 
