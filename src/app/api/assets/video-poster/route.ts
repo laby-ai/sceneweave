@@ -5,13 +5,14 @@ import path from 'node:path';
 import { Readable } from 'node:stream';
 import { promisify } from 'node:util';
 
-import ffmpegPath from 'ffmpeg-static';
 import { NextResponse } from 'next/server';
+
+import { resolvePackagedFfmpegPath } from '@/lib/media-library-preview';
 
 export const runtime = 'nodejs';
 
 const execFileAsync = promisify(execFile);
-const FFMPEG_BINARY = ffmpegPath || 'ffmpeg';
+const FFMPEG_BINARY = resolvePackagedFfmpegPath(process.cwd(), process.platform);
 
 const ALLOWED_ROOTS = [
   path.resolve(process.cwd(), 'public'),
