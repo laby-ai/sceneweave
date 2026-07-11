@@ -6,9 +6,16 @@ import {
   synthesizeFilmComposeVoice,
 } from '@/lib/film-compose-provider-clients';
 import {
-  FILM_COMPOSE_STORAGE_NOT_READY,
   getFilmComposeDurabilityReadiness,
 } from '@/lib/film-compose-readiness';
+import { resolveAccountSessionFromRequest } from '@/lib/account/account-session';
+import {
+  getFinalVideoStoreReadiness,
+  getFinalVideoStoreRoot,
+  mergeMemberFinalVideos,
+  saveMemberFinalVideoFromUrl,
+  type FinalVideoOwner,
+} from '@/lib/final-videos/member-final-video-store';
 
 /**
  * 影视创作 - 合成Agent
@@ -102,20 +109,101 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (requireDurableOutput) {
-      const durability = getFilmComposeDurabilityReadiness();
-      if (!durability.ready) {
+    let localFinalOwner: FinalVideoOwner | null = null;
+    const durability = getFilmComposeDurabilityReadiness();
+    if (requireDurableOutput && !durability.ready) {
+      const session = await resolveAccountSessionFromRequest(request);
+      if (!session?.tenant_id || !session.member?.id) {
+        return new Response(JSON.stringify({ error: 'not_authenticated' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      const localStore = await getFinalVideoStoreReadiness();
+      if (!localStore.ready) {
         return new Response(JSON.stringify({
           success: false,
-          code: FILM_COMPOSE_STORAGE_NOT_READY,
-          error: durability.message,
-          retryable: durability.retryable,
+          code: 'film_compose_store_not_ready',
+          error: '最终成片存储暂时不可用。已生成镜头均已保留，请稍后重试。',
+          retryable: true,
           clipsPreserved: true,
         }), {
           status: 503,
           headers: { 'Content-Type': 'application/json' },
         });
       }
+      localFinalOwner = { tenantId: session.tenant_id, memberId: session.member.id };
+    }
+
+    if (localFinalOwner) {
+      const storeRoot = getFinalVideoStoreRoot();
+      const finalVideoUrl = (id: string) => {
+        const basePath = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
+        return `${basePath}/api/final-videos/${encodeURIComponent(id)}`;
+      };
+      if (validShots.length === 1) {
+        try {
+          const saved = await saveMemberFinalVideoFromUrl(storeRoot, localFinalOwner, validShots[0].videoUrl);
+          return new Response(JSON.stringify({
+            success: true,
+            videoUrl: finalVideoUrl(saved.id),
+            totalShots: 1,
+            storage: 'shared-local',
+            audioEnhancementsApplied: false,
+            message: '单镜头已保存到私有成片库。',
+          }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        } catch (error) {
+          return new Response(JSON.stringify({
+            success: false,
+            code: 'film_compose_local_failed',
+            error: error instanceof Error ? error.message : '本地成片保存失败',
+            retryable: true,
+            clipsPreserved: true,
+          }), { status: 502, headers: { 'Content-Type': 'application/json' } });
+        }
+      }
+
+      const localOwner = localFinalOwner;
+      const localStream = new ReadableStream({
+        async start(controller) {
+          const sendEvent = (data: Record<string, unknown>) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+          try {
+            sendEvent({ stage: 'start', progress: 5, message: `开始本地合成 ${validShots.length} 个镜头，已生成片段会保留` });
+            sendEvent({ stage: 'concat', progress: 25, message: '使用本地 FFmpeg 合成，保留片段原音轨...' });
+            const saved = await mergeMemberFinalVideos(storeRoot, localOwner, validShots.map(shot => shot.videoUrl));
+            const totalDuration = validShots.reduce((sum, shot) => sum + (shot.duration || 5), 0);
+            sendEvent({
+              stage: 'complete',
+              success: true,
+              videoUrl: finalVideoUrl(saved.id),
+              totalShots: saved.segmentCount,
+              totalDuration,
+              progress: 100,
+              storage: 'shared-local',
+              audioEnhancementsApplied: false,
+              message: '本地合成完成并已保存到私有成片库；保留片段原音轨，未追加旁白或 BGM。',
+            });
+          } catch (error) {
+            sendEvent({
+              stage: 'error',
+              success: false,
+              code: 'film_compose_local_failed',
+              error: error instanceof Error ? error.message : '本地合成失败',
+              retryable: true,
+              clipsPreserved: true,
+            });
+          } finally {
+            controller.close();
+          }
+        },
+      });
+      return new Response(localStream, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        },
+      });
     }
 
     // 如果只有一个视频，直接返回（无需拼接）

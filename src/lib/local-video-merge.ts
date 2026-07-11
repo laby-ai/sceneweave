@@ -16,6 +16,11 @@ export interface LocalVideoMergeResult {
   segmentCount: number;
 }
 
+export interface LocalVideoMergeOptions {
+  outputDirectory?: string;
+  outputFileName?: string;
+}
+
 function toPublicVideoUrl(fileName: string) {
   const baseUrl = process.env.COZE_PROJECT_DOMAIN_DEFAULT || process.env.NEXT_PUBLIC_BASE_URL || '';
   const basePath = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
@@ -78,15 +83,18 @@ function resolveFfmpegPath() {
   throw new Error('本地 FFmpeg 不可用');
 }
 
-export async function mergeVideosWithLocalFfmpeg(segmentUrls: string[]): Promise<LocalVideoMergeResult> {
+export async function mergeVideosWithLocalFfmpeg(
+  segmentUrls: string[],
+  options: LocalVideoMergeOptions = {},
+): Promise<LocalVideoMergeResult> {
   if (segmentUrls.length < 2) {
     throw new Error('至少需要 2 个视频片段才能合成');
   }
 
   const runId = `huiying-merge-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const tempDir = path.join(os.tmpdir(), runId);
-  const outputDir = path.resolve('public', 'generated', 'videos');
-  const outputFileName = `${runId}.mp4`;
+  const outputDir = options.outputDirectory ? path.resolve(options.outputDirectory) : path.resolve('public', 'generated', 'videos');
+  const outputFileName = options.outputFileName || `${runId}.mp4`;
   const outputPath = path.join(outputDir, outputFileName);
 
   await fs.mkdir(tempDir, { recursive: true });
@@ -115,7 +123,7 @@ export async function mergeVideosWithLocalFfmpeg(segmentUrls: string[]): Promise
     }
 
     return {
-      videoUrl: toPublicVideoUrl(outputFileName),
+      videoUrl: options.outputDirectory ? '' : toPublicVideoUrl(outputFileName),
       outputPath,
       bytes: stat.size,
       segmentCount: segmentUrls.length,

@@ -1,7 +1,7 @@
 export type FilmComposeStreamEvent =
   | { type: 'ignore' }
   | { type: 'progress'; progress: number; message: string }
-  | { type: 'complete'; videoUrl: string }
+  | { type: 'complete'; videoUrl: string; message: string }
   | { type: 'error'; message: string };
 
 export function filmComposeFailureMessage(payload: unknown, status: number): string {
@@ -36,7 +36,11 @@ export function parseFilmComposeStreamLine(line: string): FilmComposeStreamEvent
     if (data.success !== true || typeof data.videoUrl !== 'string' || !data.videoUrl.trim()) {
       return { type: 'error', message: '合成服务未返回最终视频' };
     }
-    return { type: 'complete', videoUrl: data.videoUrl };
+    return {
+      type: 'complete',
+      videoUrl: data.videoUrl,
+      message: typeof data.message === 'string' ? data.message : '影片合成完成',
+    };
   }
 
   return {

@@ -21,6 +21,7 @@ async function main() {
   assert(readiness.realSegmentHandoff, 'realSegmentHandoff readiness missing');
   assert(readiness.videoGenerationRunPlan, 'videoGenerationRunPlan readiness missing');
   assert(readiness.subjectStore, 'subjectStore readiness missing');
+  assert(readiness.finalVideoStore, 'finalVideoStore readiness missing');
   assert(Array.isArray(readiness.objectStorage.requirements), 'objectStorage requirements should be array');
   assert(readiness.videoGenerationRunPlan.noCostReadiness?.ready === true, 'no-cost readiness should always be available');
   assert(
@@ -54,6 +55,7 @@ async function main() {
     handoffReady: readiness.realSegmentHandoff.ready,
     nextAllowedRealTest: readiness.videoGenerationRunPlan.nextAllowedRealTest,
     subjectStoreReady: readiness.subjectStore.ready,
+    finalVideoStoreReady: readiness.finalVideoStore.ready,
     blockers: readiness.realSegmentHandoff.blockers,
     requirementCount: readiness.objectStorage.requirements.length,
   }, null, 2));
