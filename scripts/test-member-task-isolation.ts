@@ -159,6 +159,13 @@ async function main() {
       }
     }
 
+    const nextConfig = await readFile(path.join(process.cwd(), 'next.config.ts'), 'utf8');
+    assert.match(
+      nextConfig,
+      /serverExternalPackages:\s*\[[^\]]*coze-coding-dev-sdk/,
+      'Coze SDK must remain external because its dynamic CommonJS loader cannot be bundled',
+    );
+
     console.log('member task isolation tests passed');
   } finally {
     globalThis.fetch = originalFetch;
