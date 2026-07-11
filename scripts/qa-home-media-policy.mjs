@@ -21,7 +21,6 @@ const homeSection = read(homeSectionPath);
 const mainContent = read(mainContentPath);
 
 const forbiddenHomeMediaPatterns = [
-  { name: 'home-gallery-video-autoplay', pattern: /\bautoPlay\b/ },
   { name: 'home-gallery-video-preload-auto', pattern: /preload=["']auto["']/ },
 ];
 
@@ -37,13 +36,13 @@ for (const rule of forbiddenHomeMediaPatterns) {
 }
 
 const videoTagCount = countMatches(homeSection, /<video\b/g);
-const preloadNoneCount = countMatches(homeSection, /preload=["']none["']/g);
 const lazyImageCount = countMatches(homeSection, /loading=["']lazy["']/g);
 const eagerImageCount = countMatches(homeSection, /loading=["']eager["']/g);
 const asyncDecodeCount = countMatches(homeSection, /decoding=["']async["']/g);
 
 assert(videoTagCount >= 1, 'home gallery should still render video cards');
-assert(preloadNoneCount >= videoTagCount, 'every home gallery video must use preload="none"');
+assert(homeSection.includes("autoPlay={item.source === 'static'}"), 'only the lightweight static preview may autoplay');
+assert(homeSection.includes("preload={item.source === 'static' ? 'metadata' : 'none'}"), 'historical videos must remain demand-loaded');
 assert(homeSection.includes('onMouseEnter={(event) =>'), 'home gallery video preview should start on hover');
 assert(homeSection.includes('onMouseLeave={(event) =>'), 'home gallery video preview should stop on hover leave');
 assert(lazyImageCount >= 1, 'non-hero home gallery images must use loading="lazy"');
@@ -95,7 +94,6 @@ console.log(JSON.stringify({
     'src/components/home/dreambox-main-content.tsx',
   ],
   videoTagCount,
-  preloadNoneCount,
   lazyImageCount,
   eagerImageCount,
   asyncDecodeCount,

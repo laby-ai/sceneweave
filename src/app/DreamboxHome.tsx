@@ -855,7 +855,7 @@ export function DreamboxHome() {
       { title: '海边日落', src: '/samples/sunset-beach.jpg', span: '', type: '场景', target: 'image', source: 'static' },
       { title: '织物静物', src: '/samples/wicker-basket.jpg', span: 'row-span-2', type: '质感', target: 'image', source: 'static' },
       { title: '分镜资产', src: '/home/huiying-hero-production-console.png', span: '', type: '资产', target: 'media', source: 'static' },
-      { title: '片段队列', src: '/home/huiying-hero-cinematic-flow.png', span: 'col-span-2 row-span-2', type: '流程', target: 'film', source: 'static' },
+      { title: '片段队列', src: '/home/huiying-hero-cinematic-flow.png', videoSrc: '/home/huiying-ark-test-clip-preview.mp4', span: 'col-span-2 row-span-2', type: '真实视频', target: 'film', duration: '00:06', source: 'static' },
     ];
     const historicalItems: HomeGalleryItem[] = pickHomeHistoricalAssets(homeHistoricalAssets).map((asset, index) => ({
       title: asset.title,

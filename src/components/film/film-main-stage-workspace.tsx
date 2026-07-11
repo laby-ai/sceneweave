@@ -21,6 +21,7 @@ import { FilmComposeStageHeader } from '@/components/film/film-compose-stage-hea
 import { FilmComposeShotList } from '@/components/film/film-compose-shot-list';
 import { FilmEditableField, type FilmEditableFieldProps } from '@/components/film/film-editable-field';
 import { renderSafe, type ChatMessage, type EntityCard, type WorkflowPhase } from '@/lib/film-creation-panel-model';
+import { buildMediaPreviewImageUrl } from '@/lib/media-preview';
 
 type UploadedFileItem = {
   id: string;
@@ -46,6 +47,9 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
   const {
     chatEndRef, chatInput, chatInputHighlight, chatInputRef, chatMessages, chatPlaceholder, complianceResult, composeProgress, directorAnalysis, entityCards, entityCardsGridRef, error, expandedShotIds, fileInputRef, filmHistory, filmVisualStyle, finalVideoUrl, generationProgress, generationStage, handleBatchGenerateFrames, handleComposeFilm, handleExportPDF, handleFileUpload, handleGenerateAllImages, handleGenerateEndFrame, handleGenerateImage, handleGenerateNineGrid, handleGeneratePrompt, handleGenerateStartFrame, handleGenerateShotVideo, handleQuickCmd, handleRegenerateVideo, handleSelectNineGridImage, handleSendChat, handleSwitchOutfit, inputText, isChatStreaming, isGenerating, middleAiStatus, phase, progressMsg, script, scriptDirectorRef, scriptScreenplayRef, selectedCardId, setChatInput, setComposeStatus, setError, setExpandedShotIds, setFilmVisualStyle, setFinalVideoUrl, setMiddleAiStatus, setNineGridDialogCardId, setPhase, setPromptManagerOpen, setSelectedCardId, setShowChatMessages, setShowDirectorPanel, setShowHistoryPanel, setShowLogPanel, setUploadedFiles, setShotViewMode, setWardrobeDialogCardId, setWsPreviewUrl, shotViewMode, showChatMessages, showDirectorPanel, showLogPanel, stats, streamingScriptText, typeConfig, updateCardField, uploadedFiles, videoDuration, goToPhase, setShowScriptPreview,
   } = props;
+
+  const previewImage = (source: string | null | undefined, width: 256 | 640 = 640) =>
+    buildMediaPreviewImageUrl(source, { width, quality: width === 256 ? 54 : 58 });
 
   const EditableField = ({ cardId, field, value, multiline, className }: Omit<FilmEditableFieldProps, 'onUpdate'>) => (
     <FilmEditableField
@@ -355,9 +359,9 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
                                   </div>
                                   <div className="aspect-video rounded-lg overflow-hidden bg-accent/20 border border-blue-500/20 relative flex items-center justify-center">
                                     {card.startFrameUrl ? (
-                                      <img src={card.startFrameUrl} alt="Start Frame" className="w-full h-full object-cover" loading="lazy" decoding="async" />
+                                      <img src={previewImage(card.startFrameUrl)} alt="Start Frame" className="w-full h-full object-cover" loading="lazy" decoding="async" />
                                     ) : card.imageUrl ? (
-                                      <img src={card.imageUrl} alt="Reference" className="w-full h-full object-cover opacity-60" loading="lazy" decoding="async" />
+                                      <img src={previewImage(card.imageUrl)} alt="Reference" className="w-full h-full object-cover opacity-60" loading="lazy" decoding="async" />
                                     ) : (
                                       <div className="text-[9px] text-foreground/20">{!card.startFrameUrl ? '首帧未生成' : '参考图'}</div>
                                     )}
@@ -394,7 +398,7 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
                                   </div>
                                   <div className="aspect-video rounded-lg overflow-hidden bg-accent/20 border border-emerald-500/20 relative flex items-center justify-center">
                                     {card.endFrameUrl ? (
-                                      <img src={card.endFrameUrl} alt="End Frame" className="w-full h-full object-cover" loading="lazy" decoding="async" />
+                                      <img src={previewImage(card.endFrameUrl)} alt="End Frame" className="w-full h-full object-cover" loading="lazy" decoding="async" />
                                     ) : (
                                       <div className="text-[9px] text-foreground/20">尾帧自动链入下一镜头</div>
                                     )}
@@ -418,13 +422,13 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
                               {/* 帧间动画指示器 */}
                               {card.startFrameUrl && card.endFrameUrl && (
                                 <div className="flex items-center justify-center gap-2 mt-2 py-1.5 rounded-lg bg-primary/5 border border-primary/20">
-                                  <img src={card.startFrameUrl} alt="" className="w-10 h-7 rounded object-cover" loading="lazy" decoding="async" />
+                                  <img src={previewImage(card.startFrameUrl, 256)} alt="" className="w-10 h-7 rounded object-cover" loading="lazy" decoding="async" />
                                   <div className="flex items-center gap-1">
                                     <ArrowRight className="w-3 h-3 text-primary" />
                                     <span className="text-[9px] text-primary font-medium">插值生成视频</span>
                                     <ArrowRight className="w-3 h-3 text-primary" />
                                   </div>
-                                  <img src={card.endFrameUrl} alt="" className="w-10 h-7 rounded object-cover" loading="lazy" decoding="async" />
+                                  <img src={previewImage(card.endFrameUrl, 256)} alt="" className="w-10 h-7 rounded object-cover" loading="lazy" decoding="async" />
                                   <button
                                     onClick={() => handleGenerateShotVideo(card.id)}
                                     disabled={card.isGenerating}
@@ -451,7 +455,7 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
                                           card.nineGridSelectedIndex === i ? 'border-[#EF4444] ring-1 ring-[#EF4444]/30' : 'border-transparent'
                                         }`}
                                       >
-                                        <img src={img} alt={`候选${i + 1}`} className="w-full h-full object-cover" loading="lazy" decoding="async" />
+                                        <img src={previewImage(img, 256)} alt={`候选${i + 1}`} className="w-full h-full object-cover" loading="lazy" decoding="async" />
                                       </button>
                                     ))}
                                   </div>
@@ -517,9 +521,15 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
                               {/* 缩略图区 */}
                               <div className="aspect-video bg-accent/20 relative flex items-center justify-center">
                                 {hasVideo ? (
-                                  <video src={card.videoUrl} className="w-full h-full object-cover" muted preload="none" playsInline />
+                                  <video
+                                    src={card.videoUrl}
+                                    poster={previewImage(card.startFrameUrl || card.imageUrl, 640)}
+                                    aria-label={`${card.name} 视频预览`}
+                                    className="w-full h-full object-cover"
+                                    controls preload="metadata" playsInline
+                                  />
                                 ) : hasImage ? (
-                                  <img src={card.startFrameUrl || card.imageUrl} alt={card.name} className="w-full h-full object-cover" loading="lazy" decoding="async" />
+                                  <img src={previewImage(card.startFrameUrl || card.imageUrl)} alt={card.name} className="w-full h-full object-cover" loading="lazy" decoding="async" />
                                 ) : card.isGenerating || card.startFrameGenerating ? (
                                   <Loader2 className="w-5 h-5 animate-spin text-primary" />
                                 ) : (
@@ -612,7 +622,7 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
                             {/* 序号+缩略图 */}
                             <div className="flex items-center gap-1">
                               <span className="text-foreground/30 font-mono">{idx + 1}</span>
-                              {card.imageUrl && <img src={card.imageUrl} alt="" className="w-5 h-5 rounded object-cover" loading="lazy" decoding="async" />}
+                              {card.imageUrl && <img src={previewImage(card.imageUrl, 256)} alt="" className="w-5 h-5 rounded object-cover" loading="lazy" decoding="async" />}
                             </div>
                             {/* 名称+元数据标签 */}
                             <div className="space-y-0.5">
@@ -725,8 +735,16 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
                                 {card.name}
                               </span>
                             </div>
-                            {card.imageUrl ? (
-                              <img src={card.imageUrl} alt={card.name} className="w-full h-full object-cover" loading="lazy" decoding="async" />
+                            {card.type === 'shot' && card.videoUrl ? (
+                              <video
+                                src={card.videoUrl}
+                                poster={previewImage(card.startFrameUrl || card.imageUrl, 640)}
+                                aria-label={`${card.name} 视频预览`}
+                                className="w-full h-full object-cover"
+                                controls preload="metadata" playsInline
+                              />
+                            ) : card.imageUrl ? (
+                              <img src={previewImage(card.imageUrl)} alt={card.name} className="w-full h-full object-cover" loading="lazy" decoding="async" />
                             ) : card.isGenerating ? (
                               <div className="flex flex-col items-center gap-2">
                                 <Loader2 className="w-6 h-6 animate-spin text-primary" />
@@ -828,7 +846,7 @@ export function FilmMainStageWorkspace(props: FilmMainStageWorkspaceProps) {
                                     title={outfit.name}
                                   >
                                     {outfit.imageUrl ? (
-                                      <img src={outfit.imageUrl} alt={outfit.name} className="w-full h-full object-cover" loading="lazy" decoding="async" />
+                                      <img src={previewImage(outfit.imageUrl, 256)} alt={outfit.name} className="w-full h-full object-cover" loading="lazy" decoding="async" />
                                     ) : (
                                       <div className="w-full h-full bg-accent/20 flex items-center justify-center text-[6px] text-foreground/20">{outfit.name[0]}</div>
                                     )}
