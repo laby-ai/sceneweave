@@ -101,6 +101,7 @@
     "qa:film-generation-mode-visibility": "node scripts/qa-film-generation-mode-visibility.mjs",
     "test:film-mobile-workspace": "tsx scripts/test-film-mobile-workspace.ts",
     "test:film-mobile-viewport": "tsx scripts/test-film-mobile-viewport.ts",
+    "test:release-promotion-contract": "node scripts/test-release-promotion-contract.mjs",
     "test:ci-workflow": "tsx scripts/test-ci-workflow.ts",
     "test:cross-app-auth-contract": "tsx scripts/test-cross-app-auth-contract.ts",
     "test:client-request-contract": "tsx scripts/test-client-request-contract.ts",
