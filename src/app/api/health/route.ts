@@ -4,6 +4,7 @@ import { getProductionRuntimeReadiness } from '@/lib/runtime-readiness';
 import { getSubjectStoreReadiness } from '@/lib/subjects/subject-store-readiness';
 import { getFinalVideoStoreReadiness } from '@/lib/final-videos/member-final-video-store';
 import type { ServiceType } from '@/lib/model-router';
+import { getOperationalObservabilityReadiness } from '@/lib/operational-observability';
 
 /**
  * GET /api/health - 查看所有provider健康状态
@@ -16,6 +17,7 @@ export async function GET() {
     ...getProductionRuntimeReadiness(),
     subjectStore: await getSubjectStoreReadiness(),
     finalVideoStore: await getFinalVideoStoreReadiness(),
+    operationalObservability: getOperationalObservabilityReadiness(),
   };
   return NextResponse.json({
     providers: status,

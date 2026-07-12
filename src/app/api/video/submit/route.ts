@@ -137,10 +137,9 @@ export async function POST(request: NextRequest) {
           if (prefix && !prompt.includes(prefix)) {
             styleLockedPrompt = `${styleLockedPrompt}, ${prefix}`;
           }
-          console.log(`[Video Submit] 风格锁定已注入: ${filmVisualStyle}, lockPhrase=${lockPhrase?.slice(0, 50)}...`);
         }
-      } catch (e) {
-        console.warn('[Video Submit] 风格锁定注入失败:', e);
+      } catch {
+        // Keep the original prompt when the optional style map cannot load.
       }
     }
 
@@ -152,7 +151,6 @@ export async function POST(request: NextRequest) {
     let autoPostResult: { subtitleText?: string; bgmType?: string } | null = null;
 
     if (autoPostProcess) {
-      console.log('[Video Submit] 自动后期处理已开启，使用本地规则生成字幕旁白...');
       autoPostResult = {
         subtitleText: prompt.trim(),
         bgmType: guessBgmType(prompt.trim()),
@@ -168,12 +166,6 @@ export async function POST(request: NextRequest) {
         }
         finalEnableSubtitle = true;
         finalGenerateVoice = true;
-        console.log('[Video Submit] 自动后期结果:', {
-          subtitleText: finalSubtitleText?.substring(0, 50) + '...',
-          bgmType: finalBackgroundBgm,
-          enableSubtitle: finalEnableSubtitle,
-          generateVoice: finalGenerateVoice,
-        });
       }
     }
 
@@ -208,29 +200,19 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    console.log('[Video Submit] 创建后台任务:', taskId);
-    console.log('[Video Submit] 背景音乐参数:', {
-      backgroundBgm: finalBackgroundBgm,
-      customAudio: customAudio ? { url: customAudio.url, name: customAudio.name } : null,
-    });
-    console.log('[Video Submit] 字幕参数:', { enableSubtitle: finalEnableSubtitle, enableVideoText, autoPostProcess });
-
     startTask(taskId);
-    console.log('[Video Background] 后台视频生成任务已创建:', taskId);
 
     // 异步执行（BYOK-only，不回退到服务端默认模型）
     (async () => {
       try {
         // === 视频生成：始终使用异步模式，提供实时进度 ===
-        console.log('[Video Background] 开始 Ark BYOK 异步生成视频（实时进度模式）...');
-        console.log('[Video Background] prompt:', styleLockedPrompt);
-        
         let videoUrl: string | null = null;
         let providerLastFrameUrl: string | null = null;
 
         updateTaskProgress(taskId, 10, '正在提交视频生成任务（Ark BYOK）...');
         const byokResult = await runBYOKVideoSubmit({
           connection: byokConnection,
+          observation: { owner, taskId },
           prompt: styleLockedPrompt.trim(),
           videoModel,
           duration,
@@ -253,8 +235,6 @@ export async function POST(request: NextRequest) {
         providerLastFrameUrl = byokResult.lastFrameUrl || null;
         updateTaskProgress(taskId, 85, '视频生成完成，后处理中...');
 
-        console.log('[Video Background] Ark BYOK 视频生成成功:', videoUrl);
-
         if (!videoUrl) {
           throw new Error('视频生成失败：未获取到视频URL');
         }
@@ -263,35 +243,28 @@ export async function POST(request: NextRequest) {
         let bgmResult: BgmResult = { videoUrl, source: 'none' };
         if (finalBackgroundBgm && finalBackgroundBgm !== 'none') {
           if (finalBackgroundBgm === 'custom' && customAudio) {
-            console.log('[Video Background] 开始处理自定义音频:', customAudio.url);
             updateTaskProgress(taskId, 60, '正在添加自定义音频...');
             
             try {
               bgmResult = await processBackgroundMusic(videoUrl, finalBackgroundBgm, customHeaders, undefined, customAudio);
               videoUrl = bgmResult.videoUrl;
-              console.log('[Video Background] 自定义音频处理完成, 来源:', bgmResult.source, 'URL:', videoUrl);
-            } catch (bgmError) {
-              console.error('[Video Background] 自定义音频处理失败:', bgmError);
+            } catch {
+              // Preserve the generated video when optional audio processing fails.
             }
           } else if (BGM_MAP[finalBackgroundBgm]) {
-            console.log('[Video Background] 开始处理背景音乐, 类型:', finalBackgroundBgm);
             updateTaskProgress(taskId, 60, '正在添加背景音乐...');
             
             try {
               bgmResult = await processBackgroundMusic(videoUrl, finalBackgroundBgm, customHeaders);
               videoUrl = bgmResult.videoUrl;
-              console.log('[Video Background] 背景音乐处理完成, 来源:', bgmResult.source, 'URL:', videoUrl);
-            } catch (bgmError) {
-              console.error('[Video Background] 背景音乐处理失败:', bgmError);
+            } catch {
+              // Preserve the generated video when optional music processing fails.
             }
           }
-        } else {
-          console.log('[Video Background] 不需要处理背景音乐');
         }
 
         // 处理语音旁白（在BGM之后、视频文字之前 - 音频处理优先）
         if (finalGenerateVoice && finalSubtitleText) {
-          console.log('[Video Background] 开始处理语音旁白...');
           updateTaskProgress(taskId, 65, '正在生成语音旁白...');
           
           try {
@@ -302,12 +275,9 @@ export async function POST(request: NextRequest) {
               subtitleSpeechSpeed || 1.0,
               customHeaders
             );
-            console.log('[Video Background] 语音旁白处理完成:', videoUrl);
-          } catch (voiceError) {
-            console.error('[Video Background] 语音旁白处理失败:', voiceError);
+          } catch {
+            // Voiceover is optional; retain the source video on failure.
           }
-        } else {
-          console.log('[Video Background] 语音旁白未启用或无文本');
         }
 
         // 处理视频文字（视觉层）
@@ -323,14 +293,12 @@ export async function POST(request: NextRequest) {
             videoTextSegments,
           };
           
-          console.log('[Video Background] 开始处理视频文字...');
           updateTaskProgress(taskId, 65, '正在添加视频文字...');
           
           try {
             videoUrl = await processVideoText(videoUrl, videoTextParams, customHeaders);
-            console.log('[Video Background] 视频文字处理完成:', videoUrl);
-          } catch (videoTextError) {
-            console.error('[Video Background] 视频文字处理失败:', videoTextError);
+          } catch {
+            // Text overlay is optional; retain the source video on failure.
           }
         }
 
@@ -361,25 +329,13 @@ export async function POST(request: NextRequest) {
             enableVideoText: false,
           };
           
-          console.log('[Video Background] 开始处理字幕...');
-          console.log('[Video Background] 字幕样式:', {
-            fontSize: subtitleFontSize,
-            color: subtitleColor,
-            position: subtitlePosition,
-            backgroundColor: subtitleBackgroundColor,
-            backgroundOpacity: subtitleBackgroundOpacity,
-            fontWeight: subtitleFontWeight,
-            alignment: subtitleAlignment,
-            fontType: subtitleFontType || 'noto',
-          });
           updateTaskProgress(taskId, 75, '正在添加字幕...');
           
           try {
             const subResult = await processSubtitles(videoUrl, subtitleParams, customHeaders);
             videoUrl = subResult.videoUrl;  // 提取videoUrl
-            console.log('[Video Background] 字幕处理完成:', videoUrl, `burned=${subResult.subtitleBurned}`);
-          } catch (subtitleError) {
-            console.error('[Video Background] 字幕处理失败:', subtitleError);
+          } catch {
+            // Subtitle rendering is optional; retain the source video on failure.
           }
         }
 
@@ -401,8 +357,8 @@ export async function POST(request: NextRequest) {
                 lastFrameUrl = frameData.frameUrl;
               }
             }
-          } catch (frameError) {
-            console.warn('[Video Background] 提取最后一帧失败:', frameError);
+          } catch {
+            // A provider tail frame is optional for a completed single video.
           }
         }
 
@@ -420,9 +376,7 @@ export async function POST(request: NextRequest) {
           autoPostProcess,
         });
 
-        console.log('[Video Background] 后台视频生成完成');
       } catch (error) {
-        console.error('[Video Background] 后台视频生成失败:', error);
         const msg = error instanceof Error ? error.message : '生成失败';
         failTask(taskId, msg);
       }
@@ -433,8 +387,7 @@ export async function POST(request: NextRequest) {
       message: '视频生成任务已创建'
     });
 
-  } catch (error) {
-    console.error('[Video Submit] 请求处理失败:', error);
+  } catch {
     return NextResponse.json(
       { error: '服务器错误，请稍后重试' },
       { status: 500 }

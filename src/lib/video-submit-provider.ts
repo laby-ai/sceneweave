@@ -6,6 +6,7 @@ import {
   type BYOKVideoParams,
   type BYOKVideoStatus,
 } from '@/lib/byok-provider';
+import { observeProviderCall, type ObservationOwner } from '@/lib/operational-observability';
 
 export interface BuildBYOKVideoSubmitParamsInput {
   prompt: string;
@@ -20,6 +21,7 @@ export interface BuildBYOKVideoSubmitParamsInput {
 
 export interface RunBYOKVideoSubmitInput extends BuildBYOKVideoSubmitParamsInput {
   connection: BYOKConnection;
+  observation?: { owner: ObservationOwner; taskId: string };
   onSubmitted?: (task: BYOKVideoTask) => void;
   onProgress?: (status: BYOKVideoStatus, attempt: number) => void;
 }
@@ -51,23 +53,32 @@ export function buildBYOKVideoSubmitParams(input: BuildBYOKVideoSubmitParamsInpu
 }
 
 export async function runBYOKVideoSubmit(input: RunBYOKVideoSubmitInput): Promise<RunBYOKVideoSubmitResult> {
-  const submitResult = await submitVideoWithBYOK(
-    input.connection,
-    buildBYOKVideoSubmitParams(input)
-  );
-  input.onSubmitted?.(submitResult);
-  const videoResult = await waitForVideoWithBYOK(
-    input.connection,
-    submitResult.taskId,
-    input.onProgress,
-    { maxAttempts: 180, intervalMs: 3000 }
-  );
+  const operation = async () => {
+    const submitResult = await submitVideoWithBYOK(
+      input.connection,
+      buildBYOKVideoSubmitParams(input)
+    );
+    input.onSubmitted?.(submitResult);
+    const videoResult = await waitForVideoWithBYOK(
+      input.connection,
+      submitResult.taskId,
+      input.onProgress,
+      { maxAttempts: 180, intervalMs: 3000 }
+    );
 
-  return {
-    provider: 'byok',
-    videoUrl: videoResult.videoUrl,
-    lastFrameUrl: videoResult.lastFrameUrl,
-    providerTaskId: submitResult.taskId,
-    model: submitResult.model,
+    return {
+      provider: 'byok' as const,
+      videoUrl: videoResult.videoUrl,
+      lastFrameUrl: videoResult.lastFrameUrl,
+      providerTaskId: submitResult.taskId,
+      model: submitResult.model,
+    };
   };
+
+  return input.observation
+    ? observeProviderCall({
+        ...input.observation,
+        provider: 'ark-byok-video',
+      }, operation)
+    : operation();
 }
