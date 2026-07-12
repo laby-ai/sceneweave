@@ -11,6 +11,13 @@ const basePath = rawBasePath && rawBasePath.startsWith('/') ? rawBasePath : '';
 const nextConfig: NextConfig = {
   ...(basePath ? { basePath, assetPrefix: basePath } : {}),
   allowedDevOrigins: ['localhost', '127.0.0.1'],
+  // Keep the native object-storage boundary portable across Windows builds and
+  // Linux releases. Turbopack otherwise emits host-specific hashed externals.
+  transpilePackages: [
+    '@aws-sdk/client-s3',
+    '@aws-sdk/lib-storage',
+    '@aws-sdk/s3-request-presigner',
+  ],
   images: {
     qualities: [54, 58, 68],
     remotePatterns: [
