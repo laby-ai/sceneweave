@@ -8,7 +8,7 @@ import { buildBYOKConfigErrorPayload, isBYOKConfigError } from '@/lib/byok-respo
  * 影视创作 - 道具生成
  * 从故事文本中提取道具描述，增强提示词后生成道具参考图
  * 两步流程: LLM提取道具描述+英文提示词 → AI生图
- * 自动降级: Minimax → Coze（LLM和Image各自独立降级）
+ * 自动降级: Ark/BYOK（LLM和Image各自独立降级）
  */
 
 const PROP_SYSTEM_PROMPT = `你是一位资深的影视道具设计师和AI绘画提示词工程师。

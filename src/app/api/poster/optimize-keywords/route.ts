@@ -4,7 +4,7 @@ import {
   Config,
   HeaderUtils,
   APIError,
-} from 'coze-coding-dev-sdk';
+} from '@/lib/native-provider-sdk';
 
 export async function POST(request: NextRequest) {
   try {

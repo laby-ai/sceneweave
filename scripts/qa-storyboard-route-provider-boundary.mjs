@@ -12,7 +12,7 @@ const executor = fs.readFileSync(path.join(root, executorPath), 'utf8');
 const service = fs.readFileSync(path.join(root, servicePath), 'utf8');
 
 const failures = [];
-for (const pattern of [/coze-coding-dev-sdk/, /VideoEditClient/, /S3Storage/]) {
+for (const pattern of [/native-provider-sdk/, /VideoEditClient/, /S3Storage/]) {
   if (pattern.test(route)) {
     failures.push(`${routePath} must not contain ${pattern}`);
   }
@@ -35,8 +35,8 @@ if (!route.includes('executeStoryboardTask')) {
   failures.push(`${routePath} should delegate execution to executeStoryboardTask`);
 }
 
-if (!service.includes('coze-coding-dev-sdk')) {
-  failures.push(`${servicePath} should own the provider SDK import boundary`);
+if (!service.includes('native-provider-sdk')) {
+  failures.push(`${servicePath} should own the native provider import boundary`);
 }
 
 if (failures.length > 0) {

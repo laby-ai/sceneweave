@@ -7,7 +7,7 @@
  * - /api/video/nine-grid/route.ts (九宫格视频生成)
  */
 
-import { VideoEditClient, TTSClient, Config } from 'coze-coding-dev-sdk';
+import { VideoEditClient, TTSClient, Config } from '@/lib/native-provider-sdk';
 import { ttsOrchestrate } from './tts-orchestrator';
 
 // ========== 辅助函数 ==========
@@ -492,9 +492,9 @@ const VOICE_TYPE_MAP: Record<string, string[]> = {
 };
 
 /**
- * 获取TTS候选说话人ID列表（Coze Provider专用）
+ * 获取TTS候选说话人ID列表（Ark/BYOK provider专用）
  *
- * 仅返回 Coze 集成TTS 的候选。最终选择由 ttsOrchestrator 按匹配度调度。
+ * 仅返回 legacy provider 集成TTS 的候选。最终选择由 ttsOrchestrator 按匹配度调度。
  */
 function getCandidateSpeakerIds(voiceType: string): string[] {
   if (voiceType.startsWith('zh_')) {
@@ -502,10 +502,10 @@ function getCandidateSpeakerIds(voiceType: string): string[] {
   }
   const candidates = VOICE_TYPE_MAP[voiceType];
   if (candidates && candidates.length > 0) {
-    console.log(`[Voice] Coze候选列表: ${voiceType} → ${candidates.join(', ')}`);
+    console.log(`[Voice] Volcengine候选列表: ${voiceType} → ${candidates.join(', ')}`);
     return candidates;
   }
-  console.warn(`[Voice] 未知的voiceType '${voiceType}'，Coze无候选`);
+  console.warn(`[Voice] 未知的voiceType '${voiceType}'，Volcengine无候选`);
   return [];
 }
 

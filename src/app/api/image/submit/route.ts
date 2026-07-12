@@ -4,14 +4,14 @@ import {
   Config,
   HeaderUtils,
   APIError,
-} from 'coze-coding-dev-sdk';
+} from '@/lib/native-provider-sdk';
 import { 
   createTask, 
   startTask, 
   completeTask, 
   failTask,
   updateTaskProgress,
-  getTask
+  getTaskForOwner
 } from '@/lib/task-manager';
 import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
 
@@ -257,6 +257,8 @@ export async function POST(request: NextRequest) {
 
 // 获取任务状态的API
 export async function GET(request: NextRequest) {
+  const owner = await resolveTaskOwnerFromRequest(request);
+  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
   const searchParams = request.nextUrl.searchParams;
   const taskId = searchParams.get('taskId');
 
@@ -264,13 +266,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: '缺少任务ID' }, { status: 400 });
   }
 
-  const task = getTask(taskId);
+  const task = getTaskForOwner(taskId, owner);
 
   if (!task) {
     return NextResponse.json({ error: '任务不存在' }, { status: 404 });
   }
 
   // 移除不能序列化的字段
-  const { abortController, ...taskInfo } = task;
+  const { abortController, owner: _owner, ...taskInfo } = task;
+  void abortController;
+  void _owner;
   return NextResponse.json(taskInfo);
 }

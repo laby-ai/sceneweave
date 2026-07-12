@@ -4,7 +4,7 @@ import {
   Config,
   HeaderUtils,
   APIError,
-} from 'coze-coding-dev-sdk';
+} from '@/lib/native-provider-sdk';
 
 // 从剧本中搜索人物描述的函数
 function extractCharacterDescriptionFromScript(script: string, characterName: string): string | null {

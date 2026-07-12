@@ -189,8 +189,8 @@ ${prompt ? `用户提示词：${prompt}` : ''}
 内容：${content.substring(0, 2000)}`;
 
     // 使用项目已有的 AI 服务适配器
-    const { CozeAPI } = await import('@/lib/coze-api');
-    const response = await CozeAPI.chat(
+    const { ProviderAPI } = await import('@/lib/provider-api');
+    const response = await ProviderAPI.chat(
       [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { CozeAPI } from '@/lib/coze-api';
+import { ProviderAPI } from '@/lib/provider-api';
 
 // 简化消息类型，避免复杂泛型导致 TS 语法错误
 type MessageContent = string | Array<Record<string, unknown>>;
@@ -13,11 +13,11 @@ interface ChatMessage {
  */
 async function generateUnderstanding(messages: ChatMessage[]): Promise<NextResponse> {
   let fullContent = '';
-  let provider = 'coze-vision';
+  let provider = 'ark-vision';
 
   try {
     // 使用LLM模型（支持多模态image_url），模型由 visionChat 内部管理降级链
-    const visionResult = await CozeAPI.visionChat(
+    const visionResult = await ProviderAPI.visionChat(
       messages as any,
       { temperature: 0.7 }
     );
@@ -41,7 +41,7 @@ async function generateUnderstanding(messages: ChatMessage[]): Promise<NextRespo
           content: `用户上传了一张图片，但视觉模型暂时不可用。请根据以下问题给出通用回答：${questionText}`,
         },
       ];
-      const textStream = CozeAPI.chatStream(textMessages);
+      const textStream = ProviderAPI.chatStream(textMessages);
       const reader = textStream.getReader();
       const decoder = new TextDecoder();
 
@@ -63,7 +63,7 @@ async function generateUnderstanding(messages: ChatMessage[]): Promise<NextRespo
           }
         }
       }
-      provider = 'coze-text-fallback';
+      provider = 'ark-text-fallback';
     } catch {
       throw new Error('图片理解服务暂时不可用');
     }

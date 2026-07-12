@@ -106,7 +106,7 @@ pnpm run qa:flow
 ### 启动开发服务器
 
 ```bash
-coze dev
+pnpm dev
 ```
 
 启动后，在浏览器中打开 [http://localhost:5000](http://localhost:5000) 查看应用。
@@ -116,13 +116,13 @@ coze dev
 ### 构建生产版本
 
 ```bash
-coze build
+pnpm build
 ```
 
 ### 启动生产服务器
 
 ```bash
-coze start
+pnpm start
 ```
 
 ## 项目结构
@@ -502,7 +502,7 @@ Linux 部署环境如需沿用原 shell 脚本，可使用 `pnpm run dev:sh`、`
 - 视频模型示例：`doubao-seedance-*`
 - 图片/视频任务应优先走低成本验证，先测文本连通，再测最小图片请求，最后再测单镜头视频任务。
 
-当前实现会把用户填写的连接配置保存在浏览器 `localStorage`，并通过 `/api/provider/test` 做连接验证。设置页提供三个测试入口：`测试连接` 对应 `testMode=models`，用于确认 API Base/API Key 能访问供应商模型列表；`测试文本请求` 对应 `testMode=chat`，需要填写默认文本模型，会发起 `max_tokens=1` 的最小文本请求来确认模型名和密钥真的可调用；`测试图片请求` 对应 `testMode=image`，需要填写图片模型，会发起一张最小图片生成探针来确认图片端点和模型权限，可能产生供应商最小调用费用。短剧创作里的剧本/分镜、影视对话助手、角色、场景、道具等文本 LLM 链路已支持请求级 BYOK 配置；图片生成主入口和图像创作表单已支持请求级 BYOK 最小适配，剩余图片调用点的放开顺序见 [docs/byok-image-rollout.md](docs/byok-image-rollout.md)。视频生成主入口、绘影精灵视频生成、影视创作镜头生成和分段长视频接口已支持 Ark Plan BYOK 请求级配置；缺少用户 BYOK 时直接返回可读错误，不再回退到服务端默认 Minimax/Coze 降级链。真实 60 秒以上视频仍必须按 5s -> 10s -> 30s -> 60s 阶梯测试，并用 `qa:video-duration` 验证实际媒体时长，避免无意义地产生费用或把短片误判为长成片。
+当前实现会把用户填写的连接配置保存在浏览器 `localStorage`，并通过 `/api/provider/test` 做连接验证。设置页提供三个测试入口：`测试连接` 对应 `testMode=models`，用于确认 API Base/API Key 能访问供应商模型列表；`测试文本请求` 对应 `testMode=chat`，需要填写默认文本模型，会发起 `max_tokens=1` 的最小文本请求来确认模型名和密钥真的可调用；`测试图片请求` 对应 `testMode=image`，需要填写图片模型，会发起一张最小图片生成探针来确认图片端点和模型权限，可能产生供应商最小调用费用。短剧创作里的剧本/分镜、影视对话助手、角色、场景、道具等文本 LLM 链路已支持请求级 BYOK 配置；图片生成主入口和图像创作表单已支持请求级 BYOK 最小适配，剩余图片调用点的放开顺序见 [docs/byok-image-rollout.md](docs/byok-image-rollout.md)。视频生成主入口、绘影精灵视频生成、影视创作镜头生成和分段长视频接口已支持 Ark Plan BYOK 请求级配置；缺少用户 BYOK 时直接返回可读错误，不再回退到服务端默认 legacy provider 降级链。真实 60 秒以上视频仍必须按 5s -> 10s -> 30s -> 60s 阶梯测试，并用 `qa:video-duration` 验证实际媒体时长，避免无意义地产生费用或把短片误判为长成片。
 
 公网部署必须启用 HTTPS；服务端不要把用户密钥写入日志、数据库或环境变量。
 

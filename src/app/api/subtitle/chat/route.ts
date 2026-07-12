@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { LLMClient, Config, HeaderUtils } from "coze-coding-dev-sdk";
+import { LLMClient, Config, HeaderUtils } from "@/lib/native-provider-sdk";
 
 export async function POST(request: NextRequest) {
   try {

@@ -54,6 +54,25 @@ async function main() {
     assert.equal(manager.getTaskForOwner(alphaTaskId, alpha)?.id, alphaTaskId);
     assert.equal(manager.deleteTaskForOwner(alphaTaskId, beta), false, 'cross-member delete must fail closed');
 
+    for (const modulePath of [
+      '../src/app/api/image/submit/route',
+      '../src/app/api/social/submit/route',
+    ]) {
+      const submitRoute = await import(modulePath);
+      const anonymousStatus = await submitRoute.GET(new NextRequest(`http://localhost/api/status?taskId=${alphaTaskId}`));
+      assert.equal(anonymousStatus.status, 401, `${modulePath} task status must reject anonymous reads`);
+      const foreignStatus = await submitRoute.GET(new NextRequest(`http://localhost/api/status?taskId=${alphaTaskId}`, {
+        headers: { Authorization: 'Bearer beta-token' },
+      }));
+      assert.equal(foreignStatus.status, 404, `${modulePath} task status must hide cross-member tasks`);
+      const ownerStatus = await submitRoute.GET(new NextRequest(`http://localhost/api/status?taskId=${alphaTaskId}`, {
+        headers: { Authorization: 'Bearer alpha-token' },
+      }));
+      assert.equal(ownerStatus.status, 200, `${modulePath} task owner must read its task`);
+      const ownerBody = await ownerStatus.json() as Record<string, unknown>;
+      assert(!('owner' in ownerBody), `${modulePath} task status must not expose owner identifiers`);
+    }
+
     const route = await import('../src/app/api/tasks/route');
     const anonymous = await route.GET(new NextRequest('http://localhost/api/tasks'));
     assert.equal(anonymous.status, 401);
@@ -159,12 +178,17 @@ async function main() {
       }
     }
 
-    const nextConfig = await readFile(path.join(process.cwd(), 'next.config.ts'), 'utf8');
-    assert.match(
-      nextConfig,
-      /serverExternalPackages:\s*\[[^\]]*coze-coding-dev-sdk/,
-      'Coze SDK must remain external because its dynamic CommonJS loader cannot be bundled',
-    );
+    for (const relativePath of [
+      'src/app/api/smart/director-chain/route.ts',
+      'src/app/api/production/dry-run/route.ts',
+      'src/app/api/storyboard/submit/route.ts',
+    ]) {
+      const source = await readFile(path.join(process.cwd(), relativePath), 'utf8');
+      assert.match(source, /publicTask\(/, `${relativePath} must strip owner data before returning a task`);
+    }
+
+    const packageJson = await readFile(path.join(process.cwd(), 'package.json'), 'utf8');
+    assert.doesNotMatch(packageJson, /coze-coding-dev-sdk/, 'legacy provider SDK must not return');
 
     console.log('member task isolation tests passed');
   } finally {

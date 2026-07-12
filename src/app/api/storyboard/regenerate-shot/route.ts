@@ -4,7 +4,7 @@ import { updateTask, getTaskForOwner, updateTaskProgress } from '@/lib/task-mana
 import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
 import { throwStoryboardVideoPathDisabled } from '@/lib/video-generation-path-guidance';
 
-// 生成九宫格图片（自动降级: Minimax → Coze）
+// 生成九宫格图片（自动降级: Ark/BYOK）
 async function generateNineGridImages(
   prompt: string,
   referenceImage?: string,

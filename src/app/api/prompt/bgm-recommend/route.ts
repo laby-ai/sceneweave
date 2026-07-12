@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
     if (mood || description) {
       try {
         // 动态导入 LLMClient（避免 RSC 兼容性问题）
-        const { LLMClient, Config, HeaderUtils } = await import('coze-coding-dev-sdk');
+        const { LLMClient, Config, HeaderUtils } = await import('@/lib/native-provider-sdk');
         const customHeaders = HeaderUtils.extractForwardHeaders(request.headers);
         const config = new Config();
         const client = new LLMClient(config, customHeaders);

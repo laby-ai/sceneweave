@@ -6,7 +6,7 @@ import { VISUAL_STYLE_MAP, buildStyleLockedPrompt, buildEnhancedNegative } from 
 /**
  * 影视创作 - 角色设计参考图生成（单图多视角）
  * 生成一张包含头特写+正面全身+侧面全身+背面全身的角色设计参考图
- * 自动降级: Minimax Image → Coze Image
+ * 自动降级: Minimax Image → legacy provider Image
  * 
  * 风格一致性保障:
  * - 三重锁定机制: lockPhrase(开头) + 原始prompt(中间) + prefix(结尾)

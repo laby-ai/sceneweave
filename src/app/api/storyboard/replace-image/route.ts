@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 生成新图片（自动降级: Minimax → Coze）
+    // 生成新图片（自动降级: Ark/BYOK）
     const prompt = newPrompt || '保持原有内容，重新生成';
     let newImageUrl: string;
 

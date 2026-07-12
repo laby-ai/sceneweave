@@ -103,8 +103,8 @@ export async function POST(request: NextRequest) {
 
     // 尝试调用AI
     try {
-      const { CozeAPI } = await import('@/lib/coze-api');
-      const aiResult = await CozeAPI.chat(
+      const { ProviderAPI } = await import('@/lib/provider-api');
+      const aiResult = await ProviderAPI.chat(
         [
           {
             role: 'system',

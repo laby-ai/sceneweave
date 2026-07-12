@@ -10,10 +10,7 @@ const basePath = rawBasePath && rawBasePath.startsWith('/') ? rawBasePath : '';
 
 const nextConfig: NextConfig = {
   ...(basePath ? { basePath, assetPrefix: basePath } : {}),
-  // Keep the Coze SDK external because its dynamic CommonJS loading cannot be
-  // bundled by Turbopack. The release gate materializes Next's hashed alias.
-  serverExternalPackages: ['coze-coding-dev-sdk'],
-  allowedDevOrigins: ['*.dev.coze.site', 'localhost', '127.0.0.1'],
+  allowedDevOrigins: ['localhost', '127.0.0.1'],
   images: {
     qualities: [54, 58, 68],
     remotePatterns: [

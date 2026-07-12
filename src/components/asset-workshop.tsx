@@ -667,7 +667,7 @@ function AssetCard({ asset, onToggleSelect, onPreview, onRetry }: {
           </span>
         )}
         {asset.status === 'generated' && (
-          <span className="text-[10px] text-[var(--muted-foreground)]">coze/image text-to-image {selectedResolution(asset)}</span>
+          <span className="text-[10px] text-[var(--muted-foreground)]">ark/image text-to-image {selectedResolution(asset)}</span>
         )}
         {asset.promptZh && (
           <p className="text-xs text-[var(--muted-foreground)] mt-1.5 line-clamp-2">{asset.promptZh}</p>

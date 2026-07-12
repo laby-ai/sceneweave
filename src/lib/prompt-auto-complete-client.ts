@@ -21,7 +21,7 @@ export async function invokePromptAutoComplete(
   messages: PromptAutoCompleteMessage[],
   headers: Headers
 ): Promise<string> {
-  const { LLMClient, Config, HeaderUtils, APIError } = await import('coze-coding-dev-sdk');
+  const { LLMClient, Config, HeaderUtils, APIError } = await import('@/lib/native-provider-sdk');
 
   try {
     const customHeaders = HeaderUtils.extractForwardHeaders(headers);

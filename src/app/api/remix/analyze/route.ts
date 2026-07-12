@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cozeChat, type MultimodalMessage } from '@/lib/coze-api';
+import { providerChat, type MultimodalMessage } from '@/lib/provider-api';
 
 /**
  * 二创自定义要求分析 API
@@ -67,7 +67,7 @@ sceneType: portrait(人像), landscape(风景), cinematic(电影感), fantasy(�
 
     let analysisResult: Record<string, unknown>;
     try {
-      const result = await cozeChat([
+      const result = await providerChat([
         { role: 'system' as const, content: systemPrompt },
         ...userMessages,
       ], { temperature: 0.3 });

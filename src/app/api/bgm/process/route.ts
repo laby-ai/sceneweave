@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { VideoEditClient, Config, HeaderUtils } from 'coze-coding-dev-sdk';
+import { VideoEditClient, Config, HeaderUtils } from '@/lib/native-provider-sdk';
 import { v4 as uuidv4 } from 'uuid';
-import { TTSClient } from 'coze-coding-dev-sdk';
+import { TTSClient } from '@/lib/native-provider-sdk';
 import { PRESET_BGM_MAP } from '@/lib/bgm-manager';
 
 const videoEditConfig = new Config();

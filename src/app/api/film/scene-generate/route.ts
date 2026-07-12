@@ -9,7 +9,7 @@ import { buildBYOKConfigErrorPayload, isBYOKConfigError } from '@/lib/byok-respo
  * 影视创作 - 场景生成
  * 从故事文本中提取场景描述，增强提示词后生成场景氛围图
  * 两步流程: LLM生成场景描述+英文提示词 → AI生图
- * 自动降级: Minimax → Coze（LLM和Image各自独立降级）
+ * 自动降级: Ark/BYOK（LLM和Image各自独立降级）
  * 
  * 风格一致性保障:
  * - LLM生成的prompt_en中注入风格锁定约束

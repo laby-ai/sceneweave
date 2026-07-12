@@ -210,7 +210,7 @@ async function generateFromUserImages(
       currentIndex === 3 || 
       currentIndex === 6;
     
-    // 调用图片生成API（自动降级: Minimax → Coze）
+    // 调用图片生成API（自动降级: Ark/BYOK）
     const imgResult = await aiService.generateImage({
       prompt: enhancedPrompt,
       model: 'image-01',

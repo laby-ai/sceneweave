@@ -42,12 +42,12 @@ export async function POST(request: NextRequest) {
     const systemPrompt = getRefineSystemPrompt(refineMode);
     const userMessage = buildRefineUserMessage(refineMode, prompt, imageDescription);
 
-    // 使用 Coze SDK 调用 LLM 进行精炼
-    const { CozeAPI } = await import('@/lib/coze-api');
+    // 使用 legacy provider SDK 调用 LLM 进行精炼
+    const { ProviderAPI } = await import('@/lib/provider-api');
     let refinedText: string;
 
     try {
-      const result = await CozeAPI.chat(
+      const result = await ProviderAPI.chat(
         [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userMessage },

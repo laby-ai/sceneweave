@@ -371,6 +371,14 @@ export function getAllTasksFresh(): BackgroundTask[] {
   return Array.from(store.values()).sort((a, b) => b.createdAt - a.createdAt);
 }
 
+export function publicTask(task: BackgroundTask | undefined) {
+  if (!task) return null;
+  const { abortController: _abortController, owner: _owner, ...taskInfo } = task;
+  void _abortController;
+  void _owner;
+  return taskInfo;
+}
+
 function taskBelongsToOwner(task: BackgroundTask | undefined, owner: TaskOwner): task is BackgroundTask {
   return Boolean(task?.owner
     && task.owner.tenantId === owner.tenantId

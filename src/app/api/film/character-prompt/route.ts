@@ -7,7 +7,7 @@ import { buildBYOKConfigErrorPayload, isBYOKConfigError } from '@/lib/byok-respo
 /**
  * 影视创作 - 人物提示词生成
  * 从故事文本中提取角色设定，生成可用于AI生图的详细人物描述提示词
- * 自动降级: Minimax LLM → Coze LLM
+ * 自动降级: Minimax LLM → legacy provider LLM
  */
 
 const CHARACTER_PROMPT_SYSTEM = `你是一位资深的影视角色设计师和AI绘画提示词工程师。
@@ -72,7 +72,7 @@ ${characterCount ? `- 角色数量：不超过${characterCount}个主要角色` 
   ]
 }`;
 
-    // 使用适配器自动降级: Minimax → Coze
+    // 使用适配器自动降级: Ark/BYOK
     const result = await aiService.chat({
       messages: [
         { role: 'system', content: CHARACTER_PROMPT_SYSTEM },

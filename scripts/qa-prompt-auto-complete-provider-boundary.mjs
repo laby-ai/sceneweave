@@ -10,7 +10,7 @@ const route = fs.readFileSync(path.join(root, routePath), 'utf8');
 const service = fs.readFileSync(path.join(root, servicePath), 'utf8');
 
 const failures = [];
-for (const pattern of [/coze-coding-dev-sdk/, /LLMClient/, /HeaderUtils/, /APIError/]) {
+for (const pattern of [/native-provider-sdk/, /LLMClient/, /HeaderUtils/, /APIError/]) {
   if (pattern.test(route)) {
     failures.push(`${routePath} must not contain ${pattern}`);
   }
@@ -28,8 +28,8 @@ for (const required of [
   }
 }
 
-if (!service.includes('coze-coding-dev-sdk') || !service.includes('LLMClient')) {
-  failures.push(`${servicePath} should own the prompt provider SDK boundary`);
+if (!service.includes('native-provider-sdk') || !service.includes('LLMClient')) {
+  failures.push(`${servicePath} should own the prompt provider boundary`);
 }
 
 if (failures.length > 0) {

@@ -37,7 +37,7 @@ export function isJimengConvertProviderError(error: unknown): error is JimengCon
 }
 
 export async function createJimengConvertLLM(headers: Headers): Promise<JimengConvertLLM> {
-  const { LLMClient, Config, HeaderUtils, APIError } = await import('coze-coding-dev-sdk');
+  const { LLMClient, Config, HeaderUtils, APIError } = await import('@/lib/native-provider-sdk');
   const customHeaders = HeaderUtils.extractForwardHeaders(headers);
   const client = new LLMClient(new Config(), customHeaders);
 

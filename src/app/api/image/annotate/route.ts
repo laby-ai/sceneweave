@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { CozeAPI } from '@/lib/coze-api';
+import { ProviderAPI } from '@/lib/provider-api';
 import { createHuiyingObjectStorage } from '@/lib/huiying-object-storage';
 
 /**
  * POST /api/image/annotate
  * 使用视觉模型自动识别图片中的文化元素并生成标注
  *
- * 流程：前端上传图片文件 → 后端上传S3获取签名URL → Coze视觉模型分析
+ * 流程：前端上传图片文件 → 后端上传S3获取签名URL → legacy provider视觉模型分析
  * 重要：视觉模型失败时直接返回错误，不降级到无图文本LLM
  * （无图LLM生成的标注与图片内容完全无关，比没有标注更糟糕）
  */
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
         }, { status: 400 });
       }
 
-      // 尝试通过S3的uploadFromUrl转存，使Coze API可以访问
+      // 尝试通过S3的uploadFromUrl转存，使provider API可以访问
       try {
         const storage = createHuiyingObjectStorage();
 
@@ -167,7 +167,7 @@ export async function POST(request: NextRequest) {
 
     try {
       // 使用LLM模型（支持多模态image_url），模型由 visionChat 内部管理降级链
-      const result = await CozeAPI.visionChat(
+      const result = await ProviderAPI.visionChat(
         messages as any,
         { temperature: 0.5 }
       );
@@ -256,7 +256,7 @@ ${JSON.stringify(deduped.map((a: Record<string, unknown>) => ({ title: a.title, 
             },
           ];
 
-          const verifyResult = await CozeAPI.visionChat(
+          const verifyResult = await ProviderAPI.visionChat(
             verifyMessages as any,
             { temperature: 0.3 }
           );
@@ -300,7 +300,7 @@ ${JSON.stringify(deduped.map((a: Record<string, unknown>) => ({ title: a.title, 
 
       return NextResponse.json({
         annotations: verifiedAnnotations.slice(0, 8),
-        provider: 'coze-vision',
+        provider: 'ark-vision',
       });
     } catch (aiError) {
       console.error('[Annotate] 视觉模型标注失败:', aiError);

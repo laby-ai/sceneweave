@@ -5,6 +5,7 @@ import {
   completeTask,
   createTask,
   getTask,
+  publicTask,
   startTask,
   updateTaskProgress,
 } from '@/lib/task-manager';
@@ -142,7 +143,7 @@ export async function POST(request: NextRequest) {
       productionProject,
     });
 
-    const task = getTask(taskId);
+    const task = publicTask(getTask(taskId));
 
     return NextResponse.json({
       success: true,

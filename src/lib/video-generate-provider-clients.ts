@@ -39,7 +39,7 @@ async function getProviderRuntime(headers: Headers) {
     TTSClient,
     VideoEditClient,
     VideoGenerationClient,
-  } = await import('coze-coding-dev-sdk');
+  } = await import('@/lib/native-provider-sdk');
 
   const customHeaders = HeaderUtils.extractForwardHeaders(headers);
   const config = new Config({

@@ -87,7 +87,7 @@ export interface TTSGenResult {
 
 function requireBYOK(connection: BYOKConnection | undefined, serviceName: string): BYOKConnection {
   if (!connection) {
-    throw new Error(`${serviceName}已关闭内置 Coze/Minimax fallback。请在设置页配置 BYOK API Base、API Key 和模型后再调用。`);
+    throw new Error(`${serviceName}已关闭内置 legacy provider fallback。请在设置页配置 BYOK API Base、API Key 和模型后再调用。`);
   }
   return connection;
 }
@@ -159,7 +159,7 @@ export const aiService = {
    */
   async tts(params: TTSParams): Promise<RouteResult<TTSGenResult>> {
     void params;
-    throw new Error('aiService.tts legacy Coze/Minimax path is disabled. Use the explicit audio/video production service.');
+    throw new Error('aiService.tts legacy legacy provider path is disabled. Use the explicit audio/video production service.');
   },
 
   /**
