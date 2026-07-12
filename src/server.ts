@@ -2,6 +2,7 @@ import { createServer } from 'http';
 import next from 'next';
 import { observeRequest, runWithRequestObservationContext } from './lib/request-observability';
 import { getOperationalObservabilityReadiness } from './lib/operational-observability';
+import { PROMETHEUS_CONTENT_TYPE, serviceMetrics, trustedMetricsRequest } from './lib/service-metrics';
 
 const dev = process.env.NODE_ENV !== 'production';
 if (!dev && !getOperationalObservabilityReadiness().ready) {
@@ -64,6 +65,22 @@ app.prepare().then(() => {
     const observation = observeRequest(req, res);
     await runWithRequestObservationContext(observation.requestId, async () => {
       try {
+        const requestPath = new URL(req.url || '/', `http://${req.headers.host || `${bindHost}:${port}`}`).pathname;
+        if (requestPath === '/api/metrics' || requestPath === '/huiying/api/metrics') {
+          if (!trustedMetricsRequest(req.socket.remoteAddress, req.headers['x-forwarded-for'], req.headers['x-real-ip'])) {
+            res.statusCode = 403;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ error: 'metrics_forbidden' }));
+            return;
+          }
+          const body = serviceMetrics.render();
+          res.statusCode = 200;
+          res.setHeader('Content-Type', PROMETHEUS_CONTENT_TYPE);
+          res.setHeader('Cache-Control', 'no-store');
+          res.setHeader('X-Content-Type-Options', 'nosniff');
+          res.end(body);
+          return;
+        }
         // Inject default ARK BYOK headers for direct Volcano access (not agentplan).
         if (ARK_KEY && !req.headers['x-yh-api-key']) {
           req.headers['x-yh-provider'] = 'ark-plan';
