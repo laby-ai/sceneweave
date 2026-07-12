@@ -70,6 +70,11 @@ async function runConcat(concatListPath: string, outputPath: string) {
 }
 
 function resolveFfmpegPath() {
+  const configuredPath = process.env.FFMPEG_BIN?.trim();
+  if (configuredPath) {
+    return configuredPath;
+  }
+
   if (ffmpegStaticPath && existsSync(ffmpegStaticPath)) {
     return ffmpegStaticPath;
   }

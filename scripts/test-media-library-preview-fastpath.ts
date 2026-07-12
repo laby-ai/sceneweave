@@ -50,6 +50,10 @@ const posterRouteSource = fs.readFileSync(
   path.join(process.cwd(), 'src/app/api/assets/video-poster/route.ts'),
   'utf8',
 );
+const previewSource = fs.readFileSync(
+  path.join(process.cwd(), 'src/lib/media-library-preview.ts'),
+  'utf8',
+);
 const homeSectionSource = fs.readFileSync(
   path.join(process.cwd(), 'src/components/home/dreambox-home-section.tsx'),
   'utf8',
@@ -61,7 +65,16 @@ assert.match(assetsSource, /loading="lazy"\s+decoding="async"/);
 assert.match(assetsSource, /poster=\{asset\.poster\}[\s\S]*?preload="none"/);
 assert.match(libraryRouteSource, /buildPublicMediaCandidate/);
 assert.match(libraryRouteSource, /await fs\.stat\(publicCandidate\.filePath\)/);
+assert.match(libraryRouteSource, /if \(!publicCandidate\) return null/);
+assert.match(libraryRouteSource, /resolvedAssets\.filter\(asset => asset !== null\)/);
+assert.match(libraryRouteSource, /resolvePackagedVideoPoster/);
+assert.match(previewSource, /huiying-story-aware-10s-poster\.jpg/);
+assert.doesNotMatch(libraryRouteSource, /api\/assets\/video-poster\?path=/);
+assert.doesNotMatch(libraryRouteSource, /D:\/C_Migrated|Users_16571_Documents_Codex/);
+assert.doesNotMatch(libraryRouteSource, /fs\.stat\(row\.full_path\)/);
+assert.match(libraryRouteSource, /originalPath: publicCandidate\.url/);
 assert.match(posterRouteSource, /resolvePackagedFfmpegPath\(process\.cwd\(\), process\.platform\)/);
+assert.doesNotMatch(posterRouteSource, /Users\\\\16571|C_Migrated/);
 assert.match(homeSectionSource, /poster=\{previewImage\(item\.src, selectHomeGalleryPreviewWidth\(item\.span\)\)\}/);
 assert.match(homeSectionSource, /src=\{previewImage\(item\.src, selectHomeGalleryPreviewWidth\(item\.span\)\)\}/);
 assert.doesNotMatch(

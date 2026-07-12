@@ -17,10 +17,10 @@ import {
   Sparkles,
   TrendingUp,
   Type,
-  User,
   Zap,
 } from 'lucide-react';
 
+import { AccountStatusButton } from '@/components/home/account-status-button';
 import { Button } from '@/components/ui/button';
 import type { UserSettings } from '@/constants/themes';
 import type { MediaSubSection } from '@/components/home/dreambox-media-section';
@@ -263,17 +263,7 @@ export function DreamboxNavigationShell({
               <Settings className="h-5 w-5" />
               <span className="mt-0.5 text-[10px] leading-tight">设置</span>
             </button>
-            <a
-              href="http://39.97.246.33/account?next=%2F"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="登录"
-              title="登录账号"
-              className="flex h-12 w-full flex-col items-center justify-center rounded-2xl text-foreground/60 transition-all hover:bg-white/[0.06] hover:text-foreground"
-            >
-              <User className="h-5 w-5" />
-              <span className="mt-0.5 text-[10px] leading-tight">登录</span>
-            </a>
+            <AccountStatusButton />
           </div>
         </nav>
       </div>

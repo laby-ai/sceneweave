@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { createServer } from 'node:http';
+import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -66,9 +67,9 @@ const accountServer = createServer((request, response) => {
 
 let app;
 try {
-  assert(ffmpegPath, 'ffmpeg-static unavailable');
-  await execFileAsync(ffmpegPath, ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=red:s=320x180:d=0.6', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', segmentPaths[0]]);
-  await execFileAsync(ffmpegPath, ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=blue:s=320x180:d=0.6', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', segmentPaths[1]]);
+  const fixtureFfmpeg = ffmpegPath && existsSync(ffmpegPath) ? ffmpegPath : process.env.FFMPEG_BIN || 'ffmpeg';
+  await execFileAsync(fixtureFfmpeg, ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=red:s=320x180:d=0.6', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', segmentPaths[0]]);
+  await execFileAsync(fixtureFfmpeg, ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=blue:s=320x180:d=0.6', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', segmentPaths[1]]);
   await Promise.all([listen(mediaServer, mediaPort), listen(accountServer, accountPort)]);
 
   app = spawn(process.execPath, ['dist/server.js'], {
@@ -80,12 +81,14 @@ try {
       PORT: String(appPort),
       HOSTNAME: '127.0.0.1',
       NEXT_PUBLIC_BASE_PATH: '/huiying',
+      HUIYING_OBSERVABILITY_HASH_KEY: 'fixture-observability-hash-key-32-bytes',
       ACCOUNT_CENTER_API_BASE: `http://127.0.0.1:${accountPort}`,
       HUIYING_FINAL_VIDEO_STORE_PATH: storeRoot,
       HUIYING_OBJECT_STORAGE_ENDPOINT_URL: '',
       HUIYING_OBJECT_STORAGE_BUCKET_NAME: '',
       HUIYING_OBJECT_STORAGE_ACCESS_KEY_ID: '',
       HUIYING_OBJECT_STORAGE_SECRET_ACCESS_KEY: '',
+      FFMPEG_BIN: fixtureFfmpeg,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });

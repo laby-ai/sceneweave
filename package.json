@@ -52,6 +52,7 @@
     "qa:home-media-policy": "node scripts/qa-home-media-policy.mjs",
     "qa:home-resource-sample": "node scripts/qa-home-resource-sample.mjs",
     "qa:smart-vimax-agent-render": "node scripts/qa-smart-vimax-agent-render.mjs",
+    "qa:v8-user-journey": "node scripts/qa-v8-user-journey.mjs",
     "qa:canvas-open-source-alignment": "node scripts/qa-canvas-open-source-alignment.mjs",
     "qa:canvas-node-placement": "tsx scripts/qa-canvas-node-placement.ts",
     "qa:production-export": "node scripts/qa-production-export.mjs",
@@ -217,6 +218,7 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@playwright/test": "1.60.0",
     "@react-dev-inspector/babel-plugin": "^2.0.1",
     "@react-dev-inspector/middleware": "^2.0.1",
     "@tailwindcss/postcss": "^4",

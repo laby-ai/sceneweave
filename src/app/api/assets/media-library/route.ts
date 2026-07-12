@@ -4,7 +4,7 @@ import path from 'node:path';
 import { NextResponse } from 'next/server';
 
 import { mediaFreshnessBonus } from '@/lib/home-gallery-media';
-import { buildPublicMediaCandidate } from '@/lib/media-library-preview';
+import { buildPublicMediaCandidate, resolvePackagedVideoPoster } from '@/lib/media-library-preview';
 
 export const runtime = 'nodejs';
 
@@ -33,8 +33,6 @@ const CURATED_FILESYSTEM_ROOTS = [
   path.resolve(process.cwd(), 'public', 'generated'),
   path.resolve(process.cwd(), 'public', 'home'),
   path.resolve(process.cwd(), 'public', 'samples'),
-  'D:/C_Migrated/Users_16571_Documents_Codex/2026-06-15/files-mentioned-by-the-user-1/work/project/projects/public/generated',
-  'D:/C_Migrated/Users_16571_Documents_Codex/2026-06-15/files-mentioned-by-the-user-gz/work/extracted/projects/public/generated',
 ].map(root => path.normalize(root));
 
 const LOW_QUALITY_NAME_PATTERNS = [
@@ -291,7 +289,7 @@ export async function GET(request: Request) {
   let indexAvailable = true;
   try {
     text = await fs.readFile(MEDIA_INDEX_PATH, 'utf8');
-  } catch (error) {
+  } catch {
     indexAvailable = false;
   }
 
@@ -311,21 +309,21 @@ export async function GET(request: Request) {
   }
 
   const publicRoot = path.resolve(process.cwd(), 'public');
-  const assets = await Promise.all(rows.map(async (row, index) => {
-    const protectedMediaUrl = `${basePath}/api/assets/media-file?path=${encodeURIComponent(row.full_path)}`;
+  const resolvedAssets = await Promise.all(rows.map(async (row, index) => {
     const publicCandidate = buildPublicMediaCandidate(row.full_path, publicRoot, basePath);
-    let mediaUrl = protectedMediaUrl;
-    if (publicCandidate) {
-      try {
-        const publicStat = await fs.stat(publicCandidate.filePath);
-        if (publicStat.isFile()) mediaUrl = publicCandidate.url;
-      } catch {
-        // Keep the protected streaming route when this release does not contain the asset.
-      }
+    if (!publicCandidate) return null;
+
+    try {
+      const publicStat = await fs.stat(publicCandidate.filePath);
+      if (!publicStat.isFile()) return null;
+    } catch {
+      return null;
     }
+
+    const mediaUrl = publicCandidate.url;
     const posterUrl =
-      row.type === 'video' && path.extname(row.full_path).toLowerCase() === '.mp4'
-        ? `${basePath}/api/assets/video-poster?path=${encodeURIComponent(row.full_path)}`
+      row.type === 'video'
+        ? await resolvePackagedVideoPoster(publicCandidate.filePath, publicRoot, basePath)
         : undefined;
     return {
       id: `historical-${index}-${path.basename(row.full_path)}`,
@@ -335,11 +333,12 @@ export async function GET(request: Request) {
       poster: row.type === 'image' ? mediaUrl : posterUrl,
       createdAt: toTimestamp(row.last_write_time),
       sizeMb: Number(row.size_mb) || 0,
-      originalPath: row.full_path,
+      originalPath: publicCandidate.url,
       source: 'historical',
       curated: true,
     };
   }));
+  const assets = resolvedAssets.filter(asset => asset !== null);
 
   return NextResponse.json({
     success: true,

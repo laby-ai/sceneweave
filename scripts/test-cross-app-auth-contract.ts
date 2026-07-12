@@ -67,8 +67,11 @@ async function main() {
     assert.equal(unavailable.headers.get('set-cookie'), null, 'failed revocation must not claim local logout');
 
     const accountButton = await readFile(path.join(process.cwd(), 'src/components/home/account-status-button.tsx'), 'utf8');
+    const navigationShell = await readFile(path.join(process.cwd(), 'src/components/home/dreambox-navigation-shell.tsx'), 'utf8');
     assert.match(accountButton, /setLogoutError\('暂时无法安全退出，请检查网络后重试。'\)/);
     assert.doesNotMatch(accountButton, /catch \{[\s\S]{0,160}clearStoredAccountTokens\(\)/);
+    assert.match(navigationShell, /<AccountStatusButton\s*\/>/, 'the authenticated account control must be mounted in the real navigation shell');
+    assert.doesNotMatch(navigationShell, /href="http:\/\/39\.97\.246\.33\/account/, 'the navigation must not bypass session state with a hard-coded login link');
 
     console.log('Huiying cross-app auth contract passed');
   } finally {
