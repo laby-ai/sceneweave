@@ -99,7 +99,7 @@ async function startAvatarGeneration(
       VideoGenerationClient,
       Config,
       HeaderUtils,
-    } = await import('coze-coding-dev-sdk');
+    } = await import('@/lib/native-provider-sdk');
 
     updateTaskProgress(taskId, 20, '构建提示词', '正在构建数字人提示词...');
 

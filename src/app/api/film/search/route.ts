@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { SearchClient, Config, HeaderUtils } from 'coze-coding-dev-sdk';
+import { SearchClient, Config, HeaderUtils } from '@/lib/native-provider-sdk';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;

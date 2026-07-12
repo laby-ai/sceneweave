@@ -3,7 +3,7 @@
  * 生成9张连贯的图片，用于后续的图片生视频
  */
 
-import { ImageGenerationClient, Config, HeaderUtils } from 'coze-coding-dev-sdk';
+import { ImageGenerationClient, Config, HeaderUtils } from '@/lib/native-provider-sdk';
 
 export interface NineGridImage {
   index: number;

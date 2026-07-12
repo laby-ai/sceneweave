@@ -1,4 +1,4 @@
-import { Config, S3Storage, TTSClient, VideoEditClient } from 'coze-coding-dev-sdk';
+import { Config, S3Storage, TTSClient, VideoEditClient } from '@/lib/native-provider-sdk';
 import { createHuiyingObjectStorage } from './huiying-object-storage';
 
 const config = new Config();

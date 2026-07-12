@@ -7,7 +7,7 @@ import { buildBYOKConfigErrorResponse, isBYOKConfigError } from '@/lib/byok-resp
 /**
  * 影视创作 - AI对话助手 (SSE流式)
  * 支持多轮对话 + 结构化参数抽取
- * 自动降级: Minimax LLM → Coze LLM
+ * 自动降级: Minimax LLM → legacy provider LLM
  * 
  * 返回两种SSE事件：
  * - data: {"content": "..."}  — 对话文本流

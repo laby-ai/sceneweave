@@ -50,8 +50,8 @@
 │   │   ├── video-production/ # 视频生产引擎(v3.2)
 │   │   ├── video-monitor/    # AI视频监测系统
 │   │   ├── video-generation-pipeline.ts # 视频生成管线(T2I2V/MotionScore/OscillationGuidance)
-│   │   ├── ai-service-adapter.ts # AI服务统一适配器（自动降级）
-│   │   ├── coze-api.ts       # Coze SDK封装（LLM/图像/视频/语音）
+│   │   ├── ai-service-adapter.ts # AI服务统一适配器（BYOK）
+│   │   ├── provider-api.ts   # Ark/OpenAI-compatible 文本与多模态封装
 │   │   ├── minimax-client.ts # Minimax API客户端（全能力）
 │   │   ├── model-router.ts   # 模型路由与降级链配置
 │   │   └── ...               # 其他工具库
@@ -134,8 +134,8 @@
 - `src/lib/video-production/` - 视频生产引擎(v3.3): 编剧/导演/调度/模型路由/提示词/质检/DAG/输出
 - `src/lib/video-production/character-consistency-engine.ts` - 人物一致性引擎(v3.3): 视觉锚点/多场景变装/网格提示词生成器/FLF2V首尾帧/一致性校验/提示词扩展
 - `src/lib/video-monitor/` - AI视频监测系统: 状态机/任务监测/内容安全/重试容错/错误处理/Outbox事件
-- `src/lib/ai-service-adapter.ts` - AI服务统一适配器: 自动降级链(Minimax→Coze→Fallback)，熔断器机制
-- `src/lib/coze-api.ts` - Coze SDK封装: LLM对话(流式/非流式)、图像生成、视频生成、语音合成
+- `src/lib/ai-service-adapter.ts` - AI服务统一适配器: 请求级 BYOK 文本与图像调用，缺配置时明确失败
+- `src/lib/provider-api.ts` - Ark/OpenAI-compatible 文本与多模态调用封装
 - `src/lib/minimax-client.ts` - Minimax API客户端: 视频生成(Video-01)、图像生成、LLM对话(abab6.5s)、TTS语音合成
 - `src/lib/model-router.ts` - 模型路由配置: 4类服务(video/image/llm/tts)×3级降级链
 - `src/lib/video-production/platform-capabilities.ts` - 7大平台能力矩阵(Kling/Seedance/Veo3/Runway/Luma/Open-Sora/Vidu): API参数/能力标签/价格/最佳实践/T2I2V管线/FLF2V管线/VACE能力/MotionScore/AestheticScore/Wan提示词扩展

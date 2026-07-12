@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ========== 调用 LLM 生成脚本 ==========
-    const { LLMClient, Config, HeaderUtils } = await import('coze-coding-dev-sdk');
+    const { LLMClient, Config, HeaderUtils } = await import('@/lib/native-provider-sdk');
     const customHeaders = HeaderUtils.extractForwardHeaders(request.headers);
     const config = new Config();
     const client = new LLMClient(config, customHeaders);

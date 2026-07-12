@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { FrameExtractorClient, Config, HeaderUtils } from 'coze-coding-dev-sdk';
+import { FrameExtractorClient, Config, HeaderUtils } from '@/lib/native-provider-sdk';
 import { extractLastFrameWithLocalUpload } from '@/lib/video-frame-extraction';
 
 /**

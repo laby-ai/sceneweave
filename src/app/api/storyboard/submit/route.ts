@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createTask, startTask, getTask } from '@/lib/task-manager';
+import { createTask, startTask, getTask, publicTask } from '@/lib/task-manager';
 import { executeStoryboardTask } from '@/lib/storyboard-submit-executor';
 import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
 
@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
         qualityMode,  // ★ 新增：优化模式
         sfxConfig  // ★ 新增：特效音配置
       );
-      const task = getTask(taskId);
+      const task = publicTask(getTask(taskId));
       return NextResponse.json({ taskId, task });
     }
     

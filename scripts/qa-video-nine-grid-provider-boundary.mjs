@@ -10,7 +10,7 @@ const route = fs.readFileSync(path.join(root, routePath), 'utf8');
 const service = fs.readFileSync(path.join(root, servicePath), 'utf8');
 
 const failures = [];
-for (const pattern of [/coze-coding-dev-sdk/, /HeaderUtils/]) {
+for (const pattern of [/native-provider-sdk/, /HeaderUtils/]) {
   if (pattern.test(route)) {
     failures.push(`${routePath} must not contain ${pattern}`);
   }
@@ -25,7 +25,7 @@ for (const required of ['extractNineGridForwardHeaders']) {
   }
 }
 
-if (!service.includes('coze-coding-dev-sdk') || !service.includes('HeaderUtils')) {
+if (!service.includes('native-provider-sdk') || !service.includes('HeaderUtils')) {
   failures.push(`${servicePath} should own the nine-grid provider header boundary`);
 }
 

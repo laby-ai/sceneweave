@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { aiService } from '@/lib/ai-service-adapter';
 
-// 生成九宫格图片（9张连贯图片，自动降级: Minimax → Coze）
+// 生成九宫格图片（9张连贯图片，自动降级: Ark/BYOK）
 async function generateNineGridImages(
   prompt: string,
   previousLastFrame?: string,
@@ -35,7 +35,7 @@ async function generateNineGridImages(
     
     console.log(`[Storyboard] 生成第${i + 1}张图片，提示词:`, enhancedPrompt.substring(0, 100) + '...');
     
-    // 调用图片生成API（自动降级: Minimax → Coze）
+    // 调用图片生成API（自动降级: Ark/BYOK）
     try {
       const result = await aiService.generateImage({
         prompt: enhancedPrompt,

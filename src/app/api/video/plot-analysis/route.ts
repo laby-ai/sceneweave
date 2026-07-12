@@ -3,7 +3,7 @@
  * 融合 NarratoAI 的字幕分析 + 剧情提取 + 剪辑逻辑
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { cozeChat } from '@/lib/coze-api';
+import { providerChat } from '@/lib/provider-api';
 
 /** 剧情分析请求 */
 interface PlotAnalysisRequest {
@@ -89,7 +89,7 @@ async function analyzePlot(
 
   const userPrompt = `分析以下剧本并拆分为剧情段落：\n\n${script}`;
 
-  const response = await cozeChat([
+  const response = await providerChat([
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt },
   ]);

@@ -7,9 +7,7 @@ import type { GenerateAssetsRequest, GenerateAssetsResponse, FilmCharacter, Film
  */
 
 // 图像生成API端点
-const IMAGE_GENERATION_API = process.env.COZE_PROJECT_DOMAIN_DEFAULT
-  ? `https://${process.env.COZE_PROJECT_DOMAIN_DEFAULT}/api/image/generate`
-  : 'http://localhost:5000/api/image/generate';
+const IMAGE_GENERATION_API = `${process.env.HUIYING_INTERNAL_ORIGIN || 'http://127.0.0.1:5100'}/huiying/api/image/generate`;
 
 async function generateImage(prompt: string, seed?: number, referenceImage?: string): Promise<string | null> {
   try {

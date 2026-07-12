@@ -338,7 +338,7 @@ export async function generateSegmentedVideo(
   }
 
   if (!params.byokConnection) {
-    throw new Error('分段视频生成已关闭 Coze/Minimax fallback。请配置 BYOK 视频模型后再生成。');
+    throw new Error('分段视频生成已关闭 legacy provider fallback。请配置 BYOK 视频模型后再生成。');
   }
 
   // 根据请求总时长选择最优的片段时长和段数，使总时长尽量接近请求值

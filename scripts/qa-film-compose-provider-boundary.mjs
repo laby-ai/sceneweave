@@ -13,7 +13,7 @@ const storage = fs.readFileSync(path.join(root, storagePath), 'utf8');
 
 const failures = [];
 for (const pattern of [
-  /coze-coding-dev-sdk/,
+  /native-provider-sdk/,
   /VideoEditClient/,
   /TTSClient/,
   /S3Storage/,
@@ -42,16 +42,16 @@ for (const required of [
   }
 }
 
-if (!service.includes('coze-coding-dev-sdk') || !service.includes('VideoEditClient') || !service.includes('TTSClient')) {
-  failures.push(`${servicePath} should own the film compose video and speech provider SDK boundary`);
+if (!service.includes('native-provider-sdk') || !service.includes('VideoEditClient') || !service.includes('TTSClient')) {
+  failures.push(`${servicePath} should own the film compose native provider boundary`);
 }
 
 if (!service.includes('createHuiyingObjectStorage')) {
   failures.push(`${servicePath} should use the shared Huiying object storage boundary`);
 }
 
-if (!storage.includes('S3Storage') || !storage.includes('createHuiyingObjectStorage')) {
-  failures.push(`${storagePath} should own the Huiying object storage SDK boundary`);
+if (!storage.includes('@aws-sdk/client-s3') || !storage.includes('createHuiyingObjectStorage')) {
+  failures.push(`${storagePath} should own the AWS-compatible object storage boundary`);
 }
 
 if (failures.length > 0) {

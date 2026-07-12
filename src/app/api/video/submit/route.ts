@@ -180,7 +180,7 @@ export async function POST(request: NextRequest) {
     if (!byokConnection) {
       return NextResponse.json(
         {
-          error: '视频生成主链路已关闭 Minimax/Coze fallback。请在设置页配置 Ark Plan BYOK API Base、API Key 和视频模型后再生成。',
+          error: '视频生成主链路已关闭 legacy provider fallback。请在设置页配置 Ark Plan BYOK API Base、API Key 和视频模型后再生成。',
           provider: 'byok',
           usedRealKey: false,
           incurredCost: false,

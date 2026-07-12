@@ -7,6 +7,7 @@ import {
   completeTask,
   createTask,
   getTask,
+  publicTask,
   startTask,
   updateTaskProgress,
 } from '@/lib/task-manager';
@@ -172,7 +173,7 @@ export async function POST(request: NextRequest) {
       usedRealKey: false,
       incurredCost: false,
       taskId,
-      task: getTask(taskId),
+      task: publicTask(getTask(taskId)),
       directorChain,
       productionProject,
       flow,

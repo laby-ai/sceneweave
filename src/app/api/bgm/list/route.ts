@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { LLMClient, Config, HeaderUtils } from 'coze-coding-dev-sdk';
+import { LLMClient, Config, HeaderUtils } from '@/lib/native-provider-sdk';
 
 // ★ v2.0: BGM类型已迁移到集中定义
 import { BGM_TYPES_V2, getBgmTypeList, type BgmTypeId } from '@/constants/bgm-types';

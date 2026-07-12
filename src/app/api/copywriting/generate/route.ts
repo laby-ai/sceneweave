@@ -142,7 +142,7 @@ const STYLE_SYSTEM_PROMPTS: Record<string, string> = {
 
 export async function POST(request: NextRequest) {
   // 动态导入 LLMClient（避免 RSC 兼容性问题）— 放在函数作用域使 catch 块可访问 APIError
-  const { LLMClient, Config, HeaderUtils, APIError } = await import('coze-coding-dev-sdk');
+  const { LLMClient, Config, HeaderUtils, APIError } = await import('@/lib/native-provider-sdk');
 
   try {
     const { prompt, style = 'marketing', platform = 'general' } = await request.json();

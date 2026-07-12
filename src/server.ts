@@ -1,7 +1,7 @@
 import { createServer } from 'http';
 import next from 'next';
 
-const dev = process.env.COZE_PROJECT_ENV !== 'PROD';
+const dev = process.env.NODE_ENV !== 'production';
 const bindHost = process.env.BIND_HOST || (dev ? 'localhost' : '127.0.0.1');
 const port = parseInt(process.env.PORT || '5000', 10);
 
@@ -74,7 +74,7 @@ app.prepare().then(() => {
   server.listen(port, bindHost, () => {
     console.log(
       `> Server listening at http://${bindHost}:${port} as ${
-        dev ? 'development' : process.env.COZE_PROJECT_ENV
+        dev ? 'development' : 'production'
       }`,
     );
   });

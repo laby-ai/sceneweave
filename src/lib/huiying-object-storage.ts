@@ -1,3 +1,7 @@
+import { GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, S3Client } from '@aws-sdk/client-s3';
+import { Upload } from '@aws-sdk/lib-storage';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+
 export interface HuiyingObjectStorageRequirement {
   name: string;
   configured: boolean;
@@ -66,15 +70,95 @@ export function getHuiyingObjectStorageEnv(): HuiyingObjectStorageEnv {
 }
 
 export function createHuiyingObjectStorage() {
-  // Keep the SDK out of readiness/health routes; they only need env status.
-  // Load it only when an upload-capable path actually creates storage.
-  const { S3Storage } = require('coze-coding-dev-sdk') as typeof import('coze-coding-dev-sdk');
   const env = getHuiyingObjectStorageEnv();
-  return new S3Storage({
-    endpointUrl: env.endpointUrl,
-    accessKey: env.accessKeyId || '',
-    secretKey: env.secretAccessKey || '',
-    bucketName: env.bucketName,
+  if (!env.endpointUrl || !env.bucketName || !env.accessKeyId || !env.secretAccessKey) {
+    const unavailable = async () => {
+      throw new Error('object_storage_not_configured');
+    };
+    return {
+      uploadFile: unavailable,
+      uploadFromUrl: unavailable,
+      generatePresignedUrl: unavailable,
+      fileExists: unavailable,
+      listFiles: unavailable,
+    };
+  }
+  const client = new S3Client({
+    endpoint: env.endpointUrl,
     region: env.region,
+    forcePathStyle: true,
+    credentials: { accessKeyId: env.accessKeyId, secretAccessKey: env.secretAccessKey },
   });
+
+  return {
+    async uploadFile(input: { fileContent: Uint8Array | Buffer; fileName: string; contentType?: string }) {
+      const key = input.fileName.replace(/^\/+/, '');
+      await new Upload({
+        client,
+        params: {
+          Bucket: env.bucketName,
+          Key: key,
+          Body: input.fileContent,
+          ContentType: input.contentType,
+        },
+      }).done();
+      return key;
+    },
+    async uploadFromUrl(input: { url: string; timeout?: number }) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), input.timeout || 120_000);
+      try {
+        const response = await fetch(input.url, { signal: controller.signal });
+        if (!response.ok) throw new Error(`object_storage_source_http_${response.status}`);
+        const content = Buffer.from(await response.arrayBuffer());
+        if (content.length === 0) throw new Error('object_storage_source_empty');
+        const extension = response.headers.get('content-type')?.includes('image') ? 'png' : 'bin';
+        const key = `imports/${Date.now()}-${crypto.randomUUID()}.${extension}`;
+        await new Upload({
+          client,
+          params: {
+            Bucket: env.bucketName,
+            Key: key,
+            Body: content,
+            ContentType: response.headers.get('content-type') || 'application/octet-stream',
+          },
+        }).done();
+        return key;
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+    async generatePresignedUrl(input: { key: string; expireTime?: number }) {
+      return getSignedUrl(
+        client,
+        new GetObjectCommand({ Bucket: env.bucketName, Key: input.key }),
+        { expiresIn: input.expireTime || 3600 },
+      );
+    },
+    async fileExists(input: { key?: string; fileKey?: string }) {
+      const key = input.key || input.fileKey;
+      if (!key) return false;
+      try {
+        await client.send(new HeadObjectCommand({ Bucket: env.bucketName, Key: key }));
+        return true;
+      } catch (error) {
+        const status = (error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
+        if (status === 404) return false;
+        throw error;
+      }
+    },
+    async listFiles(input: { prefix?: string; maxKeys?: number } = {}) {
+      const result = await client.send(new ListObjectsV2Command({
+        Bucket: env.bucketName,
+        Prefix: input.prefix,
+        MaxKeys: input.maxKeys || 1000,
+      }));
+      const files = (result.Contents || []).map(item => ({
+          key: item.Key || '',
+          size: item.Size || 0,
+          lastModified: item.LastModified,
+        }));
+      return { keys: files.map(item => item.key), files };
+    },
+  };
 }

@@ -5,7 +5,7 @@
  */
 
 import { NextRequest } from 'next/server';
-import { cozeChatStream, type MultimodalMessage } from '@/lib/coze-api';
+import { providerChatStream, type MultimodalMessage } from '@/lib/provider-api';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
 
     for (const model of llmModels) {
       try {
-        stream = cozeChatStream(messages, {
+        stream = providerChatStream(messages, {
           model,
           temperature: 0.7,
         });

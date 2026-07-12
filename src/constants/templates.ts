@@ -80,7 +80,7 @@ export const PRESET_VIDEO_TEMPLATES: GenerationTemplate[] = [
     isOfficial: true,
     usageCount: 1256,
     createdAt: Date.now() - 86400000 * 30,
-    previewImage: 'https://coze-coding-project.tos.coze.site/coze_storage_7617364981763538985/image/generate_image_bcce3236-a050-46ca-b07c-154f223cd272.jpeg?sign=1806071230-aad963689e-0-5d17be30aa80093b573b99fd3b154da05a5ec8b746d6bcb8f009409619700d24',
+    previewImage: '/home/huiying-character-director.png',
   },
   {
     id: 'video-cyberpunk-city',
@@ -110,7 +110,7 @@ export const PRESET_VIDEO_TEMPLATES: GenerationTemplate[] = [
     isOfficial: true,
     usageCount: 987,
     createdAt: Date.now() - 86400000 * 25,
-    previewImage: 'https://coze-coding-project.tos.coze.site/coze_storage_7617364981763538985/image/generate_image_e12d2417-be0b-4fdd-af94-655f56066d2a.jpeg?sign=1806071232-6fc5059b26-0-82ac8ddde9506848c8a1a0d52ca350ec4f738dbf9bf34b990cc1aeeab15abb42',
+    previewImage: '/samples/cyber-city.jpg',
   },
   {
     id: 'video-cute-cat',
@@ -164,7 +164,7 @@ export const PRESET_VIDEO_TEMPLATES: GenerationTemplate[] = [
     isOfficial: true,
     usageCount: 2341,
     createdAt: Date.now() - 86400000 * 20,
-    previewImage: 'https://coze-coding-project.tos.coze.site/coze_storage_7617364981763538985/image/generate_image_296a35d6-07f9-45a9-91bf-2fc445c78f14.jpeg?sign=1806071230-f73864ed3d-0-fb5db010365daf23b8efaae00645feec078490b0093d4ce6559d0cc1fc253ba7',
+    previewImage: '/samples/sunset-beach.jpg',
   },
   {
     id: 'video-forest-magic',
@@ -194,7 +194,7 @@ export const PRESET_VIDEO_TEMPLATES: GenerationTemplate[] = [
     isOfficial: true,
     usageCount: 756,
     createdAt: Date.now() - 86400000 * 15,
-    previewImage: 'https://coze-coding-project.tos.coze.site/coze_storage_7617364981763538985/image/generate_image_9e5c9642-cdeb-4687-bcc6-72c3c0a7ebb1.jpeg?sign=1806071229-a8ada4779f-0-55d139b82c3c370b4beb95ee0d7c7e5806b6e31fbef7333f26b2828fe3a7c32a',
+    previewImage: '/samples/butterfly-rose.jpg',
   },
 ];
 

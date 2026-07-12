@@ -14,7 +14,7 @@ let storageClient: any | null | undefined;
 async function getFilmComposeRuntime(): Promise<FilmComposeRuntime> {
   if (!runtimePromise) {
     runtimePromise = (async () => {
-      const { Config, TTSClient, VideoEditClient } = await import('coze-coding-dev-sdk');
+      const { Config, TTSClient, VideoEditClient } = await import('@/lib/native-provider-sdk');
       const config = new Config();
 
       return {

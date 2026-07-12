@@ -76,7 +76,7 @@ try {
     env: {
       ...process.env,
       NODE_ENV: 'production',
-      COZE_PROJECT_ENV: 'PROD',
+      NODE_ENV: 'production',
       PORT: String(appPort),
       HOSTNAME: '127.0.0.1',
       NEXT_PUBLIC_BASE_PATH: '/huiying',

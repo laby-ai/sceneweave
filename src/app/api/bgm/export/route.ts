@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { VideoEditClient, Config, HeaderUtils } from 'coze-coding-dev-sdk';
+import { VideoEditClient, Config, HeaderUtils } from '@/lib/native-provider-sdk';
 import { createHuiyingObjectStorage } from '@/lib/huiying-object-storage';
 
 const videoEditConfig = new Config();
