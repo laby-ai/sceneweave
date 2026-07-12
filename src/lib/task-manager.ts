@@ -6,6 +6,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import path from 'path';
+import { emitOperationalSystemEvent, emitTaskStateEvent } from './operational-observability';
 
 export type TaskType = 'video' | 'image' | 'copywriting' | 'poster' | 'avatar' | 'storyboard';
 export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
@@ -236,7 +237,10 @@ function loadTasksFromFile(): Map<string, BackgroundTask> {
     
     return taskMap;
   } catch (error) {
-    console.error('[TaskManager] 从文件加载任务失败:', error);
+    emitOperationalSystemEvent('task.store_load_failed', {
+      level: 'error',
+      errorType: error instanceof Error ? error.name : 'UnknownError',
+    });
     return new Map();
   }
 }
@@ -264,7 +268,10 @@ function saveTasksToFile(tasks: Map<string, BackgroundTask>) {
     taskCache = new Map(tasks);
     lastLoadTime = Date.now();
   } catch (error) {
-    console.error('[TaskManager] 保存任务到文件失败:', error);
+    emitOperationalSystemEvent('task.store_save_failed', {
+      level: 'error',
+      errorType: error instanceof Error ? error.name : 'UnknownError',
+    });
     throw error;
   }
 }
@@ -330,7 +337,7 @@ export function createTask(
   store.set(taskId, task);
   saveTasksToFile(store);
   
-  console.log(`[TaskManager] 创建任务: ${taskId}, 类型: ${type}`);
+  emitTaskStateEvent({ owner: task.owner, taskId, taskType: type, status: 'queued' });
   return taskId;
 }
 
@@ -410,7 +417,6 @@ export function updateTask(
   const task = store.get(taskId);
   
   if (!task) {
-    console.warn(`[TaskManager] 更新任务失败，任务不存在: ${taskId}`);
     return undefined;
   }
 
@@ -433,19 +439,19 @@ export function startTask(taskId: string, abortController?: AbortController): bo
   const task = store.get(taskId);
   
   if (!task) {
-    console.warn(`[TaskManager] 启动任务失败，任务不存在: ${taskId}`);
     return false;
   }
 
-  store.set(taskId, {
+  const runningTask: BackgroundTask = {
     ...task,
     status: 'running',
     startedAt: Date.now(),
     abortController: abortController || new AbortController(),
-  });
+  };
+  store.set(taskId, runningTask);
   
   saveTasksToFile(store);
-  console.log(`[TaskManager] 任务开始运行: ${taskId}`);
+  emitTaskStateEvent({ owner: runningTask.owner, taskId, taskType: task.type, status: 'running' });
   return true;
 }
 
@@ -457,11 +463,10 @@ export function completeTask(taskId: string, result: TaskResult): boolean {
   const task = store.get(taskId);
   
   if (!task) {
-    console.warn(`[TaskManager] 完成任务失败，任务不存在: ${taskId}`);
     return false;
   }
 
-  store.set(taskId, {
+  const completedTask: BackgroundTask = {
     ...task,
     status: 'completed',
     progress: 100,
@@ -469,10 +474,17 @@ export function completeTask(taskId: string, result: TaskResult): boolean {
     result,
     completedAt: Date.now(),
     abortController: undefined,
-  });
+  };
+  store.set(taskId, completedTask);
   
   saveTasksToFile(store);
-  console.log(`[TaskManager] 任务完成: ${taskId}`);
+  emitTaskStateEvent({
+    owner: completedTask.owner,
+    taskId,
+    taskType: task.type,
+    status: 'succeeded',
+    startedAt: task.startedAt,
+  });
   return true;
 }
 
@@ -484,21 +496,28 @@ export function failTask(taskId: string, error: string): boolean {
   const task = store.get(taskId);
   
   if (!task) {
-    console.warn(`[TaskManager] 标记任务失败失败，任务不存在: ${taskId}`);
     return false;
   }
 
-  store.set(taskId, {
+  const failedTask: BackgroundTask = {
     ...task,
     status: 'failed',
     stage: '生成失败',
     error,
     completedAt: Date.now(),
     abortController: undefined,
-  });
+  };
+  store.set(taskId, failedTask);
   
   saveTasksToFile(store);
-  console.log(`[TaskManager] 任务失败: ${taskId}, 错误: ${error}`);
+  emitTaskStateEvent({
+    owner: failedTask.owner,
+    taskId,
+    taskType: task.type,
+    status: 'failed',
+    startedAt: task.startedAt,
+    errorType: 'TaskFailure',
+  });
   return true;
 }
 
@@ -510,7 +529,6 @@ export function cancelTask(taskId: string): boolean {
   const task = store.get(taskId);
   
   if (!task) {
-    console.warn(`[TaskManager] 取消任务失败，任务不存在: ${taskId}`);
     return false;
   }
 
@@ -519,16 +537,23 @@ export function cancelTask(taskId: string): boolean {
     task.abortController.abort();
   }
 
-  store.set(taskId, {
+  const cancelledTask: BackgroundTask = {
     ...task,
     status: 'cancelled',
     stage: '已取消',
     completedAt: Date.now(),
     abortController: undefined,
-  });
+  };
+  store.set(taskId, cancelledTask);
   
   saveTasksToFile(store);
-  console.log(`[TaskManager] 任务已取消: ${taskId}`);
+  emitTaskStateEvent({
+    owner: cancelledTask.owner,
+    taskId,
+    taskType: task.type,
+    status: 'cancelled',
+    startedAt: task.startedAt,
+  });
   return true;
 }
 
@@ -541,7 +566,6 @@ export function deleteTask(taskId: string): boolean {
   
   if (existed) {
     saveTasksToFile(store);
-    console.log(`[TaskManager] 删除任务: ${taskId}`);
   }
   
   return existed;
@@ -556,13 +580,11 @@ export function retryTask(taskId: string): BackgroundTask | undefined {
   const task = store.get(taskId);
 
   if (!task) {
-    console.warn(`[TaskManager] 重试任务失败，任务不存在: ${taskId}`);
     return undefined;
   }
 
   // 只有失败或已取消的任务可以重试
   if (task.status !== 'failed' && task.status !== 'cancelled') {
-    console.warn(`[TaskManager] 重试任务失败，任务状态不允许重试: ${taskId}, status=${task.status}`);
     return undefined;
   }
 
@@ -588,7 +610,7 @@ export function retryTask(taskId: string): BackgroundTask | undefined {
   store.set(taskId, updatedTask);
   saveTasksToFile(store);
 
-  console.log(`[TaskManager] 重试任务: ${taskId}, 第${retryCount}次重试`);
+  emitTaskStateEvent({ owner: updatedTask.owner, taskId, taskType: task.type, status: 'queued' });
   return updatedTask;
 }
 
@@ -676,7 +698,7 @@ export function cleanupExpiredTasks(): number {
   const changed = expiredTasks.length + zombieTasks.length + stalePending.length;
   if (changed > 0) {
     saveTasksToFile(store);
-    console.log(`[TaskManager] 清理 ${expiredTasks.length} 过期 / ${zombieTasks.length} 僵尸 / ${stalePending.length} 失效pending`);
+    emitOperationalSystemEvent('task.cleanup_completed', { count: changed });
   }
 
   return changed;
@@ -691,17 +713,14 @@ if (typeof globalThis !== 'undefined') {
 }
 
 // 服务端启动时：加载任务并恢复状态
-console.log('[TaskManager] 任务管理器初始化，存储路径:', TASKS_FILE);
+emitOperationalSystemEvent('task.store_initialized', {});
 
 // 启动时先清理一次，避免重启后历史僵尸任务继续显示为运行中。
 cleanupExpiredTasks();
 
 // 加载任务并统计
 const store = getTaskStore();
-const runningCount = Array.from(store.values()).filter(t => t.status === 'running').length;
-const pendingCount = Array.from(store.values()).filter(t => t.status === 'pending').length;
 
 if (store.size > 0) {
-  console.log(`[TaskManager] 已加载 ${store.size} 个历史任务（${runningCount} 个运行中，${pendingCount} 个等待中）`);
-  console.log(`[TaskManager] 运行中的任务将继续显示，如果已超时会被自动清理`);
+  emitOperationalSystemEvent('task.store_loaded', { count: store.size });
 }

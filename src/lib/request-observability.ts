@@ -1,9 +1,19 @@
 import { randomUUID } from 'node:crypto';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 type LogWriter = (line: string) => void;
 
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{8,128}$/;
+const requestContext = new AsyncLocalStorage<{ requestId: string }>();
+
+export function runWithRequestObservationContext<T>(requestId: string, operation: () => T): T {
+  return requestContext.run({ requestId }, operation);
+}
+
+export function currentRequestId(): string | undefined {
+  return requestContext.getStore()?.requestId;
+}
 
 function requestPath(req: IncomingMessage): string {
   try {

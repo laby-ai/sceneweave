@@ -1,8 +1,19 @@
 import { createServer } from 'http';
 import next from 'next';
-import { observeRequest } from './lib/request-observability';
+import { observeRequest, runWithRequestObservationContext } from './lib/request-observability';
+import { getOperationalObservabilityReadiness } from './lib/operational-observability';
 
 const dev = process.env.NODE_ENV !== 'production';
+if (!dev && !getOperationalObservabilityReadiness().ready) {
+  console.error(JSON.stringify({
+    timestamp: new Date().toISOString(),
+    level: 'error',
+    service: 'huiying',
+    event: 'observability_startup_blocked',
+    errorType: 'ObservabilityIdentityHashUnavailable',
+  }));
+  process.exit(78);
+}
 const bindHost = process.env.BIND_HOST || (dev ? 'localhost' : '127.0.0.1');
 const port = parseInt(process.env.PORT || '5000', 10);
 
@@ -51,23 +62,25 @@ const ARK_VID = (process.env.ARK_VIDEO_MODEL || 'doubao-seedance-1-5-pro-251215'
 app.prepare().then(() => {
   const server = createServer(async (req, res) => {
     const observation = observeRequest(req, res);
-    try {
-      // Inject default ARK BYOK headers for direct Volcano access (not agentplan).
-      if (ARK_KEY && !req.headers['x-yh-api-key']) {
-        req.headers['x-yh-provider'] = 'ark-plan';
-        req.headers['x-yh-api-base'] = ARK_BASE;
-        req.headers['x-yh-api-key'] = ARK_KEY;
-        req.headers['x-yh-model'] = ARK_MODEL;
-        req.headers['x-yh-image-model'] = ARK_IMG;
-        req.headers['x-yh-video-model'] = ARK_VID;
+    await runWithRequestObservationContext(observation.requestId, async () => {
+      try {
+        // Inject default ARK BYOK headers for direct Volcano access (not agentplan).
+        if (ARK_KEY && !req.headers['x-yh-api-key']) {
+          req.headers['x-yh-provider'] = 'ark-plan';
+          req.headers['x-yh-api-base'] = ARK_BASE;
+          req.headers['x-yh-api-key'] = ARK_KEY;
+          req.headers['x-yh-model'] = ARK_MODEL;
+          req.headers['x-yh-image-model'] = ARK_IMG;
+          req.headers['x-yh-video-model'] = ARK_VID;
+        }
+        const parsedUrl = parseRequestUrl(req.url || '/', `http://${req.headers.host || `${bindHost}:${port}`}`);
+        await handle(req, res, parsedUrl);
+      } catch (err) {
+        observation.logError(err);
+        res.statusCode = 500;
+        res.end('Internal server error');
       }
-      const parsedUrl = parseRequestUrl(req.url || '/', `http://${req.headers.host || `${bindHost}:${port}`}`);
-      await handle(req, res, parsedUrl);
-    } catch (err) {
-      observation.logError(err);
-      res.statusCode = 500;
-      res.end('Internal server error');
-    }
+    });
   });
   server.once('error', err => {
     console.error(err);
