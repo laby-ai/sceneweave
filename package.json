@@ -107,6 +107,7 @@
     "test:loopback-listener-contract": "node scripts/test-loopback-listener-contract.mjs",
     "test:request-observability": "tsx scripts/test-request-observability.ts",
     "test:secure-task-observability": "tsx scripts/test-secure-task-observability.ts",
+    "test:service-metrics": "tsx scripts/test-service-metrics.ts",
     "test:film-script-handoff": "tsx scripts/test-film-script-handoff.ts",
     "qa:entrypoint-routes": "node scripts/qa-entrypoint-routes.mjs",
     "qa:architecture-guard": "node scripts/qa-architecture-guard.mjs",

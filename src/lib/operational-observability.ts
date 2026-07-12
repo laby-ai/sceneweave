@@ -1,6 +1,7 @@
 import { createHmac, randomUUID } from 'node:crypto';
 
 import { currentRequestId } from './request-observability';
+import { serviceMetrics } from './service-metrics';
 
 type LogWriter = (line: string) => void;
 
@@ -69,6 +70,14 @@ function writeEvent(
     ...fields,
   }).filter(([, value]) => value !== undefined));
   writeLog(JSON.stringify(payload));
+  if (event.startsWith('task.') || event.startsWith('provider.')) {
+    const state = typeof fields.status === 'string'
+      ? fields.status
+      : event.slice(event.indexOf('.') + 1);
+    const operation = event.startsWith('provider.') ? 'video_provider' : 'generation_task';
+    const durationSeconds = typeof fields.durationMs === 'number' ? fields.durationMs / 1000 : undefined;
+    serviceMetrics.observeOperation(operation, state, durationSeconds);
+  }
 }
 
 export function emitTaskStateEvent(
