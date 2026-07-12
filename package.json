@@ -112,6 +112,7 @@
     "test:film-script-handoff": "tsx scripts/test-film-script-handoff.ts",
     "qa:entrypoint-routes": "node scripts/qa-entrypoint-routes.mjs",
     "qa:architecture-guard": "node scripts/qa-architecture-guard.mjs",
+    "qa:spaghetti-growth-guard": "node scripts/qa-spaghetti-growth-guard.mjs",
     "qa:spaghetti-growth": "node scripts/qa-spaghetti-growth-guard.mjs",
     "qa:iteration-scorecard": "node scripts/qa-iteration-scorecard.mjs",
     "qa:production-readiness": "node scripts/qa-production-readiness.mjs",

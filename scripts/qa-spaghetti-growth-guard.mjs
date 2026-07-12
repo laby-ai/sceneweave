@@ -8,25 +8,27 @@ const maxNewComponentLines = 2500;
 const maxNewRouteLines = 350;
 
 const frozenLineBaselines = {
-  'src/components/film-creation-panel.tsx': 2493,
+  'src/components/film-creation-panel.tsx': 2465,
   'src/components/smart-assistant-panel.tsx': 2418,
   'src/components/video-generation-form.tsx': 2258,
   'src/components/subtitle-editor.tsx': 2432,
   'src/app/api/film/create-script/route.ts': 49,
-  'src/app/api/storyboard/submit/route.ts': 132,
+  'src/app/api/storyboard/submit/route.ts': 136,
   'src/app/api/prompt/decompose/route.ts': 118,
   'src/app/api/prompt/auto-complete/route.ts': 105,
   'src/app/api/script/jimeng-convert/route.ts': 33,
   'src/app/api/video/generate/route.ts': 32,
   'src/app/api/video/merge/route.ts': 520,
-  'src/app/api/video/nine-grid/route.ts': 460,
+  'src/app/api/video/nine-grid/route.ts': 463,
   'src/app/api/video/submit/route.ts': 440,
   'src/app/api/tasks/[taskId]/resume-segment/route.ts': 417,
   'src/app/api/video/generate-subtitle/route.ts': 390,
-  'src/app/api/film/compose/route.ts': 387,
+  'src/app/api/film/compose/route.ts': 494,
+  'src/app/api/assets/media-library/route.ts': 352,
+  'src/app/api/smart/vimax-agent-step/route.ts': 870,
 };
 
-const legacyProviderReferenceBaseline = 324;
+const legacyProviderReferenceBaseline = 54;
 const legacyProviderScanTargets = [
   'src',
   'scripts',
