@@ -76,6 +76,14 @@ jobs:
           pnpm run test:film-compose-client
           pnpm run test:film-compose-durability
 
+      - name: Check production media and release contracts
+        run: |
+          pnpm run test:film-media-preview
+          pnpm run test:media-library-preview-fastpath
+          pnpm run test:home-gallery-freshness
+          pnpm run test:release-promotion-contract
+          bash -n deploy/linux/promote-release.sh
+
       - name: Build production artifacts
         run: |
           pnpm next build
