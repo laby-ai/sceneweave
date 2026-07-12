@@ -61,6 +61,37 @@ if (fs.existsSync(taskManagerPath)) {
   }
 }
 
+const filmPanelPath = path.join(srcRoot, 'components', 'film-creation-panel.tsx');
+const filmComposeClientPath = path.join(srcRoot, 'lib', 'film-compose-client.ts');
+if (fs.existsSync(filmPanelPath)) {
+  const filmPanel = read(filmPanelPath);
+  if (!/requestFilmComposition/.test(filmPanel) || /clientApiRequest\(['"]\/api\/film\/compose/.test(filmPanel)) {
+    hardViolations.push({
+      file: rel(filmPanelPath),
+      rule: 'film-panel-must-delegate-compose-transport',
+      message: 'Film UI must use the compose client owner instead of parsing HTTP/SSE itself.',
+    });
+  }
+}
+
+if (fs.existsSync(filmComposeClientPath)) {
+  const filmComposeClient = read(filmComposeClientPath);
+  if (matchesAny(filmComposeClient, [
+    /from ['"]@\/components\//,
+    /from ['"]@\/app\//,
+    /task-manager/,
+    /account-ai-billing/,
+    /byok-provider/,
+    /native-provider-sdk/,
+  ])) {
+    hardViolations.push({
+      file: rel(filmComposeClientPath),
+      rule: 'film-compose-client-must-remain-transport-only',
+      message: 'Compose client may own request/SSE parsing, not UI, task, billing, or provider execution.',
+    });
+  }
+}
+
 for (const file of files) {
   const relative = rel(file);
   const text = read(file);

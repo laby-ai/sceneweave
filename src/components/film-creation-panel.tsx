@@ -29,7 +29,7 @@ import { getBgmTypeList, matchBgmByKeywords, type BgmTypeId } from '@/constants/
 import type { CharacterAnchor, GridPromptInput, ConsistencyCheckResult } from '@/lib/video-production/character-consistency-engine';
 import { buildFilmAnchorContext, buildFilmReferenceImages } from '@/lib/film-reference-context';
 import { clientApiRequest } from '@/lib/client-api';
-import { filmComposeFailureMessage, parseFilmComposeStreamLine } from '@/lib/film-compose-stream';
+import { requestFilmComposition } from '@/lib/film-compose-client';
 import { FilmEditableField, type FilmEditableFieldProps } from '@/components/film/film-editable-field';
 import { FilmChatMessage } from '@/components/film/film-creation-chat';
 import {
@@ -1889,7 +1889,6 @@ export function FilmCreationPanel({
     addWorkflowMsg('assistant', `开始合成影片，共 ${shotCards.length} 个镜头...`, undefined, 'progress');
 
     try {
-      // 构建合成请求数据：直接传递已有视频URL和字幕，包含剧本情感信息
       const composeShots = shotCards.map(card => ({
         id: card.id,
         videoUrl: card.videoUrl!,
@@ -1900,99 +1899,40 @@ export function FilmCreationPanel({
         shotType: card.shotType || '',
         cameraMovement: card.cameraMovement || '',
       }));
-
-      const res = await clientApiRequest('/api/film/compose', {
-        method: 'POST',
-        body: JSON.stringify({
-          shots: composeShots,
-          requireDurableOutput: true,
-          enableSubtitle: true,
-          enableVoice: true,
-          bgmType,
-          bgmVolume,
-          sfxType,
-          sfxVolume,
-          style: visualStyle || style,
-        }),
-        timeoutMs: 10 * 60_000,
+      const finalData = await requestFilmComposition({
+        shots: composeShots,
+        enableSubtitle: true,
+        enableVoice: true,
+        bgmType,
+        bgmVolume,
+        sfxType,
+        sfxVolume,
+        style: visualStyle || style,
+      }, {
+        onProgress: event => setProgressMsg(`${event.message} (${event.progress}%)`),
       });
 
-      if (!res.ok) {
-        const payload = await res.json().catch(() => null);
-        throw new Error(filmComposeFailureMessage(payload, res.status));
-      }
-
-      // 单视频直接返回JSON
-      if (shotCards.length === 1) {
-        const data = await res.json();
-        if (data.success === true && data.videoUrl) {
-          setFinalVideoUrl(data.videoUrl);
-          setComposeStatus('completed');
-          onVideoGenerated?.(data.videoUrl);
-          addWorkflowMsg('assistant', data.message || '影片合成完成 ✅', undefined, 'success', '可以预览或下载影片');
-        } else {
-          throw new Error(data.error || '合成服务未返回最终视频');
-        }
-        return;
-      }
-
-      // 多视频：SSE流式读取进度
-      const reader = res.body?.getReader();
-      if (!reader) throw new Error('无法读取响应流');
-
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let finalData: { videoUrl: string; message: string } | null = null;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const event = parseFilmComposeStreamLine(line);
-            if (event.type === 'complete') {
-              finalData = { videoUrl: event.videoUrl, message: event.message };
-            } else if (event.type === 'error') {
-              throw new Error(event.message);
-            } else if (event.type === 'progress') {
-              setProgressMsg(`${event.message} (${event.progress}%)`);
-            }
-          }
-        }
-      }
-
-      // 处理最终结果
-      if (finalData?.videoUrl) {
-        setFinalVideoUrl(finalData.videoUrl as string);
-        setComposeStatus('completed');
-        onVideoGenerated?.(finalData.videoUrl as string);
-        addWorkflowMsg('assistant', finalData.message, undefined, 'success', '可以预览或下载影片');
-        // 保存历史 - 合成完成
-        upsertFilmHistory({
-          title: (script?.title || inputText.trim()).slice(0, 50),
-          prompt: inputText.trim(),
-          script: script as unknown as Record<string, unknown>,
-          phase: 'compose',
-          entityCards: entityCards.map(entityCardToSnapshot),
-          chatMessages: chatMessages.map(m => ({
-            id: m.id,
-            role: m.role,
-            content: m.content,
-            timestamp: m.timestamp,
-          })),
-          filmVisualStyle: filmVisualStyle,
-          imagesGenerated: entityCards.filter(c => c.imageUrl).length,
-          videosGenerated: entityCards.filter(c => c.videoUrl).length,
-          finalVideoUrl: finalData.videoUrl as string,
-        });
-      } else {
-        throw new Error('合成服务未返回最终视频');
-      }
+      setFinalVideoUrl(finalData.videoUrl);
+      setComposeStatus('completed');
+      onVideoGenerated?.(finalData.videoUrl);
+      addWorkflowMsg('assistant', finalData.message, undefined, 'success', '可以预览或下载影片');
+      upsertFilmHistory({
+        title: (script?.title || inputText.trim()).slice(0, 50),
+        prompt: inputText.trim(),
+        script: script as unknown as Record<string, unknown>,
+        phase: 'compose',
+        entityCards: entityCards.map(entityCardToSnapshot),
+        chatMessages: chatMessages.map(m => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          timestamp: m.timestamp,
+        })),
+        filmVisualStyle,
+        imagesGenerated: entityCards.filter(c => c.imageUrl).length,
+        videosGenerated: entityCards.filter(c => c.videoUrl).length,
+        finalVideoUrl: finalData.videoUrl,
+      });
     } catch (err) {
       setComposeStatus('idle');
       setFinalVideoUrl(null);

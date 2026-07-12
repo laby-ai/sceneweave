@@ -41,6 +41,11 @@ jobs:
       - name: Verify CI contract
         run: pnpm run test:ci-workflow
 
+      - name: Check architecture ownership and growth
+        run: |
+          pnpm run qa:architecture-guard
+          pnpm run qa:spaghetti-growth-guard
+
       - name: Check TypeScript
         run: pnpm run ts-check
 
@@ -67,7 +72,9 @@ jobs:
         run: pnpm run qa:smart-vimax-agent-render
 
       - name: Check compose durability
-        run: pnpm run test:film-compose-durability
+        run: |
+          pnpm run test:film-compose-client
+          pnpm run test:film-compose-durability
 
       - name: Build production artifacts
         run: |

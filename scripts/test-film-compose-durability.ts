@@ -60,6 +60,7 @@ assert.equal(filmComposeFailureMessage(null, 502), '合成请求失败（HTTP 50
 
 const route = readFileSync(new URL('../src/app/api/film/compose/route.ts', import.meta.url), 'utf8');
 const panel = readFileSync(new URL('../src/components/film-creation-panel.tsx', import.meta.url), 'utf8');
+const client = readFileSync(new URL('../src/lib/film-compose-client.ts', import.meta.url), 'utf8');
 assert.match(route, /getFilmComposeDurabilityReadiness/);
 assert.match(route, /getFinalVideoStoreReadiness/);
 assert.match(route, /mergeMemberFinalVideos/);
@@ -68,8 +69,9 @@ assert.ok(
   route.indexOf('getFilmComposeDurabilityReadiness') < route.indexOf('new ReadableStream'),
   'durability must choose a persistent path before starting the compose stream',
 );
-assert.match(panel, /requireDurableOutput:\s*true/);
 assert.match(panel, /filmComposeHistoryFingerprint/);
-assert.match(panel, /filmComposeFailureMessage/);
+assert.match(panel, /requestFilmComposition/);
+assert.match(client, /requireDurableOutput:\s*true/);
+assert.match(client, /filmComposeFailureMessage/);
 
 console.log('film compose durability contract passed');
