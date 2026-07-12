@@ -16,6 +16,7 @@ Suggested GitHub About:
 ## 产品化优化约束
 
 - 修改 Film、Canvas、任务、provider、媒体或 compose 边界前，先阅读 [架构 owner 与依赖图](docs/architecture-ownership.md)。架构方向和既有大文件增长预算由 CI 强制检查。
+- 四域仓库边界和 Gitee 工程标尺见 [工程对齐说明](docs/engineering-alignment.md)。
 - 生产发布使用 [Linux 原子发布与回滚手册](docs/deployment-runbook.md)，候选不得携带环境密钥或 release-local 用户产物。
 - 功能保全清单见 [docs/product-function-retention.md](docs/product-function-retention.md)。后续前端改版可以调整信息架构和视觉表达，但必须保留 AI 视频、图片生成、绘影精灵、图文/素材、影视创作、任务中心、工作流画布、研究页和设置/BYOK 等入口。
 - 设置页提供用户自带密钥模式：用户填写 `API Base` / `API Key` / 默认模型后保存在当前浏览器，并通过 `/api/provider/test` 验证 OpenAI-compatible 服务。
