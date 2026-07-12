@@ -52,6 +52,7 @@ jobs:
           pnpm run test:request-observability
           pnpm run test:secure-task-observability
           pnpm run test:service-metrics
+          pnpm run test:long-task-admission
           pnpm run test:member-subject-library
           pnpm run test:member-final-video-store
           pnpm run test:member-task-isolation

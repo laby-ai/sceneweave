@@ -81,6 +81,7 @@ export async function reserveAIUsage(options: AIUsageReservationOptions): Promis
     productArea: options.productArea,
     modelName: options.modelName,
     units: reservedUnits,
+    expiresAt: new Date(Date.now() + Math.max(300, Number(process.env.ACCOUNT_RESERVATION_TTL_SECONDS || 3600)) * 1000).toISOString(),
   });
   const reservationId = response.reservation?.id;
   if (!reservationId) return null;

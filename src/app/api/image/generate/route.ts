@@ -4,7 +4,7 @@ import { DegradeError } from '@/lib/model-router';
 import { createTask, startTask, updateTaskProgress, completeTask, failTask } from '@/lib/task-manager';
 import { extractBYOKConnection, type BYOKConnection } from '@/lib/byok-provider';
 import { BYOKApiBaseError } from '@/lib/byok-url';
-import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
+import { resolveTaskIdempotencyKey, resolveTaskOwnerFromRequest, taskAdmissionErrorResponse } from '@/lib/task-access';
 
 interface ImageGenerateBody {
   prompt?: string;
@@ -156,11 +156,20 @@ export async function POST(request: NextRequest) {
     const taskId = createTask({
       type: 'image',
       owner,
-      params: { prompt, size, materials, n, image },
+      params: {
+        prompt,
+        size,
+        materials,
+        n,
+        image,
+        idempotencyKey: resolveTaskIdempotencyKey(request, 'image-generate', `${prompt}|${size}|${model || ''}`),
+      },
     });
 
     // 启动后台任务
-    startTask(taskId);
+    if (!startTask(taskId)) {
+      return NextResponse.json({ success: true, taskId, replayed: true, message: '相同任务已提交，请查看已有任务进度。' });
+    }
 
     // 异步执行图像生成（带自动降级）
     (async () => {
@@ -212,6 +221,8 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
+    const admissionResponse = taskAdmissionErrorResponse(error);
+    if (admissionResponse) return admissionResponse;
     console.error('[Image Generate] 图像生成错误:', error);
 
     if (error instanceof BYOKApiBaseError) {

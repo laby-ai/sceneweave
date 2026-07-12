@@ -6,7 +6,7 @@ import {
 } from '@/lib/byok-provider';
 import { buildBYOKConfigErrorPayload, isBYOKConfigError } from '@/lib/byok-response';
 import { runBYOKVideoSubmit } from '@/lib/video-submit-provider';
-import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
+import { resolveTaskIdempotencyKey, resolveTaskOwnerFromRequest, taskAdmissionErrorResponse } from '@/lib/task-access';
 // 导入视频后处理工具
 import {
   processBackgroundMusic,
@@ -186,6 +186,7 @@ export async function POST(request: NextRequest) {
       type: 'video',
       owner,
       params: {
+        idempotencyKey: resolveTaskIdempotencyKey(request, 'video-submit', `${styleLockedPrompt}|${duration}|${videoModel || ''}`),
         prompt: styleLockedPrompt.trim(),
         duration: duration,
         materials: materials,
@@ -200,7 +201,9 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    startTask(taskId);
+    if (!startTask(taskId)) {
+      return NextResponse.json({ taskId, replayed: true, message: '相同任务已提交，请查看已有任务进度。' }, { status: 200 });
+    }
 
     // 异步执行（BYOK-only，不回退到服务端默认模型）
     (async () => {
@@ -387,7 +390,9 @@ export async function POST(request: NextRequest) {
       message: '视频生成任务已创建'
     });
 
-  } catch {
+  } catch (error) {
+    const admissionResponse = taskAdmissionErrorResponse(error);
+    if (admissionResponse) return admissionResponse;
     return NextResponse.json(
       { error: '服务器错误，请稍后重试' },
       { status: 500 }

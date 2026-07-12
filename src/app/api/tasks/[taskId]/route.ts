@@ -3,9 +3,10 @@ import { cancelTask, getTaskForOwner, retryTask } from '@/lib/task-manager';
 import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
 
 function publicTask(task: NonNullable<ReturnType<typeof getTaskForOwner>>) {
-  const { abortController: _abortController, owner: _owner, ...taskInfo } = task;
+  const { abortController: _abortController, owner: _owner, idempotencyHash: _idempotencyHash, ...taskInfo } = task;
   void _abortController;
   void _owner;
+  void _idempotencyHash;
   return taskInfo;
 }
 

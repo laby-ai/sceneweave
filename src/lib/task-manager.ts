@@ -4,12 +4,23 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
+import { createHash } from 'node:crypto';
 import fs from 'fs';
 import path from 'path';
 import { emitOperationalSystemEvent, emitTaskStateEvent } from './operational-observability';
 
 export type TaskType = 'video' | 'image' | 'copywriting' | 'poster' | 'avatar' | 'storyboard';
 export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+
+export class TaskAdmissionError extends Error {
+  readonly status = 429;
+  readonly code = 'member_task_concurrency_exceeded';
+
+  constructor() {
+    super('当前运行中的生成任务较多，请等待一个任务完成后再试。');
+    this.name = 'TaskAdmissionError';
+  }
+}
 
 export interface TaskOwner {
   tenantId: string;
@@ -159,6 +170,7 @@ export interface BackgroundTask {
   lastUpdatedAt?: number; // 最后更新时间，用于判断僵尸任务
   // 服务端可信会话派生的所有权。旧任务没有 owner 时一律对用户接口隐藏。
   owner?: TaskOwner;
+  idempotencyHash?: string;
   // 注意：abortController 不能序列化，不存储到文件
   abortController?: AbortController;
 }
@@ -170,6 +182,7 @@ const TASKS_DIR = path.dirname(TASKS_FILE);
 // 内存缓存（用于提高性能，但会以文件为准）
 let taskCache: Map<string, BackgroundTask> | null = null;
 let lastLoadTime = 0;
+let startupRecoveryPending = true;
 const CACHE_TTL = 1000; // 缓存1秒
 const SAVE_RETRY_COUNT = 8;
 const SAVE_RETRY_DELAY_MS = 80;
@@ -285,6 +298,26 @@ function getTaskStore(): Map<string, BackgroundTask> {
   // 如果缓存过期或不存在，从文件加载
   if (!taskCache || now - lastLoadTime > CACHE_TTL) {
     taskCache = loadTasksFromFile();
+    if (startupRecoveryPending) {
+      startupRecoveryPending = false;
+      const timestamp = Date.now();
+      let recovered = false;
+      for (const [taskId, task] of taskCache) {
+        if (task.status === 'pending' || task.status === 'running') {
+          taskCache.set(taskId, {
+            ...task,
+            status: 'failed',
+            stage: '服务重启，任务已安全停止',
+            error: 'task_interrupted_by_restart',
+            completedAt: timestamp,
+            lastUpdatedAt: timestamp,
+            abortController: undefined,
+          });
+          recovered = true;
+        }
+      }
+      if (recovered) saveTasksToFile(taskCache);
+    }
     lastLoadTime = now;
   }
   
@@ -321,19 +354,40 @@ export function createTask(
   if (!owner && typeof taskConfig.parentTaskId === 'string') {
     owner = getTaskStore().get(taskConfig.parentTaskId)?.owner;
   }
+
+  const rawIdempotencyKey = typeof taskConfig.idempotencyKey === 'string' ? taskConfig.idempotencyKey.trim() : '';
+  const idempotencyHash = owner && /^[A-Za-z0-9._:-]{8,128}$/.test(rawIdempotencyKey)
+    ? createHash('sha256').update(`${owner.tenantId}|${owner.memberId}|${type}|${rawIdempotencyKey}`).digest('hex')
+    : undefined;
+  const sanitizedConfig = { ...taskConfig };
+  delete sanitizedConfig.idempotencyKey;
+
+  const store = getTaskStore();
+  if (idempotencyHash) {
+    const existing = [...store.values()].find(task => task.idempotencyHash === idempotencyHash);
+    if (existing) return existing.id;
+  }
+  if (owner && typeof sanitizedConfig.parentTaskId !== 'string') {
+    const maxActive = Math.max(1, Number(process.env.HUIYING_MEMBER_TASK_CONCURRENCY || 2));
+    const active = [...store.values()].filter(task => task.owner?.tenantId === owner?.tenantId
+      && task.owner?.memberId === owner?.memberId
+      && (task.status === 'pending' || task.status === 'running')
+      && typeof task.config.parentTaskId !== 'string').length;
+    if (active >= maxActive) throw new TaskAdmissionError();
+  }
   
   const taskId = uuidv4();
   const task: BackgroundTask = {
     id: taskId,
     type,
     status: 'pending',
-    config: taskConfig,
+    config: sanitizedConfig,
     progress: 0,
     createdAt: Date.now(),
     ...(owner ? { owner: { tenantId: owner.tenantId, memberId: owner.memberId } } : {}),
+    ...(idempotencyHash ? { idempotencyHash } : {}),
   };
-  
-  const store = getTaskStore();
+
   store.set(taskId, task);
   saveTasksToFile(store);
   
@@ -380,9 +434,10 @@ export function getAllTasksFresh(): BackgroundTask[] {
 
 export function publicTask(task: BackgroundTask | undefined) {
   if (!task) return null;
-  const { abortController: _abortController, owner: _owner, ...taskInfo } = task;
+  const { abortController: _abortController, owner: _owner, idempotencyHash: _idempotencyHash, ...taskInfo } = task;
   void _abortController;
   void _owner;
+  void _idempotencyHash;
   return taskInfo;
 }
 
@@ -438,7 +493,7 @@ export function startTask(taskId: string, abortController?: AbortController): bo
   const store = getTaskStore();
   const task = store.get(taskId);
   
-  if (!task) {
+  if (!task || task.status !== 'pending') {
     return false;
   }
 
@@ -462,7 +517,7 @@ export function completeTask(taskId: string, result: TaskResult): boolean {
   const store = getTaskStore();
   const task = store.get(taskId);
   
-  if (!task) {
+  if (!task || task.status !== 'running') {
     return false;
   }
 
@@ -495,7 +550,7 @@ export function failTask(taskId: string, error: string): boolean {
   const store = getTaskStore();
   const task = store.get(taskId);
   
-  if (!task) {
+  if (!task || task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled') {
     return false;
   }
 
@@ -531,6 +586,8 @@ export function cancelTask(taskId: string): boolean {
   if (!task) {
     return false;
   }
+  if (task.status === 'cancelled') return true;
+  if (task.status === 'completed' || task.status === 'failed') return false;
 
   // 触发取消信号
   if (task.abortController) {
@@ -723,4 +780,11 @@ const store = getTaskStore();
 
 if (store.size > 0) {
   emitOperationalSystemEvent('task.store_loaded', { count: store.size });
+}
+
+export function reloadTaskStoreForTest() {
+  taskCache = null;
+  lastLoadTime = 0;
+  startupRecoveryPending = true;
+  return getTaskStore();
 }

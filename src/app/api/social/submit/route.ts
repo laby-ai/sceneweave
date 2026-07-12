@@ -243,8 +243,9 @@ export async function GET(request: NextRequest) {
   }
 
   // 移除不能序列化的字段
-  const { abortController, owner: _owner, ...taskInfo } = task;
+  const { abortController, owner: _owner, idempotencyHash: _idempotencyHash, ...taskInfo } = task;
   void abortController;
   void _owner;
+  void _idempotencyHash;
   return NextResponse.json(taskInfo);
 }
