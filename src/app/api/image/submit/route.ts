@@ -13,7 +13,7 @@ import {
   updateTaskProgress,
   getTaskForOwner
 } from '@/lib/task-manager';
-import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
+import { resolveTaskIdempotencyKey, resolveTaskOwnerFromRequest, taskAdmissionErrorResponse } from '@/lib/task-access';
 
 // 执行图片生成任务
 async function executeImageTask(
@@ -144,7 +144,7 @@ async function executeImageTask(
     updateTaskProgress(taskId, 30, '生成中...', 'AI正在创作您的图片');
 
     // 构建请求参数
-    const requestParams: any = {
+    const requestParams: Parameters<ImageGenerationClient['generate']>[0] & { reference_images?: string[] } = {
       prompt: finalPrompt.trim(),
       size: size,
       watermark: watermark,
@@ -216,6 +216,7 @@ export async function POST(request: NextRequest) {
 
     // 创建任务
     const taskId = createTask('image', {
+      idempotencyKey: resolveTaskIdempotencyKey(request, 'image-submit', `${prompt}|${size || ''}|${style || ''}`),
       prompt,
       size,
       watermark,
@@ -229,7 +230,9 @@ export async function POST(request: NextRequest) {
     }, owner);
 
     // 标记任务开始
-    startTask(taskId);
+    if (!startTask(taskId)) {
+      return NextResponse.json({ taskId, replayed: true, message: '相同任务已提交，请查看已有任务进度。' }, { status: 200 });
+    }
 
     // 在后台执行任务
     executeImageTask(taskId, {
@@ -247,6 +250,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ taskId });
   } catch (error) {
+    const admissionResponse = taskAdmissionErrorResponse(error);
+    if (admissionResponse) return admissionResponse;
     console.error('图片生成请求失败:', error);
     return NextResponse.json(
       { error: '服务器错误，请稍后重试' },
@@ -273,8 +278,9 @@ export async function GET(request: NextRequest) {
   }
 
   // 移除不能序列化的字段
-  const { abortController, owner: _owner, ...taskInfo } = task;
+  const { abortController, owner: _owner, idempotencyHash: _idempotencyHash, ...taskInfo } = task;
   void abortController;
   void _owner;
+  void _idempotencyHash;
   return NextResponse.json(taskInfo);
 }

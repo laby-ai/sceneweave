@@ -59,9 +59,10 @@ function getWaitingHint(task: BackgroundTask, elapsedSeconds: number): string {
 }
 
 function serializeTask(task: BackgroundTask) {
-  const { abortController, owner: _owner, ...taskInfo } = task;
+  const { abortController, owner: _owner, idempotencyHash: _idempotencyHash, ...taskInfo } = task;
   void abortController;
   void _owner;
+  void _idempotencyHash;
 
   const startedAt = task.startedAt ?? task.createdAt;
   const elapsedSeconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));

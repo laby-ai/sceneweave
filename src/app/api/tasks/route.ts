@@ -39,9 +39,10 @@ export async function GET(request: NextRequest) {
     tasks = tasks.slice(0, limit);
 
     // 返回任务信息（不包含abortController）
-    const sanitizedTasks = tasks.map(({ abortController, owner: _owner, ...taskInfo }) => {
+    const sanitizedTasks = tasks.map(({ abortController, owner: _owner, idempotencyHash: _idempotencyHash, ...taskInfo }) => {
       void abortController;
       void _owner;
+      void _idempotencyHash;
       const enriched: Record<string, unknown> = { ...taskInfo };
 
       // 附加监控系统数据
