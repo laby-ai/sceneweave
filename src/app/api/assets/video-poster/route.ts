@@ -16,8 +16,6 @@ const FFMPEG_BINARY = resolvePackagedFfmpegPath(process.cwd(), process.platform)
 
 const ALLOWED_ROOTS = [
   path.resolve(process.cwd(), 'public'),
-  'C:\\Users\\16571\\Documents\\Codex',
-  'D:\\C_Migrated\\Users_16571_Documents_Codex',
 ].map(root => path.resolve(root).toLowerCase());
 
 const CACHE_DIR = path.resolve(process.cwd(), 'artifacts', 'media-posters');

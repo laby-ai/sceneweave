@@ -1,3 +1,4 @@
+import fs from 'node:fs/promises';
 import path from 'node:path';
 
 export interface PublicMediaCandidate {
@@ -40,4 +41,35 @@ export function buildPublicMediaCandidate(
     filePath: path.join(publicRoot, ...relativeParts),
     url: `${normalizedBasePath}/${relativeParts.map(encodeURIComponent).join('/')}`,
   };
+}
+
+export async function resolvePackagedVideoPoster(
+  videoPath: string,
+  publicRoot: string,
+  basePath: string,
+): Promise<string> {
+  const extension = path.extname(videoPath);
+  const baseName = path.basename(videoPath, extension);
+  const directory = path.dirname(videoPath);
+  const stemCandidates = [
+    baseName,
+    baseName.replace(/-clip(?:-preview)?$/i, ''),
+    baseName.replace(/-preview$/i, ''),
+  ];
+
+  for (const stem of [...new Set(stemCandidates)]) {
+    for (const posterExtension of ['.jpg', '.png', '.webp']) {
+      const candidatePath = path.join(directory, `${stem}-poster${posterExtension}`);
+      try {
+        if ((await fs.stat(candidatePath)).isFile()) {
+          const candidate = buildPublicMediaCandidate(candidatePath, publicRoot, basePath);
+          if (candidate) return candidate.url;
+        }
+      } catch {
+        // Try the next packaged poster candidate.
+      }
+    }
+  }
+
+  return `${basePath}/home/huiying-story-aware-10s-poster.jpg`;
 }

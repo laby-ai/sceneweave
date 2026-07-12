@@ -335,7 +335,7 @@ export function DreamboxMainContent(props: DreamboxMainContentProps) {
                 onNavigate={(section, prompt, transfer) => {
                   if (prompt) setPendingPrompt(prompt);
                   setPendingImageRefs(transfer?.imageRefs || []);
-                  setShouldAutoGenerate(true);
+                  setShouldAutoGenerate(Boolean(prompt?.trim()));
                   setActiveSection(section);
                 }}
               />

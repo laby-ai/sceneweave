@@ -75,6 +75,11 @@ async function main() {
   assert.match(workspace, /clientApiRequest\(`\/api\/subjects\/\$\{encodeURIComponent\(subject.id\)\}`/);
   assert.match(workspace, /imageRefs: \[dataUrl\]/);
   assert.match(main, /setPendingImageRefs\(transfer\?\.imageRefs \|\| \[\]\)/);
+  assert.match(
+    main,
+    /setShouldAutoGenerate\(Boolean\(prompt\?\.trim\(\)\)\)/,
+    'choosing a creation mode without a prompt must not trigger a billable default generation',
+  );
 
   console.log('member subject library tests passed');
   } finally {
