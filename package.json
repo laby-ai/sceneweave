@@ -105,6 +105,7 @@
     "test:cross-app-auth-contract": "tsx scripts/test-cross-app-auth-contract.ts",
     "test:client-request-contract": "tsx scripts/test-client-request-contract.ts",
     "test:loopback-listener-contract": "node scripts/test-loopback-listener-contract.mjs",
+    "test:request-observability": "tsx scripts/test-request-observability.ts",
     "test:film-script-handoff": "tsx scripts/test-film-script-handoff.ts",
     "qa:entrypoint-routes": "node scripts/qa-entrypoint-routes.mjs",
     "qa:architecture-guard": "node scripts/qa-architecture-guard.mjs",

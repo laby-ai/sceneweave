@@ -1,5 +1,6 @@
 import { createServer } from 'http';
 import next from 'next';
+import { observeRequest } from './lib/request-observability';
 
 const dev = process.env.NODE_ENV !== 'production';
 const bindHost = process.env.BIND_HOST || (dev ? 'localhost' : '127.0.0.1');
@@ -49,6 +50,7 @@ const ARK_VID = (process.env.ARK_VIDEO_MODEL || 'doubao-seedance-1-5-pro-251215'
 
 app.prepare().then(() => {
   const server = createServer(async (req, res) => {
+    const observation = observeRequest(req, res);
     try {
       // Inject default ARK BYOK headers for direct Volcano access (not agentplan).
       if (ARK_KEY && !req.headers['x-yh-api-key']) {
@@ -62,7 +64,7 @@ app.prepare().then(() => {
       const parsedUrl = parseRequestUrl(req.url || '/', `http://${req.headers.host || `${bindHost}:${port}`}`);
       await handle(req, res, parsedUrl);
     } catch (err) {
-      console.error('Error occurred handling', req.url, err);
+      observation.logError(err);
       res.statusCode = 500;
       res.end('Internal server error');
     }
