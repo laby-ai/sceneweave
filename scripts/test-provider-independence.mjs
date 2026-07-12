@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile, readdir } from 'node:fs/promises';
+import { access, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -26,6 +26,7 @@ const forbidden = new RegExp([
   `${providerName}\\.site`,
   `api\\.${providerName}\\.cn`,
 ].join('|'), 'i');
+const nonPortableBuildExternal = /@aws-sdk\/(?:client-s3|lib-storage|s3-request-presigner)-[0-9a-f]{16}/i;
 
 async function collectFiles(entry) {
   const absolute = path.join(root, entry);
@@ -52,5 +53,25 @@ assert.deepEqual(
   [],
   `Forbidden provider dependencies or runtime references remain:\n${violations.join('\n')}`,
 );
+
+try {
+  await access(path.join(root, '.next', 'server'));
+  const serverFiles = await collectFiles(path.join('.next', 'server'));
+  const nonPortableExternals = [];
+  for (const relative of serverFiles) {
+    if (!relative.endsWith('.js')) continue;
+    const text = await readFile(path.join(root, relative), 'utf8');
+    if (nonPortableBuildExternal.test(text)) {
+      nonPortableExternals.push(relative.replaceAll('\\', '/'));
+    }
+  }
+  assert.deepEqual(
+    nonPortableExternals,
+    [],
+    `Non-portable hashed provider externals remain in the build:\n${nonPortableExternals.join('\n')}`,
+  );
+} catch (error) {
+  if (error?.code !== 'ENOENT') throw error;
+}
 
 console.log('provider-independence gate passed');
