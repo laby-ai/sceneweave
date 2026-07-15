@@ -1,10 +1,15 @@
 import assert from 'node:assert/strict';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 
+import { CreationAgentShell } from '../src/components/creation-agent/creation-agent-shell';
+import { CreationAgentTaskStage } from '../src/components/creation-agent/creation-agent-task-stage';
 import {
   applyCreationEvent,
   beginCreation,
   cancelCreation,
   createCreationAgentState,
+  createCreationRequestId,
   retryCreation,
   validateCreationPrompt,
 } from '../src/lib/creation-agent/creation-agent-model';
@@ -14,6 +19,15 @@ import {
 } from '../src/lib/paper-host-bridge';
 
 const testCreationState = () => {
+  assert.equal(
+    createCreationRequestId(() => 'browser-uuid'),
+    'request-browser-uuid',
+  );
+  assert.match(
+    createCreationRequestId(null, () => 1234567890, () => 0.25),
+    /^request-1234567890-[a-z0-9]+$/,
+  );
+
   assert.deepEqual(validateCreationPrompt(' '), {
     valid: false,
     message: '请输入至少2个字符的创作想法',
@@ -170,6 +184,37 @@ const testPaperHostBridge = () => {
   );
 };
 
+const testEmbeddedShell = () => {
+  const html = renderToStaticMarkup(createElement(CreationAgentShell));
+
+  assert.match(html, /data-paper-host-creation-agent="true"/);
+  assert.match(html, /科教创作/);
+  assert.match(html, /新建创作/);
+  assert.match(html, /最近创作/);
+  assert.match(html, /教学脚本/);
+  assert.match(html, /课程分镜/);
+  assert.match(html, /参考图/);
+  assert.match(html, /输入教学主题、脚本想法或上传参考/);
+  assert.doesNotMatch(html, /SceneWeave|开启创作|>首页<|>资产<|>设置</);
+
+  const failedState = applyCreationEvent(beginCreation(createCreationAgentState(), {
+    requestId: 'request-failed',
+    prompt: '解释月相变化',
+  }), {
+    requestId: 'request-failed',
+    status: 'failed',
+  });
+  const failedHtml = renderToStaticMarkup(createElement(CreationAgentTaskStage, {
+    state: failedState,
+    notice: '',
+    onCancel: () => undefined,
+    onRetry: () => undefined,
+  }));
+  assert.match(failedHtml, /生成失败/);
+  assert.doesNotMatch(failedHtml, />failed</);
+};
+
 testCreationState();
 testPaperHostBridge();
+testEmbeddedShell();
 console.log('paper host creation agent contract: ok');

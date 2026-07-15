@@ -64,6 +64,23 @@ const clampProgress = (progress: number | undefined) => {
   return Math.min(100, Math.max(0, Number(progress)));
 };
 
+export function createCreationRequestId(
+  randomUUID: (() => string) | null | undefined = globalThis.crypto?.randomUUID?.bind(globalThis.crypto),
+  now = Date.now,
+  random = Math.random,
+): string {
+  if (randomUUID) {
+    try {
+      return `request-${randomUUID()}`;
+    } catch {
+      // Correlation ids are not security credentials; continue with a local fallback.
+    }
+  }
+
+  const suffix = Math.floor(random() * Number.MAX_SAFE_INTEGER).toString(36);
+  return `request-${now()}-${suffix}`;
+}
+
 export function createCreationAgentState(
   restored: Partial<CreationAgentState> = {},
 ): CreationAgentState {
