@@ -65,7 +65,7 @@ async function main() {
   const library = await readFile(path.join(process.cwd(), 'src/components/assets/assets-library.tsx'), 'utf8');
   const workspace = await readFile(path.join(process.cwd(), 'src/components/generate/generate-workspace.tsx'), 'utf8');
   const main = await readFile(path.join(process.cwd(), 'src/components/home/dreambox-main-content.tsx'), 'utf8');
-  assert.match(apiRoute, /resolveAccountSessionFromRequest/);
+  assert.match(apiRoute, /resolvePaperHostCreationOwnerFromRequest/);
   assert.match(apiRoute, /subject_source_not_allowed/);
   assert.match(apiRoute, /15 \* 1024 \* 1024/);
   assert.match(itemRoute, /Cache-Control': 'private/);

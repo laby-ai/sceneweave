@@ -18,6 +18,25 @@ import {
   createPaperHostMessage,
   parsePaperHostMessage,
 } from '../src/lib/paper-host-bridge';
+import { validateCreationReferenceFile } from '../src/lib/creation-agent/creation-reference-model';
+
+const testCreationReferences = () => {
+  assert.deepEqual(validateCreationReferenceFile({
+    name: '光合作用装置.png',
+    type: 'image/png',
+    size: 1024,
+  }), { valid: true, message: '' });
+  assert.deepEqual(validateCreationReferenceFile({
+    name: '讲义.pdf',
+    type: 'application/pdf',
+    size: 1024,
+  }), { valid: false, message: '当前支持 PNG、JPG、WebP 或 GIF 参考图' });
+  assert.deepEqual(validateCreationReferenceFile({
+    name: '超大参考图.png',
+    type: 'image/png',
+    size: 15 * 1024 * 1024 + 1,
+  }), { valid: false, message: '参考图不能超过 15MB' });
+};
 
 const testCreationState = () => {
   const buildGuestRequestHeaders = (creationAgentModel as unknown as {
@@ -208,6 +227,9 @@ const testEmbeddedShell = () => {
   assert.match(html, /教学脚本/);
   assert.match(html, /课程分镜/);
   assert.match(html, /参考图/);
+  assert.match(html, /选择参考图/);
+  assert.match(html, /type="file"/);
+  assert.doesNotMatch(html, /参考图 · 接入中/);
   assert.match(html, /输入教学主题、脚本想法或上传参考/);
   assert.doesNotMatch(html, /SceneWeave|开启创作|>首页<|>资产<|>设置</);
 
@@ -229,6 +251,7 @@ const testEmbeddedShell = () => {
 };
 
 testCreationState();
+testCreationReferences();
 testPaperHostBridge();
 testEmbeddedShell();
 console.log('paper host creation agent contract: ok');

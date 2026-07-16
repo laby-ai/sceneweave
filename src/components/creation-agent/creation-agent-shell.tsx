@@ -14,6 +14,11 @@ import {
   type CreationAgentState,
 } from '@/lib/creation-agent/creation-agent-model';
 import { createPaperHostMessage, type PaperHostMessageType } from '@/lib/paper-host-bridge';
+import {
+  parseCreationReferences,
+  validateCreationReferenceFile,
+  type CreationReference,
+} from '@/lib/creation-agent/creation-reference-model';
 import { CreationAgentComposer } from './creation-agent-composer';
 import { CreationAgentHistory } from './creation-agent-history';
 import { CreationAgentTaskStage } from './creation-agent-task-stage';
@@ -49,6 +54,13 @@ const restoreState = (): CreationAgentState => {
   }
 };
 
+const readFileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('reference_read_failed'));
+  reader.onerror = () => reject(new Error('reference_read_failed'));
+  reader.readAsDataURL(file);
+});
+
 export function CreationAgentShell() {
   const [state, setState] = useState<CreationAgentState>(() => createCreationAgentState());
   const [restored, setRestored] = useState(false);
@@ -57,6 +69,9 @@ export function CreationAgentShell() {
   const [model, setModel] = useState('production-dry-run');
   const [validationMessage, setValidationMessage] = useState('');
   const [notice, setNotice] = useState('');
+  const [references, setReferences] = useState<CreationReference[]>([]);
+  const [referenceMessage, setReferenceMessage] = useState('');
+  const [uploadingReference, setUploadingReference] = useState(false);
 
   useEffect(() => {
     const restored = restoreState();
@@ -64,6 +79,18 @@ export function CreationAgentShell() {
     setPrompt(restored.prompt);
     setRestored(true);
     postToPaperHost('paper-host-ready');
+    void (async () => {
+      try {
+        const response = await fetch('/api/subjects', {
+          headers: buildPaperHostGuestRequestHeaders(window.location.search),
+        });
+        const payload: unknown = await response.json().catch(() => null);
+        const data = isRecord(payload) ? payload : {};
+        if (response.ok) setReferences(parseCreationReferences(data.subjects));
+      } catch {
+        setReferenceMessage('参考图暂时无法恢复，您仍可继续编辑创意。');
+      }
+    })();
   }, []);
 
   useEffect(() => {
@@ -92,7 +119,12 @@ export function CreationAgentShell() {
           'Content-Type': 'application/json',
           ...buildPaperHostGuestRequestHeaders(window.location.search),
         },
-        body: JSON.stringify({ prompt: submitting.prompt, workflow: skill, model }),
+        body: JSON.stringify({
+          prompt: submitting.prompt,
+          workflow: skill,
+          model,
+          referenceIds: references.map(reference => reference.id),
+        }),
       });
       const payload: unknown = await response.json().catch(() => null);
       const data = isRecord(payload) ? payload : {};
@@ -158,6 +190,54 @@ export function CreationAgentShell() {
     setValidationMessage('');
   };
 
+  const handleReferenceFile = async (file: File) => {
+    const validation = validateCreationReferenceFile(file);
+    setReferenceMessage(validation.message);
+    if (!validation.valid) return;
+    setUploadingReference(true);
+    try {
+      const response = await fetch('/api/subjects', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...buildPaperHostGuestRequestHeaders(window.location.search),
+        },
+        body: JSON.stringify({
+          name: file.name,
+          type: 'object',
+          source: 'uploaded',
+          context: 'creation-agent',
+          referenceUrl: await readFileAsDataUrl(file),
+        }),
+      });
+      const payload: unknown = await response.json().catch(() => null);
+      const data = isRecord(payload) ? payload : {};
+      const created = parseCreationReferences(data.subject ? [data.subject] : []);
+      if (!response.ok || created.length !== 1) throw new Error('reference_upload_failed');
+      setReferences(current => [created[0], ...current.filter(item => item.id !== created[0].id)].slice(0, 8));
+      setReferenceMessage('参考图已加入当前创作，可随制作方案一起保存。');
+    } catch {
+      setReferenceMessage('参考图上传失败，请检查图片格式或网络后重试。');
+    } finally {
+      setUploadingReference(false);
+    }
+  };
+
+  const handleRemoveReference = async (id: string) => {
+    setReferenceMessage('');
+    try {
+      const response = await fetch(`/api/subjects/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: buildPaperHostGuestRequestHeaders(window.location.search),
+      });
+      if (!response.ok) throw new Error('reference_delete_failed');
+      setReferences(current => current.filter(item => item.id !== id));
+      setReferenceMessage('参考图已移除。');
+    } catch {
+      setReferenceMessage('参考图暂时无法移除，请稍后重试。');
+    }
+  };
+
   const handleReturn = () => {
     if (!postToPaperHost('paper-host-return') && typeof window !== 'undefined') window.history.back();
   };
@@ -184,10 +264,15 @@ export function CreationAgentShell() {
               model={model}
               busy={busy}
               validationMessage={validationMessage}
+              references={references}
+              referenceMessage={referenceMessage}
+              uploadingReference={uploadingReference}
               onPromptChange={setPrompt}
               onSkillChange={setSkill}
               onModelChange={setModel}
               onSubmit={() => void submit()}
+              onReferenceFile={file => void handleReferenceFile(file)}
+              onRemoveReference={id => void handleRemoveReference(id)}
             />
           </div>
         </section>
@@ -204,7 +289,7 @@ export function CreationAgentShell() {
             </div>
             <div className="rounded-xl border border-white/10 bg-white/[0.035] p-4">
               <p className="text-sm font-medium text-slate-100">附件与参考</p>
-              <p className="mt-2 text-xs leading-5 text-slate-500">参考图上传将在所有者隔离与媒体写入契约接通后开放。</p>
+              <p className="mt-2 text-xs leading-5 text-slate-500">{references.length > 0 ? `已绑定 ${references.length} 张参考图；刷新后仍会保留。` : '可加入最多 8 张参考图，生成制作方案前仍可移除。'}</p>
             </div>
           </div>
         </aside>

@@ -10,6 +10,8 @@ import {
   updateTaskProgress,
 } from '@/lib/task-manager';
 import { resolvePaperHostCreationOwnerFromRequest } from '@/lib/task-access';
+import { listSubjects } from '@/lib/subjects/subject-store';
+import { getSubjectStoreRoot } from '@/lib/subjects/subject-store-readiness';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,6 +23,7 @@ interface DryRunBody {
   style?: string;
   sceneType?: string;
   ratio?: string;
+  referenceIds?: string[];
 }
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
@@ -45,6 +48,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const referenceIds = Array.isArray(body.referenceIds)
+      ? [...new Set(body.referenceIds.filter(id => typeof id === 'string' && /^[0-9a-f-]{36}$/i.test(id)))].slice(0, 8)
+      : [];
+    const ownedReferences = referenceIds.length > 0
+      ? (await listSubjects(getSubjectStoreRoot(), owner)).filter(reference => referenceIds.includes(reference.id))
+      : [];
+    if (ownedReferences.length !== referenceIds.length
+      || (sessionMode === 'guest' && ownedReferences.some(reference => reference.context !== 'creation-agent'))) {
+      return NextResponse.json({ success: false, error: 'reference_not_found' }, { status: 400 });
+    }
+
     const duration = clamp(toNumber(body.duration, 60), 5, 120);
     const segmentDuration = clamp(toNumber(body.segmentDuration, 10), 3, 15);
     const style = body.style || '电影感短剧';
@@ -58,6 +72,7 @@ export async function POST(request: NextRequest) {
       ratio,
       sceneType,
       workflow: 'production-dry-run',
+      referenceIds,
     }, owner);
 
     startTask(taskId);
@@ -151,6 +166,11 @@ export async function POST(request: NextRequest) {
       usedRealKey: false,
       incurredCost: false,
       sessionMode,
+      references: ownedReferences.map(reference => ({
+        id: reference.id,
+        name: reference.name,
+        context: reference.context,
+      })),
       taskId,
       task,
       project,
