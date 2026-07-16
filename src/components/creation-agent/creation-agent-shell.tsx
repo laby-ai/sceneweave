@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { ArrowLeft, Images, Layers3, ShieldCheck } from 'lucide-react';
 
 import {
   applyCreationEvent,
@@ -268,16 +269,19 @@ export function CreationAgentShell() {
   const busy = state.status === 'submitting' || state.status === 'running' || state.status === 'reconnecting';
 
   return (
-    <main data-paper-host-creation-agent="true" className="min-h-screen bg-[#050a13] text-slate-100">
-      <div className="grid min-h-screen bg-[radial-gradient(circle_at_65%_20%,rgba(34,211,238,0.09),transparent_38%),radial-gradient(circle_at_30%_85%,rgba(59,130,246,0.08),transparent_34%)] lg:grid-cols-[240px_minmax(0,1fr)_300px]">
+    <main data-paper-host-creation-agent="true" data-paper-host-theme="light" className="min-h-screen bg-[#f6f8fc] text-slate-900">
+      <div className="grid min-h-screen bg-[radial-gradient(circle_at_58%_8%,rgba(37,99,235,0.07),transparent_31%),linear-gradient(180deg,#fbfdff_0%,#f5f8fc_100%)] lg:grid-cols-[216px_minmax(0,1fr)_276px]">
         <CreationAgentHistory state={state} onNew={handleNew} />
         <section className="flex min-h-[70vh] min-w-0 flex-col">
-          <header className="flex h-16 items-center justify-between border-b border-white/10 px-5">
+          <header className="flex h-14 items-center justify-between border-b border-slate-200/80 bg-white/70 px-5 backdrop-blur-xl">
             <div>
-              <p className="text-sm font-medium text-white">科教创作 Agent</p>
-              <p className="text-xs text-slate-500">脚本 · 分镜 · 成片任务</p>
+              <p className="text-sm font-semibold text-slate-900">科教创作 Agent</p>
+              <p className="text-xs text-slate-500">脚本、分镜与成片任务</p>
             </div>
-            <button type="button" onClick={handleReturn} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:border-white/20 hover:bg-white/[0.04]">返回平台</button>
+            <button type="button" onClick={handleReturn} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500">
+              <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+              返回平台
+            </button>
           </header>
           <CreationAgentTaskStage state={state} notice={notice} onCancel={handleCancel} onRetry={handleRetry} />
           <div className="sticky bottom-0 p-4 pt-0 sm:p-5 sm:pt-0">
@@ -299,19 +303,19 @@ export function CreationAgentShell() {
             />
           </div>
         </section>
-        <aside className="border-t border-white/10 bg-black/15 p-5 lg:border-l lg:border-t-0">
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">制作设置</p>
-          <div className="mt-5 space-y-4">
-            <div className="rounded-xl border border-white/10 bg-white/[0.035] p-4">
-              <p className="text-sm font-medium text-slate-100">当前 Skill</p>
+        <aside className="border-t border-slate-200/80 bg-white/72 p-4 backdrop-blur-xl lg:border-l lg:border-t-0">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">制作上下文</p>
+          <div className="mt-4 space-y-3">
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_8px_28px_rgba(15,23,42,0.04)]">
+              <div className="flex items-center gap-2 text-blue-600"><Layers3 className="h-4 w-4" aria-hidden="true" /><p className="text-sm font-semibold text-slate-800">当前 Skill</p></div>
               <p className="mt-2 text-xs leading-5 text-slate-500">{skill === 'lesson-script' ? '教学脚本' : skill === 'course-storyboard' ? '课程分镜' : '概念演示'}将复用现有分镜与任务契约。</p>
             </div>
-            <div className="rounded-xl border border-white/10 bg-white/[0.035] p-4">
-              <p className="text-sm font-medium text-slate-100">成本边界</p>
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_8px_28px_rgba(15,23,42,0.04)]">
+              <div className="flex items-center gap-2 text-emerald-600"><ShieldCheck className="h-4 w-4" aria-hidden="true" /><p className="text-sm font-semibold text-slate-800">成本边界</p></div>
               <p className="mt-2 text-xs leading-5 text-slate-500">当前仅生成无成本制作方案，不会触发图像或视频模型。</p>
             </div>
-            <div className="rounded-xl border border-white/10 bg-white/[0.035] p-4">
-              <p className="text-sm font-medium text-slate-100">附件与参考</p>
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_8px_28px_rgba(15,23,42,0.04)]">
+              <div className="flex items-center gap-2 text-violet-600"><Images className="h-4 w-4" aria-hidden="true" /><p className="text-sm font-semibold text-slate-800">附件与参考</p></div>
               <p className="mt-2 text-xs leading-5 text-slate-500">{references.length > 0 ? `已绑定 ${references.length} 张参考图；刷新后仍会保留。` : '可加入最多 8 张参考图，生成制作方案前仍可移除。'}</p>
             </div>
           </div>

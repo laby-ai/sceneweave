@@ -249,6 +249,7 @@ const testEmbeddedShell = () => {
   const html = renderToStaticMarkup(createElement(CreationAgentShell));
 
   assert.match(html, /data-paper-host-creation-agent="true"/);
+  assert.match(html, /data-paper-host-theme="light"/);
   assert.match(html, /科教创作/);
   assert.match(html, /新建创作/);
   assert.match(html, /最近创作/);
