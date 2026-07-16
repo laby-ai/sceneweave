@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import { genId, type ChatMessage } from '@/lib/smart-assistant-panel-model';
@@ -9,6 +9,11 @@ import {
   resolveVimaxGenerationSettings,
   type VimaxGenerationSettings,
 } from '@/lib/skills/vimax-short-drama/vimax-generation-preferences';
+import {
+  createVimaxRunCoordinator,
+  type VimaxRunCoordinator,
+  type VimaxRunToken,
+} from '@/lib/skills/vimax-short-drama/vimax-project-session';
 
 /**
  * ViMAX 短剧制作 = Agent 驱动的一个 skill。
@@ -108,6 +113,7 @@ interface VimaxShortDramaSkillDeps {
   setIsLoading: (loading: boolean) => void;
   setInputValue: (value: string) => void;
   setCurrentStep: (step: number) => void;
+  runCoordinator?: VimaxRunCoordinator;
   requestHeaders?: Record<string, string>;
   onAuthenticationRequired?: (reason: string) => void;
 }
@@ -116,6 +122,7 @@ export interface VimaxShortDramaSkill {
   handlePlanStep: (context: VimaxPlanContext) => Promise<void>;
   handleReferenceAssetsStep: () => Promise<void>;
   handleVideoStep: () => Promise<void>;
+  cancelCurrentRun: () => boolean;
 }
 
 export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxShortDramaSkill {
@@ -125,15 +132,29 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
     setIsLoading,
     setInputValue,
     setCurrentStep,
+    runCoordinator: providedRunCoordinator,
     requestHeaders,
     onAuthenticationRequired,
   } = deps;
+  const fallbackRunCoordinatorRef = useRef<VimaxRunCoordinator | null>(null);
+  if (!fallbackRunCoordinatorRef.current) fallbackRunCoordinatorRef.current = createVimaxRunCoordinator();
+  const runCoordinator = providedRunCoordinator || fallbackRunCoordinatorRef.current;
+
+  const updateRunMessages = useCallback((run: VimaxRunToken, update: (messages: ChatMessage[]) => ChatMessage[]) => {
+    setMessages(current => runCoordinator.isCurrent(run) ? update(current) : current);
+  }, [runCoordinator, setMessages]);
 
   const handlePlanStep = useCallback(async (context: VimaxPlanContext) => {
     const prompt = context.prompt;
     const generationSettings = context.settings || resolveVimaxGenerationSettings({});
     const userMsgId = genId();
     const progressMsgId = `vimax-agent-plan-${Date.now()}`;
+    const run = runCoordinator.begin({
+      projectId: messagesRef.current[0]?.id || userMsgId,
+      phase: 'plan',
+      messageId: progressMsgId,
+      timeoutMs: 60_000,
+    });
     setIsLoading(true);
     setInputValue('');
     setMessages(prev => [
@@ -161,15 +182,12 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
     ]);
 
     try {
-      const planController = new AbortController();
-      const planTimeout = setTimeout(() => planController.abort(), 60_000);
       const response = await fetch('/api/smart/vimax-agent-step', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...requestHeaders },
         body: JSON.stringify(buildVimaxPlanRequest({ ...context, settings: generationSettings })),
-        signal: planController.signal,
+        signal: run.signal,
       });
-      clearTimeout(planTimeout);
 
       if (response.status === 401) {
         const reason = '当前创作需要登录后继续，已保留本页内容。';
@@ -214,7 +232,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
               rawPlanText += data.delta;
               const partial = parsePartialPlan(rawPlanText);
               const planned = Math.min(15 + partial.assets.length * 6 + partial.shots.length * 8, 95);
-              setMessages(prev => prev.map(m => m.id === progressMsgId ? {
+              updateRunMessages(run, prev => prev.map(m => m.id === progressMsgId ? {
                 ...m,
                 content: partial.title
                   ? `正在规划「${partial.title}」… 已生成 ${partial.shots.length} 个镜头`
@@ -264,7 +282,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
 
       if (streamError) throw new Error(streamError);
       if (!plan.title) throw new Error('模型未返回有效的分镜规划。');
-      setMessages(prev => prev.map(message => message.id === progressMsgId ? {
+      updateRunMessages(run, prev => prev.map(message => message.id === progressMsgId ? {
         ...message,
         content: plan.summary || '已生成短剧分镜规划，请预览并确认。',
         resultType: 'film',
@@ -304,7 +322,8 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       } : message));
       setCurrentStep(5);
     } catch (error) {
-      setMessages(prev => prev.map(message => message.id === progressMsgId ? {
+      if (!runCoordinator.isCurrent(run)) return;
+      updateRunMessages(run, prev => prev.map(message => message.id === progressMsgId ? {
         ...message,
         content: `规划失败：${error instanceof Error ? error.message : '未知错误'}\n请调整想法后重试。`,
         generationStatus: 'failed',
@@ -317,9 +336,9 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         },
       } : message));
     } finally {
-      setIsLoading(false);
+      if (runCoordinator.finish(run)) setIsLoading(false);
     }
-  }, [onAuthenticationRequired, requestHeaders, setMessages, setIsLoading, setInputValue, setCurrentStep]);
+  }, [messagesRef, onAuthenticationRequired, requestHeaders, runCoordinator, setMessages, setIsLoading, setInputValue, setCurrentStep, updateRunMessages]);
 
   const handleReferenceAssetsStep = useCallback(async () => {
     const planMessage = [...messagesRef.current].reverse().find(message => message.vimaxAgent?.phase === 'plan' && message.vimaxAgent.assets?.length);
@@ -337,6 +356,12 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
     }
 
     const progressMsgId = `vimax-seedream-${Date.now()}`;
+    const run = runCoordinator.begin({
+      projectId: messagesRef.current[0]?.id || progressMsgId,
+      phase: 'reference_assets',
+      messageId: progressMsgId,
+      timeoutMs: 100_000,
+    });
     setIsLoading(true);
     setMessages(prev => [...prev, {
       id: progressMsgId,
@@ -356,8 +381,6 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
     } as ChatMessage]);
 
     try {
-      const refController = new AbortController();
-      const refTimeout = setTimeout(() => refController.abort(), 100_000);
       const response = await fetch('/api/smart/vimax-agent-step', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...requestHeaders },
@@ -382,9 +405,8 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
             nextAction: plan.nextAction,
           },
         }),
-        signal: refController.signal,
+        signal: run.signal,
       });
-      clearTimeout(refTimeout);
       const data = await response.json();
       if (response.status === 401) {
         const reason = '当前创作需要登录后继续，已保留分镜计划。';
@@ -408,7 +430,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         referenceUrl: refByShot.get(shot.index) ?? shot.referenceUrl,
         status: (refByShot.get(shot.index) ? 'reference' : shot.status) as NonNullable<NonNullable<ChatMessage['vimaxAgent']>['shots']>[number]['status'],
       }));
-      setMessages(prev => prev.map(message => message.id === progressMsgId ? {
+      updateRunMessages(run, prev => prev.map(message => message.id === progressMsgId ? {
         ...message,
         content: `已按分镜生成 ${generatedAssets.length} 张参考图，每张已挂到对应 Clip 下。预览满意后可继续生成视频。`,
         generationStatus: 'completed',
@@ -441,7 +463,8 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         },
       } : message));
     } catch (error) {
-      setMessages(prev => prev.map(message => message.id === progressMsgId ? {
+      if (!runCoordinator.isCurrent(run)) return;
+      updateRunMessages(run, prev => prev.map(message => message.id === progressMsgId ? {
         ...message,
         content: `参考图生成失败：${error instanceof Error ? error.message : '未知错误'}\n可调整描述后重试。`,
         generationStatus: 'failed',
@@ -455,9 +478,9 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         },
       } : message));
     } finally {
-      setIsLoading(false);
+      if (runCoordinator.finish(run)) setIsLoading(false);
     }
-  }, [messagesRef, onAuthenticationRequired, requestHeaders, setMessages, setIsLoading]);
+  }, [messagesRef, onAuthenticationRequired, requestHeaders, runCoordinator, setMessages, setIsLoading, updateRunMessages]);
 
   const handleVideoStep = useCallback(async () => {
     const reversed = [...messagesRef.current].reverse();
@@ -485,6 +508,12 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
     const generationSettings = agent.generationSettings || resolveVimaxGenerationSettings({});
 
     const progressMsgId = `vimax-video-${Date.now()}`;
+    const run = runCoordinator.begin({
+      projectId: messagesRef.current[0]?.id || progressMsgId,
+      phase: 'video',
+      messageId: progressMsgId,
+      timeoutMs: 900_000,
+    });
     setIsLoading(true);
     setMessages(prev => [...prev, {
       id: progressMsgId,
@@ -504,8 +533,6 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
     } as ChatMessage]);
 
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 900_000);
       const response = await fetch('/api/smart/vimax-agent-step', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...requestHeaders },
@@ -540,9 +567,8 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
             url,
           })),
         }),
-        signal: controller.signal,
+        signal: run.signal,
       });
-      clearTimeout(timeout);
       const data = await response.json().catch(() => ({}));
       if (response.status === 401) {
         const reason = '当前成片生成需要登录后继续，分镜与参考素材已保留。';
@@ -554,7 +580,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       }
 
       const generatedSegments = Array.isArray(data.segments) ? data.segments : [];
-      setMessages(prev => prev.map(message => message.id === progressMsgId ? {
+      updateRunMessages(run, prev => prev.map(message => message.id === progressMsgId ? {
         ...message,
         content: `已生成完整短剧「${agent.title || data.shotTitle || '短剧成片'}」（${data.duration || ''}秒，${data.segmentCount || generatedSegments.length || 1} 段真实 Seedance 片段已合成）。`,
         generationStatus: 'completed',
@@ -581,7 +607,8 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         },
       } : message));
     } catch (error) {
-      setMessages(prev => prev.map(message => message.id === progressMsgId ? {
+      if (!runCoordinator.isCurrent(run)) return;
+      updateRunMessages(run, prev => prev.map(message => message.id === progressMsgId ? {
         ...message,
         content: `视频生成失败：${error instanceof Error ? error.message : '未知错误'}\n可调整分镜或参考图后重试。`,
         generationStatus: 'failed',
@@ -595,9 +622,22 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         },
       } : message));
     } finally {
-      setIsLoading(false);
+      if (runCoordinator.finish(run)) setIsLoading(false);
     }
-  }, [messagesRef, onAuthenticationRequired, requestHeaders, setMessages, setIsLoading]);
+  }, [messagesRef, onAuthenticationRequired, requestHeaders, runCoordinator, setMessages, setIsLoading, updateRunMessages]);
 
-  return { handlePlanStep, handleReferenceAssetsStep, handleVideoStep };
+  const cancelCurrentRun = useCallback(() => {
+    const cancelled = runCoordinator.cancel();
+    if (!cancelled) return false;
+    setMessages(current => current.map(message => message.id === cancelled.messageId ? {
+      ...message,
+      content: `${message.content}\n已停止本次生成；当前项目和阶段进度已保留。`,
+      generationStatus: 'failed',
+      quickOptions: ['重新生成'],
+    } : message));
+    setIsLoading(false);
+    return true;
+  }, [runCoordinator, setIsLoading, setMessages]);
+
+  return { handlePlanStep, handleReferenceAssetsStep, handleVideoStep, cancelCurrentRun };
 }

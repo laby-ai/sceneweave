@@ -18,10 +18,11 @@ import {
   Sparkles,
   Video,
   Wand2,
+  X,
 } from 'lucide-react';
 
 import { clientApiFetch, clientApiRequest } from '@/lib/client-api';
-import { genId, loadChatHistory, saveChatHistory, saveMessages, type ChatHistoryEntry, type ChatMessage } from '@/lib/smart-assistant-panel-model';
+import { genId, loadChatHistory, loadMessages, saveChatHistory, saveMessages, type ChatHistoryEntry, type ChatMessage } from '@/lib/smart-assistant-panel-model';
 import {
   useVimaxShortDramaSkill,
   VIMAX_REFERENCE_CONFIRM_REGEX,
@@ -36,6 +37,10 @@ import {
   saveVimaxSkillPreset,
   searchVimaxSkillPresets,
 } from '@/lib/skills/vimax-short-drama/vimax-skill-presets';
+import {
+  createVimaxRunCoordinator,
+  recoverVimaxProjectMessages,
+} from '@/lib/skills/vimax-short-drama/vimax-project-session';
 
 type CreationMode = 'agent' | 'image' | 'video' | 'music' | 'voice' | 'avatar' | 'motion';
 
@@ -121,7 +126,7 @@ export function GenerateWorkspace({
     return { scope: skillScope, id: preset.id };
   });
   const [history, setHistory] = useState<ChatHistoryEntry[]>([]);
-  useEffect(() => { setHistory(loadChatHistory(storageScope)); }, [storageScope]);
+  const [restoredScope, setRestoredScope] = useState<string | null>(null);
   useEffect(() => {
     setSkillSelection({ scope: skillScope, id: loadVimaxSkillPreset(localStorage, skillScope).id });
     setSkillSearch('');
@@ -141,13 +146,9 @@ export function GenerateWorkspace({
     setTimeout(() => textareaRef.current?.focus(), 0);
   }, [skillScope]);
 
-  const startNewChat = useCallback(() => {
-    setMessages([]);
-    setInput('');
-  }, []);
-
   // 自动保存当前对话到 localStorage，刷新后最近列表可见
   useEffect(() => {
+    if (restoredScope !== (storageScope || '')) return;
     saveMessages(messages, storageScope);
     if (messages.length > 0) {
       const firstUser = messages.find(m => m.role === 'user');
@@ -172,24 +173,48 @@ export function GenerateWorkspace({
         return next;
       });
     }
-  }, [messages, storageScope]);
+  }, [messages, restoredScope, storageScope]);
 
   const messagesRef = useRef<ChatMessage[]>(messages);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
+  const runCoordinatorRef = useRef<ReturnType<typeof createVimaxRunCoordinator> | null>(null);
+  if (!runCoordinatorRef.current) runCoordinatorRef.current = createVimaxRunCoordinator();
+  const runCoordinator = runCoordinatorRef.current;
   const scrollRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages]);
 
-  const { handlePlanStep, handleReferenceAssetsStep, handleVideoStep } = useVimaxShortDramaSkill({
+  const { handlePlanStep, handleReferenceAssetsStep, handleVideoStep, cancelCurrentRun } = useVimaxShortDramaSkill({
     messagesRef,
     setMessages,
     setIsLoading,
     setInputValue: setInput,
     setCurrentStep: () => {},
+    runCoordinator,
     requestHeaders,
     onAuthenticationRequired,
   });
+
+  useEffect(() => {
+    cancelCurrentRun();
+    setMessages(recoverVimaxProjectMessages(loadMessages(storageScope) || []));
+    setHistory(loadChatHistory(storageScope));
+    setIsLoading(false);
+    setRestoredScope(storageScope || '');
+  }, [cancelCurrentRun, storageScope]);
+
+  const startNewChat = useCallback(() => {
+    cancelCurrentRun();
+    setMessages([]);
+    setInput('');
+  }, [cancelCurrentRun]);
+
+  const openHistoryProject = useCallback((entry: ChatHistoryEntry) => {
+    cancelCurrentRun();
+    setIsLoading(false);
+    setMessages(recoverVimaxProjectMessages(entry.messages || []));
+  }, [cancelCurrentRun]);
 
   const activeMode = CREATION_MODES.find(item => item.id === mode) || CREATION_MODES[0];
 
@@ -319,13 +344,20 @@ export function GenerateWorkspace({
   ), -1);
 
   const handleQuickOption = useCallback((value: string) => {
+    if (value === '重新生成') {
+      const lastPrompt = [...messages].reverse().find(message => message.role === 'user')?.content?.trim();
+      if (!lastPrompt) return;
+      setInput(lastPrompt);
+      setTimeout(() => handleSend(lastPrompt), 50);
+      return;
+    }
     if (value === '查看成片') {
       scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
       return;
     }
     setInput(value);
     setTimeout(() => handleSend(value), 50);
-  }, [handleSend]);
+  }, [handleSend, messages]);
 
   return (
     <div className="relative flex h-full w-full overflow-hidden bg-black text-foreground">
@@ -366,7 +398,7 @@ export function GenerateWorkspace({
               <button
                 key={entry.id}
                 type="button"
-                onClick={() => entry.messages && setMessages(entry.messages)}
+                onClick={() => openHistoryProject(entry)}
                 className="flex w-full items-center gap-2 truncate rounded-lg px-3 py-2 text-left text-sm text-foreground/70 transition-colors hover:bg-accent/60"
                 title={entry.title}
               >
@@ -575,12 +607,13 @@ export function GenerateWorkspace({
 
           <button
             type="button"
-            onClick={() => void handleSend()}
-            disabled={!input.trim() || isLoading}
-            className="ml-auto flex h-9 w-9 items-center justify-center rounded-xl bg-[#4F6CFF] text-white transition-opacity disabled:opacity-40"
-            title="发送"
+            onClick={() => isLoading ? cancelCurrentRun() : void handleSend()}
+            disabled={!isLoading && !input.trim()}
+            className={`ml-auto flex h-9 w-9 items-center justify-center rounded-xl text-white transition-opacity disabled:opacity-40 ${isLoading ? 'bg-rose-500' : 'bg-[#4F6CFF]'}`}
+            title={isLoading ? '停止生成' : '发送'}
+            aria-label={isLoading ? '停止生成' : '发送'}
           >
-            <ArrowUp className="h-4 w-4" />
+            {isLoading ? <X className="h-4 w-4" /> : <ArrowUp className="h-4 w-4" />}
           </button>
         </div>
       </div>
