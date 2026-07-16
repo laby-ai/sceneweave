@@ -11,10 +11,8 @@ import {
   Footprints,
   Image as ImageIcon,
   Loader2,
-  MessageSquare,
   Mic,
   Music,
-  PenSquare,
   PersonStanding,
   Plus,
   Search,
@@ -24,6 +22,8 @@ import {
   X,
 } from 'lucide-react';
 
+import { VimaxProjectBar } from '@/components/generate/vimax-project-bar';
+import { VimaxProjectHome } from '@/components/generate/vimax-project-home';
 import { clientApiFetch, clientApiRequest } from '@/lib/client-api';
 import { genId, loadChatHistory, loadMessages, saveChatHistory, saveMessages, type ChatHistoryEntry, type ChatMessage } from '@/lib/smart-assistant-panel-model';
 import {
@@ -44,6 +44,12 @@ import {
   createVimaxRunCoordinator,
   recoverVimaxProjectMessages,
 } from '@/lib/skills/vimax-short-drama/vimax-project-session';
+import {
+  loadVimaxWorkspaceView,
+  saveVimaxWorkspaceView,
+  summarizeVimaxProjects,
+  type VimaxWorkspaceView,
+} from '@/lib/skills/vimax-short-drama/vimax-project-catalog';
 import {
   buildVimaxResultDelivery,
   createVimaxManifestDataUrl,
@@ -69,13 +75,6 @@ const CREATION_MODES: CreationModeDef[] = [
   { id: 'avatar', label: '数字人', icon: <PersonStanding className="h-4 w-4" />, section: 'avatar' },
   { id: 'motion', label: '动作模仿', icon: <Footprints className="h-4 w-4" /> },
 ];
-
-const BASE_PATH = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
-
-function withBasePath(url: string) {
-  if (!BASE_PATH || !url.startsWith('/') || url.startsWith(`${BASE_PATH}/`)) return url;
-  return `${BASE_PATH}${url}`;
-}
 
 function parseVimaxDurationSpec(text: string) {
   const totalMatch = /(\d{1,3})\s*(秒|s|S)/.exec(text);
@@ -134,6 +133,7 @@ export function GenerateWorkspace({
   });
   const [history, setHistory] = useState<ChatHistoryEntry[]>([]);
   const [restoredScope, setRestoredScope] = useState<string | null>(null);
+  const [workspaceView, setWorkspaceView] = useState<VimaxWorkspaceView>('home');
   useEffect(() => {
     setSkillSelection({ scope: skillScope, id: loadVimaxSkillPreset(localStorage, skillScope).id });
     setSkillSearch('');
@@ -142,6 +142,13 @@ export function GenerateWorkspace({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const selectedSkill = resolveVimaxSkillPreset(skillSelection.scope === skillScope ? skillSelection.id : undefined);
   const visibleSkillPresets = searchVimaxSkillPresets(skillSearch);
+  const projects = summarizeVimaxProjects(history);
+  const activeTitle = messages.find(message => message.role === 'user')?.content.slice(0, 30) || '未命名创作';
+
+  const setScopedWorkspaceView = useCallback((view: VimaxWorkspaceView) => {
+    setWorkspaceView(view);
+    if (typeof window !== 'undefined') saveVimaxWorkspaceView(sessionStorage, storageScope, view);
+  }, [storageScope]);
 
   const selectSkillPreset = useCallback((skillId: string) => {
     const preset = saveVimaxSkillPreset(localStorage, skillScope, skillId);
@@ -205,8 +212,10 @@ export function GenerateWorkspace({
 
   useEffect(() => {
     cancelCurrentRun();
-    setMessages(recoverVimaxProjectMessages(loadMessages(storageScope) || []));
+    const recoveredMessages = recoverVimaxProjectMessages(loadMessages(storageScope) || []);
+    setMessages(recoveredMessages);
     setHistory(loadChatHistory(storageScope));
+    setWorkspaceView(loadVimaxWorkspaceView(sessionStorage, storageScope, recoveredMessages.length > 0));
     setIsLoading(false);
     setRestoredScope(storageScope || '');
   }, [cancelCurrentRun, storageScope]);
@@ -215,13 +224,17 @@ export function GenerateWorkspace({
     cancelCurrentRun();
     setMessages([]);
     setInput('');
-  }, [cancelCurrentRun]);
+    setScopedWorkspaceView('project');
+  }, [cancelCurrentRun, setScopedWorkspaceView]);
 
-  const openHistoryProject = useCallback((entry: ChatHistoryEntry) => {
+  const openHistoryProject = useCallback((projectId: string) => {
+    const entry = history.find(item => item.id === projectId);
+    if (!entry) return;
     cancelCurrentRun();
     setIsLoading(false);
     setMessages(recoverVimaxProjectMessages(entry.messages || []));
-  }, [cancelCurrentRun]);
+    setScopedWorkspaceView('project');
+  }, [cancelCurrentRun, history, setScopedWorkspaceView]);
 
   const activeMode = CREATION_MODES.find(item => item.id === mode) || CREATION_MODES[0];
 
@@ -269,6 +282,7 @@ export function GenerateWorkspace({
   const handleSend = useCallback(async (overrideText?: string) => {
     const text = (overrideText ?? input).trim();
     if (!text || isLoading) return;
+    setScopedWorkspaceView('project');
 
     if (mode === 'agent') {
       // 点击“确认开始生成 / 重做视频” -> 真实调用 Seedance 生成完整短剧
@@ -336,7 +350,7 @@ export function GenerateWorkspace({
       timestamp: Date.now(),
     }]);
     setInput('');
-  }, [input, isLoading, mode, activeMode, onNavigate, handlePlanStep, handleReferenceAssetsStep, handleVideoStep, selectedRatio, selectedQuality, selectedSkill]);
+  }, [input, isLoading, mode, activeMode, onNavigate, handlePlanStep, handleReferenceAssetsStep, handleVideoStep, selectedRatio, selectedQuality, selectedSkill, setScopedWorkspaceView]);
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
@@ -367,82 +381,57 @@ export function GenerateWorkspace({
   }, [handleSend, messages]);
 
   return (
-    <div className="relative flex h-full w-full overflow-hidden bg-black text-foreground">
-      <div
-        className="pointer-events-none absolute inset-0 opacity-55"
-        style={{
-          backgroundImage: `linear-gradient(90deg, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.54) 34%, rgba(0,0,0,0.74) 100%), url(${withBasePath('/home/huiying-hero-cosmic-reel-v2.png')})`,
-          backgroundPosition: 'center',
-          backgroundSize: 'cover',
-        }}
-      />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_72%_20%,rgba(112,224,255,0.16),transparent_30%),radial-gradient(circle_at_38%_62%,rgba(79,108,255,0.13),transparent_34%),linear-gradient(180deg,rgba(0,0,0,0.24),rgba(0,0,0,0.86))]" />
-      <aside className="relative z-10 hidden w-56 shrink-0 flex-col border-r border-white/10 bg-black/72 text-white backdrop-blur-xl md:flex">
-        <div className="flex items-center justify-between px-4 py-3">
-          <span className="text-sm font-semibold">开启创作</span>
-        </div>
-        <div className="px-2">
-          <button
-            type="button"
-            onClick={startNewChat}
-            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-foreground/80 transition-colors hover:bg-accent/60"
-          >
-            <PenSquare className="h-4 w-4" /> 新对话
-          </button>
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-foreground/80 transition-colors hover:bg-accent/60"
-          >
-            <MessageSquare className="h-4 w-4" /> 默认创作
-          </button>
-        </div>
-        <div className="mt-3 min-h-0 flex-1 overflow-y-auto px-2">
-          <p className="px-3 py-1.5 text-[11px] font-medium text-muted-foreground">最近</p>
-          {history.length === 0 ? (
-            <p className="px-3 py-2 text-xs text-muted-foreground/70">暂无最近创作</p>
-          ) : (
-            history.slice(0, 20).map(entry => (
-              <button
-                key={entry.id}
-                type="button"
-                onClick={() => openHistoryProject(entry)}
-                className="flex w-full items-center gap-2 truncate rounded-lg px-3 py-2 text-left text-sm text-foreground/70 transition-colors hover:bg-accent/60"
-                title={entry.title}
-              >
-                <span className="truncate">{entry.title || '未命名创作'}</span>
-              </button>
-            ))
-          )}
-        </div>
-      </aside>
-
-      <div className="relative z-10 flex min-w-0 flex-1 flex-col text-white">
+    <div className="relative flex h-full w-full overflow-hidden bg-[#f6f7f9] text-[#181a20]">
+      <div className="flex min-w-0 flex-1 flex-col">
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
-          {!hasMessages ? (
-            <div className="mx-auto flex h-full max-w-4xl flex-col items-center justify-center px-4">
-              <div className="mb-8 text-center">
-                <h1 className="text-3xl font-semibold tracking-tight">你好，想创作什么？</h1>
-                <p className="mt-2 text-sm text-muted-foreground">一句话，让 Agent 帮你从剧本到分镜、参考图，一步步成片。</p>
-              </div>
-              <div className="w-full">{renderDock()}</div>
-            </div>
+          {workspaceView === 'home' ? (
+            <VimaxProjectHome
+              projects={projects}
+              skills={visibleSkillPresets}
+              selectedSkillId={selectedSkill.id}
+              composer={renderDock()}
+              onOpenProject={openHistoryProject}
+              onStartProject={startNewChat}
+              onSelectSkill={selectSkillPreset}
+            />
           ) : (
-            <div className="mx-auto max-w-4xl space-y-4 px-4 py-6">
-              {messages.map((message, index) => (
-                <MessageBubble
-                  key={message.id}
-                  message={message}
-                  onQuickOption={handleQuickOption}
-                  hideQuickOptions={latestCompletedVideoIndex > index}
-                />
-              ))}
-            </div>
+            <>
+              <VimaxProjectBar
+                title={activeTitle}
+                onBack={() => setScopedWorkspaceView('home')}
+                onNewProject={startNewChat}
+              />
+              <div className="mx-auto w-full max-w-[1040px] px-6 py-8">
+                {hasMessages ? (
+                  <div className="space-y-5">
+                    {messages.map((message, index) => (
+                      <MessageBubble
+                        key={message.id}
+                        message={message}
+                        onQuickOption={handleQuickOption}
+                        hideQuickOptions={latestCompletedVideoIndex > index}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex min-h-[48vh] flex-col items-center justify-center text-center">
+                    <span className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-[#dfe5ed] bg-white text-[#2f6bff] shadow-[0_8px_24px_rgba(31,41,55,0.06)]">
+                      <Sparkles className="h-5 w-5" />
+                    </span>
+                    <h2 className="text-xl font-semibold tracking-[-0.025em] text-[#20232a]">从一句想法开始</h2>
+                    <p className="mt-2 max-w-md text-sm leading-6 text-[#858c97]">
+                      Vimax 会沿用成熟的计划、分镜、参考素材和成片链路持续推进。
+                    </p>
+                  </div>
+                )}
+              </div>
+            </>
           )}
         </div>
 
-        {hasMessages && (
-          <div className="border-t border-white/10 bg-black/58 backdrop-blur-xl">
-            <div className="mx-auto max-w-4xl px-4 py-3">{renderDock()}</div>
+        {workspaceView === 'project' && (
+          <div className="border-t border-[#e6e9ee] bg-white/88 backdrop-blur-xl">
+            <div className="mx-auto max-w-[1040px] px-6 py-3">{renderDock()}</div>
           </div>
         )}
       </div>
@@ -451,9 +440,9 @@ export function GenerateWorkspace({
 
   function renderDock() {
     return (
-      <div className="rounded-2xl border border-white/12 bg-[#0B101A]/88 p-3 shadow-2xl shadow-black/30 backdrop-blur-xl focus-within:border-[#4F6CFF]/60">
+      <div className="rounded-[22px] border border-[#e1e5eb] bg-white p-3 shadow-[0_18px_45px_rgba(31,41,55,0.08)] transition focus-within:border-[#aac3ff] focus-within:shadow-[0_20px_52px_rgba(47,107,255,0.12)]">
         <div className="flex items-start gap-2">
-          <button className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border text-muted-foreground hover:text-foreground" title="上传参考" type="button">
+          <button className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#e2e6ec] bg-[#f8f9fb] text-[#7c8490] transition hover:border-[#cdd6e3] hover:bg-[#f2f6ff] hover:text-[#2f6bff]" title="上传参考" type="button">
             <Plus className="h-4 w-4" />
           </button>
           <textarea
@@ -463,7 +452,7 @@ export function GenerateWorkspace({
             onKeyDown={onKeyDown}
             rows={2}
             placeholder="输入想法、剧本或上传参考，支持 “/” 使用技能，@ 添加主体，和 Agent 一起创作"
-            className="min-h-[44px] flex-1 resize-none bg-transparent py-1.5 text-sm leading-relaxed text-white outline-none placeholder:text-white/42"
+            className="min-h-[58px] flex-1 resize-none bg-transparent py-1.5 text-sm leading-relaxed text-[#242830] outline-none placeholder:text-[#a4aab3]"
           />
         </div>
         <div className="mt-2 flex items-center gap-2">
@@ -471,15 +460,15 @@ export function GenerateWorkspace({
             <button
               type="button"
               onClick={() => { setSkillMenuOpen(false); setMediaModelMenuOpen(false); setAtMenuOpen(false); setModeMenuOpen(open => !open); }}
-              className="flex items-center gap-1.5 rounded-lg bg-[#4F6CFF]/15 px-2.5 py-1.5 text-xs font-medium text-[#70E0FF] ring-1 ring-[#4F6CFF]/30 hover:bg-[#4F6CFF]/20"
+              className="flex items-center gap-1.5 rounded-lg bg-[#edf3ff] px-2.5 py-1.5 text-xs font-medium text-[#2f6bff] ring-1 ring-[#c9d8ff] transition hover:bg-[#e3edff]"
             >
               {activeMode.icon}
               {activeMode.label}
               <ChevronDown className="h-3.5 w-3.5" />
             </button>
             {modeMenuOpen && (
-              <div className="absolute top-full left-0 z-20 mt-2 w-44 overflow-hidden rounded-xl border border-border bg-popover p-1 shadow-xl">
-                <p className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">创作类型</p>
+              <div className="absolute left-0 top-full z-20 mt-2 w-44 overflow-hidden rounded-xl border border-[#e1e5eb] bg-white p-1 text-[#252931] shadow-[0_18px_38px_rgba(31,41,55,0.14)]">
+                <p className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#9299a4]">创作类型</p>
                 {CREATION_MODES.map(item => (
                   <button
                     key={item.id}
@@ -494,7 +483,7 @@ export function GenerateWorkspace({
                       setMode(item.id);
                     }}
                     className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors ${
-                      mode === item.id ? 'bg-[#4F6CFF]/15 text-[#70E0FF]' : 'text-foreground/80 hover:bg-accent/60'
+                      mode === item.id ? 'bg-[#edf3ff] text-[#2f6bff]' : 'text-[#555d68] hover:bg-[#f5f7fa]'
                     }`}
                   >
                     {item.icon}
@@ -509,29 +498,29 @@ export function GenerateWorkspace({
             <button
               type="button"
               onClick={() => { setModeMenuOpen(false); setSkillMenuOpen(false); setAtMenuOpen(false); setMediaModelMenuOpen(open => !open); }}
-              className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+              className="flex items-center gap-1 rounded-lg border border-[#e1e5eb] bg-white px-2.5 py-1.5 text-xs text-[#68717d] transition hover:border-[#cbd5e4] hover:text-[#272b32]"
               title="参考图像 / 视频模型"
             >
               <ImageIcon className="h-3.5 w-3.5" /> 模型
             </button>
             {mediaModelMenuOpen && (
-              <div className="absolute top-full left-0 z-20 mt-2 w-56 overflow-hidden rounded-xl border border-border bg-popover p-2 shadow-xl">
-                <p className="px-1 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">规划模型</p>
-                <div className="rounded-lg bg-accent/60 px-2.5 py-1.5 text-sm text-foreground/80">{VIMAX_PLAN_MODEL}</div>
-                <p className="px-1 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">参考图像模型</p>
-                <div className="rounded-lg bg-[#4F6CFF]/15 px-2.5 py-1.5 text-sm text-[#70E0FF]">doubao-seedream-5.0-lite</div>
-                <p className="px-1 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">视频模型</p>
-                <div className="rounded-lg bg-accent/60 px-2.5 py-1.5 text-sm text-foreground/80">doubao-seedance-1.5-pro</div>
-                <p className="px-1 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">画面比例</p>
+              <div className="absolute left-0 top-full z-20 mt-2 w-56 overflow-hidden rounded-xl border border-[#e1e5eb] bg-white p-2 text-[#252931] shadow-[0_18px_38px_rgba(31,41,55,0.14)]">
+                <p className="px-1 pb-1 text-[11px] font-semibold uppercase tracking-wider text-[#9299a4]">规划模型</p>
+                <div className="rounded-lg bg-[#f5f7fa] px-2.5 py-1.5 text-sm text-[#555d68]">{VIMAX_PLAN_MODEL}</div>
+                <p className="px-1 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-[#9299a4]">参考图像模型</p>
+                <div className="rounded-lg bg-[#edf3ff] px-2.5 py-1.5 text-sm text-[#2f6bff]">doubao-seedream-5.0-lite</div>
+                <p className="px-1 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-[#9299a4]">视频模型</p>
+                <div className="rounded-lg bg-[#f5f7fa] px-2.5 py-1.5 text-sm text-[#555d68]">doubao-seedance-1.5-pro</div>
+                <p className="px-1 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-[#9299a4]">画面比例</p>
                 <div className="flex gap-1.5">
                   {["16:9", "9:16", "1:1", "4:3", "3:4"].map(r => (
-                    <button key={r} type="button" onClick={() => setSelectedRatio(r)} className={`rounded-md border px-2 py-1 text-xs transition-colors ${selectedRatio === r ? "border-[#4F6CFF] bg-[#4F6CFF]/15 text-[#70E0FF]" : "border-border text-foreground/80 hover:bg-accent/60 hover:text-foreground"}`}>{r}</button>
+                    <button key={r} type="button" onClick={() => setSelectedRatio(r)} className={`rounded-md border px-2 py-1 text-xs transition-colors ${selectedRatio === r ? "border-[#9bb8ff] bg-[#edf3ff] text-[#2f6bff]" : "border-[#e1e5eb] text-[#626a76] hover:bg-[#f5f7fa]"}`}>{r}</button>
                   ))}
                 </div>
-                <p className="px-1 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">清晰度</p>
+                <p className="px-1 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-[#9299a4]">清晰度</p>
                 <div className="flex gap-1.5">
                   {["标清", "高清", "超清"].map(q => (
-                    <button key={q} type="button" onClick={() => setSelectedQuality(q)} className={`rounded-md border px-2 py-1 text-xs transition-colors ${selectedQuality === q ? "border-[#4F6CFF] bg-[#4F6CFF]/15 text-[#70E0FF]" : "border-border text-foreground/80 hover:bg-accent/60 hover:text-foreground"}`}>{q}</button>
+                    <button key={q} type="button" onClick={() => setSelectedQuality(q)} className={`rounded-md border px-2 py-1 text-xs transition-colors ${selectedQuality === q ? "border-[#9bb8ff] bg-[#edf3ff] text-[#2f6bff]" : "border-[#e1e5eb] text-[#626a76] hover:bg-[#f5f7fa]"}`}>{q}</button>
                   ))}
                 </div>
               </div>
@@ -542,21 +531,21 @@ export function GenerateWorkspace({
             <button
               type="button"
               onClick={() => { setModeMenuOpen(false); setMediaModelMenuOpen(false); setAtMenuOpen(false); setSkillMenuOpen(open => !open); }}
-              className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+              className="flex items-center gap-1 rounded-lg border border-[#e1e5eb] bg-white px-2.5 py-1.5 text-xs text-[#68717d] transition hover:border-[#cbd5e4] hover:text-[#272b32]"
               title="使用技能"
             >
               <Wand2 className="h-3.5 w-3.5" /> {selectedSkill.name}
             </button>
             {skillMenuOpen && (
-              <div className="absolute top-full left-0 z-20 mt-2 w-80 overflow-hidden rounded-xl border border-border bg-popover p-2 shadow-xl">
-                <p className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">ViMAX Skill</p>
-                <label className="mb-2 flex items-center gap-2 rounded-lg border border-border bg-background px-2.5 py-2">
-                  <Search className="h-3.5 w-3.5 text-muted-foreground" />
+              <div className="absolute left-0 top-full z-20 mt-2 w-80 overflow-hidden rounded-xl border border-[#e1e5eb] bg-white p-2 text-[#252931] shadow-[0_18px_38px_rgba(31,41,55,0.14)]">
+                <p className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-wider text-[#9299a4]">ViMAX Skill</p>
+                <label className="mb-2 flex items-center gap-2 rounded-lg border border-[#e1e5eb] bg-[#f8f9fb] px-2.5 py-2">
+                  <Search className="h-3.5 w-3.5 text-[#9299a4]" />
                   <input
                     value={skillSearch}
                     onChange={event => setSkillSearch(event.target.value)}
                     placeholder="搜索短剧、电商、分镜…"
-                    className="min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground"
+                    className="min-w-0 flex-1 bg-transparent text-xs text-[#303640] outline-none placeholder:text-[#a0a6af]"
                   />
                 </label>
                 <div className="max-h-72 overflow-y-auto">
@@ -565,17 +554,17 @@ export function GenerateWorkspace({
                     key={skill.id}
                     type="button"
                     onClick={() => selectSkillPreset(skill.id)}
-                    className={`flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left transition-colors ${selectedSkill.id === skill.id ? 'bg-[#4F6CFF]/10' : 'hover:bg-accent/60'}`}
+                    className={`flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left transition-colors ${selectedSkill.id === skill.id ? 'bg-[#edf3ff]' : 'hover:bg-[#f5f7fa]'}`}
                   >
                     <span className="min-w-0 flex-1">
-                      <span className="block text-sm text-foreground/90">{skill.name}</span>
-                      <span className="block text-[11px] text-muted-foreground">{skill.description}</span>
+                      <span className="block text-sm text-[#303640]">{skill.name}</span>
+                      <span className="block text-[11px] text-[#8d949f]">{skill.description}</span>
                     </span>
-                    {selectedSkill.id === skill.id && <Check className="mt-0.5 h-4 w-4 shrink-0 text-[#4F6CFF]" />}
+                    {selectedSkill.id === skill.id && <Check className="mt-0.5 h-4 w-4 shrink-0 text-[#2f6bff]" />}
                   </button>
                 ))}
                 {visibleSkillPresets.length === 0 && (
-                  <p className="px-2 py-5 text-center text-xs text-muted-foreground">没有匹配的 Skill</p>
+                  <p className="px-2 py-5 text-center text-xs text-[#9299a4]">没有匹配的 Skill</p>
                 )}
                 </div>
               </div>
@@ -586,26 +575,26 @@ export function GenerateWorkspace({
             <button
               type="button"
               onClick={() => void openSubjectMenu()}
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-foreground"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#e1e5eb] bg-white text-[#68717d] transition hover:border-[#cbd5e4] hover:text-[#272b32]"
               title="添加主体"
             >
               <AtSign className="h-4 w-4" />
             </button>
             {atMenuOpen && (
-              <div className="absolute top-full right-0 z-20 mt-2 max-h-72 w-64 overflow-y-auto rounded-xl border border-border bg-popover p-2 shadow-xl sm:right-auto sm:left-0">
-                <p className="pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">引用主体</p>
+              <div className="absolute right-0 top-full z-20 mt-2 max-h-72 w-64 overflow-y-auto rounded-xl border border-[#e1e5eb] bg-white p-2 text-[#252931] shadow-[0_18px_38px_rgba(31,41,55,0.14)] sm:left-0 sm:right-auto">
+                <p className="pb-1 text-[11px] font-semibold uppercase tracking-wider text-[#9299a4]">引用主体</p>
                 {subjectsLoading ? (
-                  <p className="px-1 py-3 text-xs text-muted-foreground">正在加载主体库…</p>
+                  <p className="px-1 py-3 text-xs text-[#9299a4]">正在加载主体库…</p>
                 ) : subjectError ? (
-                  <p className="px-1 py-3 text-xs text-red-400">{subjectError}</p>
+                  <p className="px-1 py-3 text-xs text-red-500">{subjectError}</p>
                 ) : subjects.length === 0 ? (
-                  <p className="px-1 py-2 text-xs text-muted-foreground">暂无可引用主体。可在素材库的生成历史中保存真实图片。</p>
+                  <p className="px-1 py-2 text-xs text-[#9299a4]">暂无可引用主体。可在素材库的生成历史中保存真实图片。</p>
                 ) : subjects.map(subject => (
-                  <button key={subject.id} type="button" disabled={Boolean(subjectOpeningId)} onClick={() => void selectSubject(subject)} className="flex w-full items-center gap-2 rounded-lg p-2 text-left hover:bg-accent/60 disabled:opacity-50">
+                  <button key={subject.id} type="button" disabled={Boolean(subjectOpeningId)} onClick={() => void selectSubject(subject)} className="flex w-full items-center gap-2 rounded-lg p-2 text-left hover:bg-[#f5f7fa] disabled:opacity-50">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={subject.imageUrl} alt="" className="h-10 w-10 rounded-md object-cover" />
-                    <span className="min-w-0 flex-1"><span className="block truncate text-sm">{subject.name}</span><span className="text-[11px] text-muted-foreground">{subject.type === 'character' ? '角色' : subject.type === 'scene' ? '场景' : '物件'}</span></span>
-                    {subjectOpeningId === subject.id && <span className="text-xs text-muted-foreground">读取中</span>}
+                    <span className="min-w-0 flex-1"><span className="block truncate text-sm">{subject.name}</span><span className="text-[11px] text-[#9299a4]">{subject.type === 'character' ? '角色' : subject.type === 'scene' ? '场景' : '物件'}</span></span>
+                    {subjectOpeningId === subject.id && <span className="text-xs text-[#9299a4]">读取中</span>}
                   </button>
                 ))}
               </div>
@@ -616,7 +605,7 @@ export function GenerateWorkspace({
             type="button"
             onClick={() => isLoading ? cancelCurrentRun() : void handleSend()}
             disabled={!isLoading && !input.trim()}
-            className={`ml-auto flex h-9 w-9 items-center justify-center rounded-xl text-white transition-opacity disabled:opacity-40 ${isLoading ? 'bg-rose-500' : 'bg-[#4F6CFF]'}`}
+            className={`ml-auto flex h-9 w-9 items-center justify-center rounded-xl text-white transition hover:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-40 ${isLoading ? 'bg-rose-500' : 'bg-[#2f6bff] shadow-[0_7px_18px_rgba(47,107,255,0.24)]'}`}
             title={isLoading ? '停止生成' : '发送'}
             aria-label={isLoading ? '停止生成' : '发送'}
           >
@@ -632,7 +621,7 @@ function MessageBubble({ message, onQuickOption, hideQuickOptions }: { message: 
   if (message.role === 'user') {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[80%] rounded-2xl rounded-br-md bg-[#4F6CFF] px-4 py-2.5 text-sm text-white">{message.content}</div>
+        <div className="max-w-[80%] rounded-2xl rounded-br-md bg-[#2f6bff] px-4 py-2.5 text-sm text-white shadow-[0_8px_22px_rgba(47,107,255,0.18)]">{message.content}</div>
       </div>
     );
   }
@@ -642,10 +631,10 @@ function MessageBubble({ message, onQuickOption, hideQuickOptions }: { message: 
   const manifestName = `${(agent?.title || 'vimax-project').replace(/[^\p{L}\p{N}-]+/gu, '-').replace(/^-|-$/g, '') || 'vimax-project'}-manifest.json`;
   return (
     <div className="flex justify-start">
-      <div className="w-full max-w-[92%] rounded-2xl rounded-bl-md border border-border bg-card px-4 py-3">
+      <div className="w-full max-w-[92%] rounded-2xl rounded-bl-md border border-[#e3e7ed] bg-white px-4 py-3 text-[#252931] shadow-[0_8px_26px_rgba(31,41,55,0.05)]">
         {agent ? (
           <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px]">
-            <span className="rounded-md bg-[#4F6CFF]/15 px-2 py-0.5 font-medium text-[#70E0FF]">{agent.title}</span>
+            <span className="rounded-md bg-[#edf3ff] px-2 py-0.5 font-medium text-[#2f6bff]">{agent.title}</span>
 
             <span className={`rounded-md px-2 py-0.5 ${agent.costState === 'incurred' ? 'bg-amber-500/15 text-amber-500' : agent.costState === 'blocked' ? 'bg-red-500/15 text-red-500' : 'bg-emerald-500/15 text-emerald-500'}`}>
               {agent.costState === 'incurred' ? '已产生费用' : agent.costState === 'blocked' ? '已阻塞' : '未计费'}
@@ -653,7 +642,7 @@ function MessageBubble({ message, onQuickOption, hideQuickOptions }: { message: 
           </div>
         ) : null}
 
-        <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">{message.content}</p>
+        <p className="whitespace-pre-wrap text-sm leading-relaxed text-[#303640]">{message.content}</p>
 
         {delivery ? (
           <div className="mt-3 space-y-3" data-testid="vimax-result-delivery">
@@ -667,7 +656,7 @@ function MessageBubble({ message, onQuickOption, hideQuickOptions }: { message: 
                       ? 'border-[#4F6CFF]/35 bg-[#4F6CFF]/10 text-[#3653E7] dark:text-[#70E0FF]'
                       : stage.state === 'failed'
                         ? 'border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-300'
-                        : 'border-border bg-accent/25 text-muted-foreground'}`}
+                        : 'border-[#e2e6ec] bg-[#f7f8fa] text-[#858c97]'}`}
                 >
                   <div className="flex items-center gap-1.5">
                     <span className="font-medium">{index + 1}</span>
@@ -681,11 +670,11 @@ function MessageBubble({ message, onQuickOption, hideQuickOptions }: { message: 
             </ol>
 
             {delivery.inventory.length > 0 ? (
-              <div className="rounded-xl border border-border/70 bg-accent/20 px-3 py-2.5">
-                <div className="mb-2 text-xs font-medium text-foreground/80">制作素材</div>
+              <div className="rounded-xl border border-[#e3e7ed] bg-[#f8f9fb] px-3 py-2.5">
+                <div className="mb-2 text-xs font-medium text-[#555d68]">制作素材</div>
                 <div className="flex flex-wrap gap-1.5">
                   {delivery.inventory.map((item, index) => (
-                    <span key={`${item.kind}-${item.label}-${index}`} className="rounded-md border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground">
+                    <span key={`${item.kind}-${item.label}-${index}`} className="rounded-md border border-[#e1e5eb] bg-white px-2 py-1 text-[11px] text-[#7d8590]">
                       {item.label} · {item.status === 'generated' ? '已生成' : item.status === 'blocked' ? '受阻' : '已规划'}
                     </span>
                   ))}
@@ -712,10 +701,10 @@ function MessageBubble({ message, onQuickOption, hideQuickOptions }: { message: 
               controls
               playsInline
               preload="metadata"
-              className="aspect-video w-full rounded-xl border border-border bg-black"
+              className="aspect-video w-full rounded-xl border border-[#e1e5eb] bg-black"
             />
             {message.generatedVideo.duration ? (
-              <p className="mt-1 text-xs text-muted-foreground">时长约 {message.generatedVideo.duration} 秒 · 真实 Seedance 成片</p>
+              <p className="mt-1 text-xs text-[#858c97]">时长约 {message.generatedVideo.duration} 秒 · 真实 Seedance 成片</p>
             ) : null}
           </div>
         )}
@@ -723,7 +712,7 @@ function MessageBubble({ message, onQuickOption, hideQuickOptions }: { message: 
         {agent?.shots && agent.shots.length > 0 && (
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             {agent.shots.map(shot => (
-              <div key={shot.index} className="overflow-hidden rounded-xl border border-border/70 bg-accent/30">
+              <div key={shot.index} className="overflow-hidden rounded-xl border border-[#e1e5eb] bg-[#f8f9fb]">
                 {shot.videoUrl ? (
                   <video
                     src={shot.videoUrl}
@@ -738,12 +727,12 @@ function MessageBubble({ message, onQuickOption, hideQuickOptions }: { message: 
                 ) : null}
                 <div className="space-y-1 px-3 py-2 text-xs">
                   <div className="flex min-h-[24px] items-center gap-2">
-                    <span className="shrink-0 font-medium text-[#70E0FF]">Clip {shot.index}</span>
-                    <span className="min-w-0 flex-1 truncate text-foreground/85">{shot.title}</span>
-                    <span className="shrink-0 text-muted-foreground">{shot.duration}s · {shot.camera}</span>
+                    <span className="shrink-0 font-medium text-[#2f6bff]">Clip {shot.index}</span>
+                    <span className="min-w-0 flex-1 truncate text-[#3a414b]">{shot.title}</span>
+                    <span className="shrink-0 text-[#858c97]">{shot.duration}s · {shot.camera}</span>
                   </div>
                   {shot.prompt ? (
-                    <p className="line-clamp-3 text-muted-foreground">{shot.prompt}</p>
+                    <p className="line-clamp-3 text-[#858c97]">{shot.prompt}</p>
                   ) : null}
                 </div>
               </div>
@@ -752,12 +741,12 @@ function MessageBubble({ message, onQuickOption, hideQuickOptions }: { message: 
         )}
 
         {delivery ? (
-          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border/70 pt-3">
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#e3e7ed] pt-3">
             <a
               data-testid="vimax-export-manifest"
               href={createVimaxManifestDataUrl(message)}
               download={manifestName}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground/80 transition-colors hover:border-[#4F6CFF]/40 hover:text-[#3653E7]"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[#dfe4eb] bg-white px-3 py-1.5 text-xs font-medium text-[#555d68] transition-colors hover:border-[#a9bfff] hover:text-[#2f6bff]"
             >
               <FileJson className="h-3.5 w-3.5" />
               导出制作清单
@@ -770,7 +759,7 @@ function MessageBubble({ message, onQuickOption, hideQuickOptions }: { message: 
                 download={item.filename}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-lg bg-[#4F6CFF] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#405BE3]"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#2f6bff] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#235bd9]"
               >
                 <Download className="h-3.5 w-3.5" />
                 下载{item.label}
@@ -786,7 +775,7 @@ function MessageBubble({ message, onQuickOption, hideQuickOptions }: { message: 
                 key={option}
                 type="button"
                 onClick={() => onQuickOption(option)}
-                className="rounded-full border border-[#4F6CFF]/30 bg-[#4F6CFF]/10 px-3 py-1 text-xs text-[#70E0FF] hover:bg-[#4F6CFF]/20"
+                className="rounded-full border border-[#bfd0ff] bg-[#edf3ff] px-3 py-1 text-xs text-[#2f6bff] hover:bg-[#e1ebff]"
               >
                 {option}
               </button>

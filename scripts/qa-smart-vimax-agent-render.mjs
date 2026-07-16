@@ -26,6 +26,28 @@ check('vimax-does-not-use-old-director-chain', !/fetch\('\/api\/smart\/director-
 check('vimax-has-seedream-confirm-step', /确认分镜，生成参考图/.test(panelAndSkill));
 check('vimax-generate-page-uses-user-duration', /parseVimaxDurationSpec/.test(generateWorkspace) && /segmentDuration: durationSpec\.segmentDuration/.test(generateWorkspace) && /segmentCount: durationSpec\.segmentCount/.test(generateWorkspace) && !/handlePlanStep\(\{\s*prompt:\s*text,\s*duration:\s*60/.test(generateWorkspace));
 check(
+  'vimax-project-first-layout-has-no-history-sidebar',
+  /VimaxProjectHome/.test(generateWorkspace)
+    && /VimaxProjectBar/.test(generateWorkspace)
+    && !/<aside/.test(generateWorkspace),
+  'home and project views must use the same Vimax workspace without a history sidebar',
+);
+check(
+  'vimax-project-view-is-workspace-scoped-and-recoverable',
+  /loadVimaxWorkspaceView/.test(generateWorkspace)
+    && /saveVimaxWorkspaceView/.test(generateWorkspace)
+    && /summarizeVimaxProjects/.test(generateWorkspace)
+    && /openHistoryProject/.test(generateWorkspace),
+  'project selection must restore existing scoped Vimax history',
+);
+check(
+  'vimax-home-and-project-share-the-existing-composer',
+  /composer=\{renderDock\(\)\}/.test(generateWorkspace)
+    && /workspaceView === 'home'/.test(generateWorkspace)
+    && /handlePlanStep/.test(generateWorkspace),
+  'home submit and project continuation must stay on the mature Vimax chain',
+);
+check(
   'vimax-generation-preferences-reach-plan-and-video',
   /selectedRatio/.test(generateWorkspace)
     && /selectedQuality/.test(generateWorkspace)
