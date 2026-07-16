@@ -112,6 +112,13 @@ export interface ChatMessage {
     costState: 'incurred' | 'not-yet' | 'blocked';
     nextAction: string;
     taskId?: string;
+    generationSettings?: {
+      planModel: string;
+      imageModel: string;
+      videoModel: string;
+      ratio: string;
+      resolution: string;
+    };
     assets?: Array<{
       kind: 'script' | 'character' | 'scene' | 'prop' | 'shot' | 'reference';
       label: string;

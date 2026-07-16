@@ -24,6 +24,10 @@ import {
   useVimaxShortDramaSkill,
   VIMAX_REFERENCE_CONFIRM_REGEX,
 } from '@/lib/skills/vimax-short-drama/use-vimax-short-drama-skill';
+import {
+  resolveVimaxGenerationSettings,
+  VIMAX_PLAN_MODEL,
+} from '@/lib/skills/vimax-short-drama/vimax-generation-preferences';
 
 type CreationMode = 'agent' | 'image' | 'video' | 'music' | 'voice' | 'avatar' | 'motion';
 
@@ -238,12 +242,18 @@ export function GenerateWorkspace({ initialPrompt, onNavigate }: GenerateWorkspa
         return;
       }
       const durationSpec = parseVimaxDurationSpec(text);
+      const generationSettings = resolveVimaxGenerationSettings({
+        model: VIMAX_PLAN_MODEL,
+        ratio: selectedRatio,
+        quality: selectedQuality,
+      });
       await handlePlanStep({
         prompt: text,
         duration: durationSpec.duration,
         segmentDuration: durationSpec.segmentDuration,
         segmentCount: durationSpec.segmentCount,
         style: '电影感短剧',
+        settings: generationSettings,
       });
       return;
     }
@@ -260,7 +270,7 @@ export function GenerateWorkspace({ initialPrompt, onNavigate }: GenerateWorkspa
       timestamp: Date.now(),
     }]);
     setInput('');
-  }, [input, isLoading, mode, activeMode, onNavigate, handlePlanStep, handleReferenceAssetsStep, handleVideoStep]);
+  }, [input, isLoading, mode, activeMode, onNavigate, handlePlanStep, handleReferenceAssetsStep, handleVideoStep, selectedRatio, selectedQuality]);
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
@@ -433,7 +443,9 @@ export function GenerateWorkspace({ initialPrompt, onNavigate }: GenerateWorkspa
             </button>
             {mediaModelMenuOpen && (
               <div className="absolute top-full left-0 z-20 mt-2 w-56 overflow-hidden rounded-xl border border-border bg-popover p-2 shadow-xl">
-                <p className="px-1 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">参考图像模型</p>
+                <p className="px-1 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">规划模型</p>
+                <div className="rounded-lg bg-accent/60 px-2.5 py-1.5 text-sm text-foreground/80">{VIMAX_PLAN_MODEL}</div>
+                <p className="px-1 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">参考图像模型</p>
                 <div className="rounded-lg bg-[#4F6CFF]/15 px-2.5 py-1.5 text-sm text-[#70E0FF]">doubao-seedream-5.0-lite</div>
                 <p className="px-1 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">视频模型</p>
                 <div className="rounded-lg bg-accent/60 px-2.5 py-1.5 text-sm text-foreground/80">doubao-seedance-1.5-pro</div>

@@ -5,7 +5,7 @@ import { buildProductionProject } from '@/lib/production-project';
 import { generateShotsFromUserPrompt } from '@/lib/storyboard-generator';
 import { extractLastFrameForHandoff } from '@/lib/video-frame-extraction';
 import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
-
+import { VIMAX_PLAN_MODEL } from '@/lib/skills/vimax-short-drama/vimax-generation-preferences';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -68,7 +68,7 @@ function getArkConfig() {
   // plan endpoint unless the configured base already targets /plan/.
   const rawBase = (process.env.HUIYING_REAL_ARK_API_BASE || process.env.ARK_API_BASE || '').replace(/\/$/, '');
   const apiBase = rawBase.includes('/plan/') ? rawBase : 'https://ark.cn-beijing.volces.com/api/plan/v3';
-  const textModel = 'minimax-m3';
+  const textModel = VIMAX_PLAN_MODEL;
 
   // Image/video models use the standard v3 endpoint with a separate key
   const imageApiKey = process.env.ARK_IMAGE_API_KEY || process.env.HUIYING_REAL_ARK_API_KEY || process.env.ARK_API_KEY;

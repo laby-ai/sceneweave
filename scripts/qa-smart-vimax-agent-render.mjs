@@ -16,6 +16,7 @@ const model = read('src/lib/smart-assistant-panel-model.ts');
 const route = read('src/app/api/smart/vimax-agent-step/route.ts');
 // ViMAX 已抽成 Agent 驱动的 skill；编排逻辑应在 skill 内，面板只负责唤起。
 const skill = read('src/lib/skills/vimax-short-drama/use-vimax-short-drama-skill.ts');
+const preferences = read('src/lib/skills/vimax-short-drama/vimax-generation-preferences.ts');
 const panelAndSkill = panel + skill;
 
 check('chat-message-has-vimax-agent-contract', /vimaxAgent\?:/.test(model));
@@ -24,6 +25,17 @@ check('vimax-uses-real-vimax-agent-route', /\/api\/smart\/vimax-agent-step/.test
 check('vimax-does-not-use-old-director-chain', !/fetch\('\/api\/smart\/director-chain'/.test(panelAndSkill));
 check('vimax-has-seedream-confirm-step', /确认分镜，生成参考图/.test(panelAndSkill));
 check('vimax-generate-page-uses-user-duration', /parseVimaxDurationSpec/.test(generateWorkspace) && /segmentDuration: durationSpec\.segmentDuration/.test(generateWorkspace) && /segmentCount: durationSpec\.segmentCount/.test(generateWorkspace) && !/handlePlanStep\(\{\s*prompt:\s*text,\s*duration:\s*60/.test(generateWorkspace));
+check(
+  'vimax-generation-preferences-reach-plan-and-video',
+  /selectedRatio/.test(generateWorkspace)
+    && /selectedQuality/.test(generateWorkspace)
+    && /resolveVimaxGenerationSettings/.test(generateWorkspace)
+    && /buildVimaxPlanRequest/.test(skill)
+    && /generationSettings\.ratio/.test(skill)
+    && /generationSettings\.resolution/.test(skill)
+    && /QUALITY_TO_RESOLUTION/.test(preferences),
+  'model, ratio and quality controls must affect the existing Vimax requests',
+);
 check('workspace-renders-stage-card', /msg\.vimaxAgent/.test(workspace) && /真实 AgentPlan/.test(workspace) && /Seedream 参考素材/.test(workspace));
 check('route-calls-real-ark-text-model', /chat\/completions/.test(route) && /ARK_API_KEY/.test(route) && /usedRealKey:\s*true/.test(route));
 check('route-calls-real-seedream-image-model', /images\/generations/.test(route) && /doubao-seedream-5\.0-lite/.test(route));

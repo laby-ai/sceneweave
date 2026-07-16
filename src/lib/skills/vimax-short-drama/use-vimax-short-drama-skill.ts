@@ -4,6 +4,11 @@ import { useCallback } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import { genId, type ChatMessage } from '@/lib/smart-assistant-panel-model';
+import {
+  buildVimaxPlanRequest,
+  resolveVimaxGenerationSettings,
+  type VimaxGenerationSettings,
+} from '@/lib/skills/vimax-short-drama/vimax-generation-preferences';
 
 /**
  * ViMAX 短剧制作 = Agent 驱动的一个 skill。
@@ -31,8 +36,7 @@ export interface VimaxPlanContext {
   style: string;
   segmentDuration?: number;
   segmentCount?: number;
-  /** 可选模型覆盖；为空走服务端默认（env）。 */
-  model?: string;
+  settings?: VimaxGenerationSettings;
 }
 
 interface PartialPlan {
@@ -113,6 +117,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
 
   const handlePlanStep = useCallback(async (context: VimaxPlanContext) => {
     const prompt = context.prompt;
+    const generationSettings = context.settings || resolveVimaxGenerationSettings({});
     const userMsgId = genId();
     const progressMsgId = `vimax-agent-plan-${Date.now()}`;
     setIsLoading(true);
@@ -147,17 +152,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       const response = await fetch('/api/smart/vimax-agent-step', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phase: 'plan',
-          prompt,
-          duration: context.duration,
-          ...(context.segmentDuration ? { segmentDuration: context.segmentDuration } : {}),
-          ...(context.segmentCount ? { segmentCount: context.segmentCount } : {}),
-          style: context.style,
-          ratio: '16:9',
-          stream: true,
-          ...(context.model ? { model: context.model } : {}),
-        }),
+        body: JSON.stringify(buildVimaxPlanRequest({ ...context, settings: generationSettings })),
         signal: planController.signal,
       });
       clearTimeout(planTimeout);
@@ -217,6 +212,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
                   title: partial.title || '短剧制作计划',
                   summary: partial.summary || '',
                   model: '规划中…',
+                  generationSettings,
                   costState: 'incurred',
                   nextAction: '正在逐条生成分镜，请稍候。',
                   assets: partial.assets.map(asset => ({
@@ -266,6 +262,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
           title: plan.title || '短剧制作计划',
           summary: plan.summary || '',
           model: planModel || 'Ark AgentPlan',
+          generationSettings,
           costState: 'incurred',
           nextAction: plan.nextAction || '确认分镜后进入 Seedream 参考素材生成。',
           assets: assets.map((asset: { kind?: NonNullable<NonNullable<ChatMessage['vimaxAgent']>['assets']>[number]['kind']; label?: string; prompt?: string }) => ({
@@ -461,6 +458,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       return;
     }
     const agent = planAgent;
+    const generationSettings = agent.generationSettings || resolveVimaxGenerationSettings({});
 
     const progressMsgId = `vimax-video-${Date.now()}`;
     setIsLoading(true);
@@ -490,8 +488,8 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         body: JSON.stringify({
           phase: 'video',
           confirm: true,
-          ratio: '16:9',
-          resolution: '720p',
+          ratio: generationSettings.ratio,
+          resolution: generationSettings.resolution,
           plan: {
             title: agent.title,
             summary: agent.summary,
