@@ -1,4 +1,5 @@
 import type { CreationEvent, CreationResult, CreationStatus } from './creation-agent-model';
+import { parseCreationProductionPlan } from './creation-production-plan';
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -33,6 +34,7 @@ export function parseCreationTaskSseMessage(
       result = {
         title: typeof project.title === 'string' ? project.title : '科教创作方案',
         shotCount: shots.length,
+        productionPlan: parseCreationProductionPlan(task.result.productionPlan),
       };
     }
 

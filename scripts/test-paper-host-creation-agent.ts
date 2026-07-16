@@ -32,6 +32,18 @@ const testCreationTaskStream = () => {
       result: {
         project: { title: '牛顿第一定律' },
         shots: [{ id: 'shot-1' }, { id: 'shot-2' }],
+        productionPlan: {
+          version: 'paper-production-plan-v1',
+          pipeline: { id: 'lesson-script', label: '教学脚本', mode: 'dry-run' },
+          materials: [{ id: 'script-1', kind: 'script', name: '教学脚本', status: 'ready' }],
+          stages: [{ id: 'script', name: '脚本规划', status: 'completed' }],
+          estimatedCost: { currency: 'CNY', amount: 0, status: 'no-cost-dry-run' },
+          render: {
+            status: 'not-started',
+            requiresPaidProvider: true,
+            reason: '当前仅生成制作方案，未提交图像或视频渲染。',
+          },
+        },
       },
     },
   }), 'request-stream-1');
@@ -42,7 +54,22 @@ const testCreationTaskStream = () => {
     stage: '已完成',
     progress: 100,
     message: '',
-    result: { title: '牛顿第一定律', shotCount: 2 },
+    result: {
+      title: '牛顿第一定律',
+      shotCount: 2,
+      productionPlan: {
+        version: 'paper-production-plan-v1',
+        pipeline: { id: 'lesson-script', label: '教学脚本', mode: 'dry-run' },
+        materials: [{ id: 'script-1', kind: 'script', name: '教学脚本', status: 'ready' }],
+        stages: [{ id: 'script', name: '脚本规划', status: 'completed' }],
+        estimatedCost: { currency: 'CNY', amount: 0, status: 'no-cost-dry-run' },
+        render: {
+          status: 'not-started',
+          requiresPaidProvider: true,
+          reason: '当前仅生成制作方案，未提交图像或视频渲染。',
+        },
+      },
+    },
   });
   assert.equal(parseCreationTaskSseMessage('heartbeat', '{}', 'request-stream-1'), null);
   assert.equal(parseCreationTaskSseMessage('task', '{bad-json', 'request-stream-1'), null);
@@ -194,6 +221,36 @@ const testCreationState = () => {
   assert.equal(completed.progress, 100);
   assert.equal(completed.canRetry, false);
   assert.equal(completed.result?.shotCount, 6);
+
+  const completedHtml = renderToStaticMarkup(createElement(CreationAgentTaskStage, {
+    state: createCreationAgentState({
+      ...completed,
+      result: {
+        ...completed.result!,
+        productionPlan: {
+          version: 'paper-production-plan-v1',
+          pipeline: { id: 'lesson-script', label: '教学脚本', mode: 'dry-run' },
+          materials: [{ id: 'script-1', kind: 'script', name: '教学脚本', status: 'ready' }],
+          stages: [{ id: 'script', name: '脚本规划', status: 'completed' }],
+          estimatedCost: { currency: 'CNY', amount: 0, status: 'no-cost-dry-run' },
+          render: {
+            status: 'not-started',
+            requiresPaidProvider: true,
+            reason: '当前仅生成制作方案，未提交图像或视频渲染。',
+          },
+        },
+      },
+    }),
+    notice: '',
+    onCancel: () => undefined,
+    onRetry: () => undefined,
+  }));
+  assert.match(completedHtml, /无成本制作计划/);
+  assert.match(completedHtml, /素材清单/);
+  assert.match(completedHtml, /阶段进度/);
+  assert.match(completedHtml, /预计成本/);
+  assert.match(completedHtml, /¥0/);
+  assert.match(completedHtml, /未开始渲染/);
 
   const restored = createCreationAgentState({
     ...completed,

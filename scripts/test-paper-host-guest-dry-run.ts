@@ -49,6 +49,28 @@ async function main() {
     assert.equal(guestBody.sessionMode, 'guest');
     assert.equal(typeof guestBody.taskId, 'string');
     assert(Array.isArray(guestBody.shots) && guestBody.shots.length > 0);
+    assert(guestBody.productionPlan && typeof guestBody.productionPlan === 'object', 'response must expose a production plan');
+    const productionPlan = guestBody.productionPlan as Record<string, unknown>;
+    assert.equal(productionPlan.version, 'paper-production-plan-v1');
+    assert.deepEqual(productionPlan.pipeline, {
+      id: 'lesson-script',
+      label: '教学脚本',
+      mode: 'dry-run',
+    });
+    assert(Array.isArray(productionPlan.materials) && productionPlan.materials.length > 0);
+    assert(Array.isArray(productionPlan.stages) && productionPlan.stages.length > 0);
+    assert.deepEqual(productionPlan.estimatedCost, {
+      currency: 'CNY',
+      amount: 0,
+      status: 'no-cost-dry-run',
+    });
+    assert.deepEqual(productionPlan.render, {
+      status: 'not-started',
+      requiresPaidProvider: true,
+      reason: '当前仅生成制作方案，未提交图像或视频渲染。',
+    });
+    const task = guestBody.task as { result?: Record<string, unknown> };
+    assert.deepEqual(task.result?.productionPlan, productionPlan, 'production plan must persist with the task');
     assert.doesNotMatch(JSON.stringify(guestBody), new RegExp(guestWorkspace));
   } finally {
     await rm(root, { recursive: true, force: true });

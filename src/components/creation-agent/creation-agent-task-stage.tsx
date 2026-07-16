@@ -94,9 +94,36 @@ export function CreationAgentTaskStage({
           </div>
         ) : null}
         {state.status === 'completed' ? (
-          <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-            <p className="font-semibold text-emerald-800">制作方案已生成</p>
-            <p className="mt-2 text-sm text-emerald-700">{state.result?.title || '未命名项目'} · {state.result?.shotCount || 0} 个镜头</p>
+          <div className="mt-6 space-y-3">
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+              <p className="font-semibold text-emerald-800">制作方案已生成</p>
+              <p className="mt-2 text-sm text-emerald-700">{state.result?.title || '未命名项目'} · {state.result?.shotCount || 0} 个镜头</p>
+            </div>
+            {state.result?.productionPlan ? (
+              <div aria-label="无成本制作计划" className="rounded-2xl border border-blue-100 bg-gradient-to-br from-white to-blue-50/70 p-4 shadow-[0_12px_32px_rgba(37,99,235,0.07)]">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">无成本制作计划</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">{state.result.productionPlan.pipeline.label}</p>
+                  </div>
+                  <div className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">预计成本 ¥{state.result.productionPlan.estimatedCost.amount}</div>
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-xl border border-slate-100 bg-white/85 p-3">
+                    <p className="text-xs font-semibold text-slate-700">素材清单</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">{state.result.productionPlan.materials.length} 项 · {state.result.productionPlan.materials.slice(0, 2).map(item => item.name).join('、')}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-100 bg-white/85 p-3">
+                    <p className="text-xs font-semibold text-slate-700">阶段进度</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">{state.result.productionPlan.stages.filter(stage => stage.status === 'completed').length}/{state.result.productionPlan.stages.length} 已规划</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-100 bg-white/85 p-3">
+                    <p className="text-xs font-semibold text-slate-700">渲染输出</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">未开始渲染 · 需显式启用付费供应商</p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
         {state.status === 'failed' || state.status === 'cancelled' ? (

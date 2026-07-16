@@ -12,6 +12,10 @@ import {
 import { resolvePaperHostCreationOwnerFromRequest } from '@/lib/task-access';
 import { listSubjects } from '@/lib/subjects/subject-store';
 import { getSubjectStoreRoot } from '@/lib/subjects/subject-store-readiness';
+import {
+  buildCreationProductionPlan,
+  normalizeCreationPipeline,
+} from '@/lib/creation-agent/creation-production-plan';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -23,6 +27,7 @@ interface DryRunBody {
   style?: string;
   sceneType?: string;
   ratio?: string;
+  workflow?: string;
   referenceIds?: string[];
 }
 
@@ -64,6 +69,7 @@ export async function POST(request: NextRequest) {
     const style = body.style || '电影感短剧';
     const sceneType = body.sceneType || 'drama';
     const ratio = body.ratio || '16:9';
+    const pipelineId = normalizeCreationPipeline(body.workflow);
 
     const taskId = createTask('storyboard', {
       prompt,
@@ -120,6 +126,7 @@ export async function POST(request: NextRequest) {
         status: 'planned',
       })),
     });
+    const productionPlan = buildCreationProductionPlan(productionProject, pipelineId);
 
     const flow = {
       mode: 'dry-run',
@@ -157,6 +164,7 @@ export async function POST(request: NextRequest) {
       productionFlow: flow,
       project,
       productionProject,
+      productionPlan,
     });
 
     const task = publicTask(getTask(taskId));
@@ -175,6 +183,7 @@ export async function POST(request: NextRequest) {
       task,
       project,
       productionProject,
+      productionPlan,
       flow,
       shots,
     });

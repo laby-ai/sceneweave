@@ -1,3 +1,5 @@
+import type { CreationProductionPlan } from './creation-production-plan';
+
 export type CreationStatus =
   | 'idle'
   | 'submitting'
@@ -11,6 +13,7 @@ export interface CreationResult {
   title: string;
   shotCount: number;
   downloadUrl?: string;
+  productionPlan?: CreationProductionPlan;
 }
 
 export interface CreationAgentState {
