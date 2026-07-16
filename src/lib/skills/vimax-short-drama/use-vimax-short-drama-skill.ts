@@ -34,6 +34,8 @@ export interface VimaxPlanContext {
   prompt: string;
   duration: number;
   style: string;
+  skillId?: string;
+  sceneType?: string;
   segmentDuration?: number;
   segmentCount?: number;
   settings?: VimaxGenerationSettings;

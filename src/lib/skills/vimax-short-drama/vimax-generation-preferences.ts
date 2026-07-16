@@ -39,6 +39,8 @@ interface VimaxPlanRequestInput {
   segmentDuration?: number;
   segmentCount?: number;
   style: string;
+  skillId?: string;
+  sceneType?: string;
   settings: VimaxGenerationSettings;
 }
 
@@ -50,6 +52,8 @@ export function buildVimaxPlanRequest(input: VimaxPlanRequestInput) {
     ...(input.segmentDuration ? { segmentDuration: input.segmentDuration } : {}),
     ...(input.segmentCount ? { segmentCount: input.segmentCount } : {}),
     style: input.style,
+    ...(input.skillId ? { skillId: input.skillId } : {}),
+    ...(input.sceneType ? { sceneType: input.sceneType } : {}),
     model: input.settings.planModel,
     ratio: input.settings.ratio,
     resolution: input.settings.resolution,

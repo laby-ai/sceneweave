@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowUp,
   AtSign,
+  Check,
   ChevronDown,
   Footprints,
   Image as ImageIcon,
@@ -13,6 +14,7 @@ import {
   PenSquare,
   PersonStanding,
   Plus,
+  Search,
   Sparkles,
   Video,
   Wand2,
@@ -28,17 +30,14 @@ import {
   resolveVimaxGenerationSettings,
   VIMAX_PLAN_MODEL,
 } from '@/lib/skills/vimax-short-drama/vimax-generation-preferences';
+import {
+  loadVimaxSkillPreset,
+  resolveVimaxSkillPreset,
+  saveVimaxSkillPreset,
+  searchVimaxSkillPresets,
+} from '@/lib/skills/vimax-short-drama/vimax-skill-presets';
 
 type CreationMode = 'agent' | 'image' | 'video' | 'music' | 'voice' | 'avatar' | 'motion';
-
-const SKILL_OPTIONS: Array<{ id: string; label: string; desc: string; prompt: string; icon: React.ReactNode }> = [
-  { id: 'short-drama', label: '短剧制作', desc: 'ViMAX：剧本 → 分镜 → 参考图 → 成片', icon: <Video className="h-4 w-4" />, prompt: '用 ViMAX 做一部短剧：题材是【】，主角是【】，关键场景是【】。先出分镜规划。' },
-  { id: 'image-copy', label: '图文制作', desc: '小红书 / 公众号 / 电商详情页图文', icon: <ImageIcon className="h-4 w-4" />, prompt: '帮我做一组图文内容：主题是【】，目标平台是【小红书/公众号/电商】，风格要求【】。' },
-  { id: 'poster', label: '海报设计', desc: '活动 / 电影 / 产品海报 + 文案', icon: <PenSquare className="h-4 w-4" />, prompt: '设计一张海报：主题是【】，用途是【活动/电影/产品】，需要包含文案【】。' },
-  { id: 'brand-copy', label: '品牌文案', desc: '品牌故事 / Slogan / 产品介绍', icon: <MessageSquare className="h-4 w-4" />, prompt: '帮我写一段品牌文案：品牌/产品是【】，受众是【】，调性要求【】。' },
-  { id: 'storyboard', label: '分镜拆解', desc: '把脚本拆成分镜 + 参考图提示词', icon: <Wand2 className="h-4 w-4" />, prompt: '把下面这段脚本拆分成分镜，并为每个镜头给出参考图提示词：\n\n' },
-  { id: 'voiceover', label: '口播脚本', desc: '短视频 / 直播 / 广告口播稿', icon: <Mic className="h-4 w-4" />, prompt: '写一段口播脚本：主题是【】，时长约【】秒，风格【】。' },
-];
 
 interface CreationModeDef {
   id: CreationMode;
@@ -107,6 +106,7 @@ export function GenerateWorkspace({
   const [isLoading, setIsLoading] = useState(false);
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
   const [skillMenuOpen, setSkillMenuOpen] = useState(false);
+  const [skillSearch, setSkillSearch] = useState('');
   const [mediaModelMenuOpen, setMediaModelMenuOpen] = useState(false);
   const [atMenuOpen, setAtMenuOpen] = useState(false);
   const [subjects, setSubjects] = useState<SubjectItem[]>([]);
@@ -115,10 +115,31 @@ export function GenerateWorkspace({
   const [subjectOpeningId, setSubjectOpeningId] = useState<string | null>(null);
   const [selectedRatio, setSelectedRatio] = useState('16:9');
   const [selectedQuality, setSelectedQuality] = useState('高清');
+  const skillScope = storageScope || '';
+  const [skillSelection, setSkillSelection] = useState(() => {
+    const preset = typeof window === 'undefined' ? resolveVimaxSkillPreset() : loadVimaxSkillPreset(localStorage, skillScope);
+    return { scope: skillScope, id: preset.id };
+  });
   const [history, setHistory] = useState<ChatHistoryEntry[]>([]);
   useEffect(() => { setHistory(loadChatHistory(storageScope)); }, [storageScope]);
+  useEffect(() => {
+    setSkillSelection({ scope: skillScope, id: loadVimaxSkillPreset(localStorage, skillScope).id });
+    setSkillSearch('');
+  }, [skillScope]);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const selectedSkill = resolveVimaxSkillPreset(skillSelection.scope === skillScope ? skillSelection.id : undefined);
+  const visibleSkillPresets = searchVimaxSkillPresets(skillSearch);
+
+  const selectSkillPreset = useCallback((skillId: string) => {
+    const preset = saveVimaxSkillPreset(localStorage, skillScope, skillId);
+    setSkillSelection({ scope: skillScope, id: preset.id });
+    setMode('agent');
+    setInput(preset.prompt);
+    setSkillSearch('');
+    setSkillMenuOpen(false);
+    setTimeout(() => textareaRef.current?.focus(), 0);
+  }, [skillScope]);
 
   const startNewChat = useCallback(() => {
     setMessages([]);
@@ -263,7 +284,9 @@ export function GenerateWorkspace({
         duration: durationSpec.duration,
         segmentDuration: durationSpec.segmentDuration,
         segmentCount: durationSpec.segmentCount,
-        style: '电影感短剧',
+        style: selectedSkill.style,
+        skillId: selectedSkill.id,
+        sceneType: selectedSkill.sceneType,
         settings: generationSettings,
       });
       return;
@@ -281,7 +304,7 @@ export function GenerateWorkspace({
       timestamp: Date.now(),
     }]);
     setInput('');
-  }, [input, isLoading, mode, activeMode, onNavigate, handlePlanStep, handleReferenceAssetsStep, handleVideoStep, selectedRatio, selectedQuality]);
+  }, [input, isLoading, mode, activeMode, onNavigate, handlePlanStep, handleReferenceAssetsStep, handleVideoStep, selectedRatio, selectedQuality, selectedSkill]);
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
@@ -483,27 +506,39 @@ export function GenerateWorkspace({
               className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground"
               title="使用技能"
             >
-              <Wand2 className="h-3.5 w-3.5" /> 使用技能
+              <Wand2 className="h-3.5 w-3.5" /> {selectedSkill.name}
             </button>
             {skillMenuOpen && (
-              <div className="absolute top-full left-0 z-20 mt-2 w-60 overflow-hidden rounded-xl border border-border bg-popover p-1 shadow-xl">
-                <p className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">技能</p>
-                {SKILL_OPTIONS.map(skill => (
+              <div className="absolute top-full left-0 z-20 mt-2 w-80 overflow-hidden rounded-xl border border-border bg-popover p-2 shadow-xl">
+                <p className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">ViMAX Skill</p>
+                <label className="mb-2 flex items-center gap-2 rounded-lg border border-border bg-background px-2.5 py-2">
+                  <Search className="h-3.5 w-3.5 text-muted-foreground" />
+                  <input
+                    value={skillSearch}
+                    onChange={event => setSkillSearch(event.target.value)}
+                    placeholder="搜索短剧、电商、分镜…"
+                    className="min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground"
+                  />
+                </label>
+                <div className="max-h-72 overflow-y-auto">
+                {visibleSkillPresets.map(skill => (
                   <button
                     key={skill.id}
                     type="button"
-                    onClick={() => {
-                        setMode('agent');
-                        setInput(skill.prompt);
-                        setSkillMenuOpen(false);
-                        setTimeout(() => textareaRef.current?.focus(), 0);
-                      }}
-                    className="flex w-full flex-col items-start rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-accent/60"
+                    onClick={() => selectSkillPreset(skill.id)}
+                    className={`flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left transition-colors ${selectedSkill.id === skill.id ? 'bg-[#4F6CFF]/10' : 'hover:bg-accent/60'}`}
                   >
-                    <span className="text-sm text-foreground/90">{skill.label}</span>
-                    <span className="text-[11px] text-muted-foreground">{skill.desc}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm text-foreground/90">{skill.name}</span>
+                      <span className="block text-[11px] text-muted-foreground">{skill.description}</span>
+                    </span>
+                    {selectedSkill.id === skill.id && <Check className="mt-0.5 h-4 w-4 shrink-0 text-[#4F6CFF]" />}
                   </button>
                 ))}
+                {visibleSkillPresets.length === 0 && (
+                  <p className="px-2 py-5 text-center text-xs text-muted-foreground">没有匹配的 Skill</p>
+                )}
+                </div>
               </div>
             )}
           </div>
