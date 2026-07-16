@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
@@ -46,4 +47,12 @@ assert.match(bar, /返回项目/);
 assert.match(bar, /新建项目/);
 assert.match(bar, /星际短片/);
 
-console.log(JSON.stringify({ ok: true, script: 'test-vimax-project-layout', checks: 9 }));
+const embedShellSource = readFileSync(
+  new URL('../src/components/creation-agent/vimax-creation-agent-shell.tsx', import.meta.url),
+  'utf8',
+);
+
+assert.doesNotMatch(embedShellSource, /bg-black/);
+assert.match(embedShellSource, /bg-\[#f7f8fa\]/);
+
+console.log(JSON.stringify({ ok: true, script: 'test-vimax-project-layout', checks: 11 }));

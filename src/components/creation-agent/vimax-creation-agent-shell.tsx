@@ -39,7 +39,7 @@ export function VimaxCreationAgentShell() {
 
   if (!context) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-black text-sm text-white/60">
+      <main className="flex min-h-screen items-center justify-center bg-[#f7f8fa] text-sm text-[#737a87]">
         正在进入创作工作台…
       </main>
     );
@@ -49,13 +49,13 @@ export function VimaxCreationAgentShell() {
     <main
       data-paper-host-creation-agent="true"
       data-paper-host-vimax="true"
-      className="flex h-screen min-h-0 flex-col overflow-hidden bg-black"
+      className="flex h-screen min-h-0 flex-col overflow-hidden bg-[#f7f8fa]"
     >
-      <header className="flex h-11 shrink-0 items-center justify-end border-b border-white/10 bg-black px-3">
+      <header className="flex h-11 shrink-0 items-center justify-end border-b border-[#e8ebf0] bg-white px-3">
         <button
           type="button"
           onClick={handleReturn}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-1.5 text-xs font-medium text-white/70 transition hover:border-white/25 hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-[#e1e5eb] bg-white px-3 py-1.5 text-xs font-medium text-[#5f6672] transition hover:border-[#cad4e2] hover:bg-[#f7f9fc] hover:text-[#20242b] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2f6bff]"
         >
           <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
           返回平台

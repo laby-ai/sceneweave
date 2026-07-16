@@ -1,47 +1,53 @@
-# Design QA: embedded AIGC home and result flow
+**Comparison Target**
 
-## Evidence
+- source visual truth path: `C:\Users\16571\AppData\Local\Temp\codex-clipboard-f9e41949-dff6-42bd-a31c-79c8891f989d.png`
+- implementation screenshot path: `C:\Users\16571\Documents\Codex\2026-07-10\ssh-root-123-56-218-60\outputs\sceneweave-vimax-project-first-light-20260717\local-home-final-1440.png`
+- project screenshot path: `C:\Users\16571\Documents\Codex\2026-07-10\ssh-root-123-56-218-60\outputs\sceneweave-vimax-project-first-light-20260717\local-project-final-1440.png`
+- viewport: 1440 x 900
+- state: isolated guest workspace, empty Vimax project catalog, no provider call
 
-- Structural reference: `C:/Users/16571/AppData/Local/Temp/codex-clipboard-ac4c2d21-ffde-4128-a1fd-a9cfd4d45e22.png` (LibTV Agent home)
-- Visual-language reference: `C:/Users/16571/AppData/Local/Temp/codex-clipboard-f9e41949-dff6-42bd-a31c-79c8891f989d.png` (JiMeng light workspace)
-- Result-stream reference: `C:/Users/16571/AppData/Local/Temp/codex-clipboard-82e6f44b-c498-445d-b296-2e1b469169dd.png` (JiMeng light result grid)
-- Result-stage reference: `C:/Users/16571/AppData/Local/Temp/codex-clipboard-69302f57-4f5a-47ef-b79a-f41a4915a116.png` (JiMeng conversational production stage)
-- Implementation capture: `C:/Users/16571/Documents/Codex/2026-07-10/ssh-root-123-56-218-60/outputs/sceneweave-aigc-home-1440-20260716.png`
-- Result-flow capture: `C:/Users/16571/Documents/Codex/2026-07-10/ssh-root-123-56-218-60/outputs/sceneweave-result-flow-1440-20260716.png`
-- Combined comparison: `C:/Users/16571/Documents/Codex/2026-07-10/ssh-root-123-56-218-60/outputs/sceneweave-result-flow-design-comparison-20260716.png`
-- Viewport/state: 1440 px desktop, embedded isolated guest, completed no-cost production plan
+**Full-view Comparison Evidence**
 
-## Fidelity review
+- The reference and implementation were reviewed together at the same desktop scale. Both use a low-contrast light canvas, a centered compound composer, quiet borders, restrained blue accents and generous whitespace.
+- The reference's left navigation and history rail are intentionally omitted because the approved product requirement places projects below the composer and keeps project conversations free of a history sidebar.
+- The implementation keeps the mature Vimax composer and dialogue/result surface instead of introducing a drag-and-drop canvas.
 
-| Surface | Result | Evidence |
-| --- | --- | --- |
-| Layout | Passed | The embedded home has no left history rail or node canvas. The central composer, shortcut Skills, and recent-project grid follow the reference hierarchy. |
-| Typography | Passed | One strong Chinese heading, quiet supporting copy, compact control labels, and a restrained project hierarchy remain readable without oversized marketing type. |
-| Color and surface | Passed | Near-white canvas, white composer, low-contrast borders, restrained shadows, and a single dark submit control match the requested JiMeng-style light direction. |
-| Controls | Passed | Agent mode, model, reference-image picker, submit, four shortcut Skills, asset library, return, and start-project controls all render as real controls. |
-| Responsive/overflow | Passed | Browser measurement at 1440 x 900 reported `scrollWidth - clientWidth = 0`. The composer and project grid remain inside the viewport. |
-| Result hierarchy | Passed | A completed task now reads top-to-bottom as outcome, ordered storyboard, production plan, material assets, and next actions without opening a node canvas. |
-| Result actions | Passed | `重新编辑` returns to the composer with the original prompt, while `再生成` reruns the same no-cost plan through the existing task/SSE contract. |
+**Focused Region Comparison Evidence**
 
-## Behavior checks
+- Composer: rounded white surface, low-elevation shadow, muted placeholder, compact mode/model/Skill controls and a blue send affordance match the reference interaction density.
+- Project entry: recent projects sit below the composer as a card grid; the project view preserves a bottom composer and a quiet content stream.
+- A separate crop was not needed because the 1440 x 900 captures keep all required controls readable and no imagery or dense typography is hidden by scale.
 
-- Clicking `短剧分镜` changes the selected pipeline to `short-drama` and seeds the prompt with `把这个故事改写为三幕短剧，并输出镜头分镜。`.
-- The model stays on `自动规划（无成本）`; no paid generation was submitted during QA.
-- `资产库` points to `/media` and the reference-image control remains an actual file input.
-- Console error review and formal-domain verification are required again after the production release.
-- A six-shot no-cost guest fixture completed through the live local API, survived refresh, preserved its ordered shot details, reopened for editing, and regenerated without a paid provider.
-- The 1440 px result state reported no horizontal document overflow and no console errors.
+**Required Fidelity Surfaces**
 
-## Iteration history
+- Fonts and typography: system sans-serif fallback, semibold display heading, compact 12-14px control copy and muted secondary text preserve the reference hierarchy without brand-font imitation.
+- Spacing and layout rhythm: centered 920px composer region, 1180px page rail, 2.5-4 spacing cadence, 12-16px radii and low shadows are consistent. No horizontal overflow was observed.
+- Colors and visual tokens: `#f7f8fa` canvas, white surfaces, `#e1e5eb` borders, dark neutral copy and `#2f6bff` accents form the intended light Jimeng-like palette.
+- Image quality and asset fidelity: this state contains no reference imagery or branded decorative assets; Lucide icons are used for standard controls and no source image was replaced by a code-drawn approximation.
+- Copy and content: Vimax-specific copy is concise and generic. Skill labels cover short drama, commerce, storyboard, brand, art and game creation without introducing a separate product concept.
 
-1. Removed the earlier history sidebar and right-hand explanation rail after the user rejected both.
-2. Replaced education-specific copy and pipelines with general AIGC creation language and Skills.
-3. Moved the composer into the center of the idle experience and added a recent-project grid below it.
-4. Compared the implementation against the LibTV structural reference and JiMeng visual reference in the same review pass.
-5. Compared both JiMeng result references and the implementation in one vertically aligned image; kept the light result-flow rhythm while showing real text/storyboard artifacts instead of fake generated images.
+**Findings**
 
-## Final result
+- No actionable P0/P1/P2 findings remain.
+- [P3] The empty project state is deliberately sparse. Future real project thumbnails can increase visual richness after actual media exists; placeholder artwork should not be fabricated.
+
+**Comparison History**
+
+- Iteration 1 finding: [P1] the embed shell retained a black loading surface and black return bar above an otherwise light workspace. Evidence: `local-home-1440.png`.
+- Fix: converted the shell loading state, page background, return bar, borders and button states to the same light token set; added a structural regression test that rejects `bg-black` in the Vimax embed shell.
+- Post-fix evidence: `local-home-final-1440.png` and `local-project-final-1440.png`; the shell is consistently light in both home and project states.
+
+**Primary Interactions Tested**
+
+- changed quick Skill to `电商商品片` and verified selection survives reload
+- entered the project conversation from `开始创作`
+- returned to the project home
+- verified project view has no history sidebar and reuses the same Vimax composer
+- verified 1440px document width equals scroll width
+- checked browser console warnings and errors: none
+
+**Follow-up Polish**
+
+- Populate recent-project thumbnails only from real Vimax output assets once available.
 
 final result: passed
-
-Passed for local design fidelity, the idle path, the no-cost result stream, refresh recovery, re-edit, and regenerate. Production-domain release QA remains the deployment gate.
