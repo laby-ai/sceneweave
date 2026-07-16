@@ -31,7 +31,26 @@ const testCreationTaskStream = () => {
       stage: '已完成',
       result: {
         project: { title: '牛顿第一定律' },
-        shots: [{ id: 'shot-1' }, { id: 'shot-2' }],
+        shots: [
+          {
+            id: 'shot-1',
+            index: 1,
+            duration: 5,
+            phaseLabel: '开场',
+            shotTypeLabel: '全景',
+            prompt: '宇宙背景中出现超新星前兆',
+            subtitleText: '一颗恒星即将走向终点',
+          },
+          {
+            id: 'shot-2',
+            index: 2,
+            duration: 6,
+            phaseLabel: '爆发',
+            shotTypeLabel: '特写',
+            prompt: '恒星核心坍缩并释放强光',
+            narrationText: '核心坍缩触发剧烈爆发',
+          },
+        ],
         productionPlan: {
           version: 'paper-production-plan-v1',
           pipeline: { id: 'agent-creation', label: '智能创作', mode: 'dry-run' },
@@ -57,6 +76,26 @@ const testCreationTaskStream = () => {
     result: {
       title: '牛顿第一定律',
       shotCount: 2,
+      shots: [
+        {
+          id: 'shot-1',
+          index: 1,
+          duration: 5,
+          phaseLabel: '开场',
+          shotTypeLabel: '全景',
+          prompt: '宇宙背景中出现超新星前兆',
+          caption: '一颗恒星即将走向终点',
+        },
+        {
+          id: 'shot-2',
+          index: 2,
+          duration: 6,
+          phaseLabel: '爆发',
+          shotTypeLabel: '特写',
+          prompt: '恒星核心坍缩并释放强光',
+          caption: '核心坍缩触发剧烈爆发',
+        },
+      ],
       productionPlan: {
         version: 'paper-production-plan-v1',
         pipeline: { id: 'agent-creation', label: '智能创作', mode: 'dry-run' },
@@ -129,6 +168,11 @@ const testCreationState = () => {
   assert.equal(idle.status, 'idle');
   assert.equal(idle.progress, 0);
   assert.equal(idle.attempt, 0);
+
+  const prepareForEdit = (creationAgentModel as unknown as {
+    prepareCreationForEdit?: (state: ReturnType<typeof createCreationAgentState>) => ReturnType<typeof createCreationAgentState>;
+  }).prepareCreationForEdit;
+  assert.equal(typeof prepareForEdit, 'function');
 
   const submitting = beginCreation(idle, {
     requestId: 'request-1',
@@ -214,6 +258,15 @@ const testCreationState = () => {
     result: {
       title: '潮汐形成',
       shotCount: 6,
+      shots: [{
+        id: 'shot-1',
+        index: 1,
+        duration: 5,
+        phaseLabel: '开场',
+        shotTypeLabel: '全景',
+        prompt: '海岸线与月球引力关系的视觉建立',
+        caption: '潮汐来自天体引力与地球自转的共同作用',
+      }],
       downloadUrl: '/api/production/export?taskId=task-1',
     },
   });
@@ -221,6 +274,13 @@ const testCreationState = () => {
   assert.equal(completed.progress, 100);
   assert.equal(completed.canRetry, false);
   assert.equal(completed.result?.shotCount, 6);
+
+  const editing = prepareForEdit?.(completed);
+  assert.equal(editing?.status, 'idle');
+  assert.equal(editing?.prompt, completed.prompt);
+  assert.equal(editing?.attempt, completed.attempt);
+  assert.equal(editing?.taskId, undefined);
+  assert.equal(editing?.result, undefined);
 
   const completedHtml = renderToStaticMarkup(createElement(CreationAgentTaskStage, {
     state: createCreationAgentState({
@@ -251,6 +311,11 @@ const testCreationState = () => {
   assert.match(completedHtml, /预计成本/);
   assert.match(completedHtml, /¥0/);
   assert.match(completedHtml, /未开始渲染/);
+  assert.match(completedHtml, /分镜结果流/);
+  assert.match(completedHtml, /镜头 01/);
+  assert.match(completedHtml, /素材资产/);
+  assert.match(completedHtml, /重新编辑/);
+  assert.match(completedHtml, /再生成/);
 
   const restored = createCreationAgentState({
     ...completed,

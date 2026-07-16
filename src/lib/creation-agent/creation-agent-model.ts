@@ -12,8 +12,19 @@ export type CreationStatus =
 export interface CreationResult {
   title: string;
   shotCount: number;
+  shots?: CreationShotPreview[];
   downloadUrl?: string;
   productionPlan?: CreationProductionPlan;
+}
+
+export interface CreationShotPreview {
+  id: string;
+  index: number;
+  duration: number;
+  phaseLabel: string;
+  shotTypeLabel: string;
+  prompt: string;
+  caption: string;
 }
 
 export interface CreationAgentState {
@@ -184,6 +195,14 @@ export function retryCreation(state: CreationAgentState): CreationAgentState {
     canRetry: false,
     result: undefined,
   };
+}
+
+export function prepareCreationForEdit(state: CreationAgentState): CreationAgentState {
+  if (state.status !== 'completed') return state;
+  return createCreationAgentState({
+    prompt: state.prompt,
+    attempt: state.attempt,
+  });
 }
 
 export function cancelCreation(state: CreationAgentState): CreationAgentState {

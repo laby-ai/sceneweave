@@ -1,5 +1,5 @@
 import type { CreationAgentState } from '@/lib/creation-agent/creation-agent-model';
-import { Clapperboard, Image, Plus, ShoppingBag, Sparkles } from 'lucide-react';
+import { Clapperboard, Image, PencilLine, Plus, RotateCcw, ShoppingBag, Sparkles } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 interface CreationAgentTaskStageProps {
@@ -7,6 +7,8 @@ interface CreationAgentTaskStageProps {
   notice: string;
   onCancel: () => void;
   onRetry: () => void;
+  onEdit?: () => void;
+  onRegenerate?: () => void;
   onNew?: () => void;
   onQuickStart?: (skill: string, prompt: string) => void;
   composer?: ReactNode;
@@ -29,7 +31,7 @@ const STATUS_LABELS: Record<CreationAgentState['status'], string> = {
   cancelled: '已取消',
 };
 
-export function CreationAgentTaskStage({ state, notice, onCancel, onRetry, onNew, onQuickStart, composer }: CreationAgentTaskStageProps) {
+export function CreationAgentTaskStage({ state, notice, onCancel, onRetry, onEdit, onRegenerate, onNew, onQuickStart, composer }: CreationAgentTaskStageProps) {
   if (state.status === 'idle') {
     return (
       <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-5 pb-10 pt-20 sm:px-8">
@@ -87,8 +89,25 @@ export function CreationAgentTaskStage({ state, notice, onCancel, onRetry, onNew
           </div>
         ) : null}
         {state.status === 'completed' ? (
-          <div className="mt-6 space-y-3">
+          <div className="mt-6 space-y-4">
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4"><p className="font-semibold text-emerald-800">制作方案已生成</p><p className="mt-2 text-sm text-emerald-700">{state.result?.title || '未命名项目'} · {state.result?.shotCount || 0} 个镜头</p></div>
+            {state.result?.shots?.length ? (
+              <section aria-label="分镜结果流" className="rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">分镜结果流</p><p className="mt-1 text-sm text-slate-500">按创作顺序查看镜头方案，不进入节点画布。</p></div>
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500">{state.result.shots.length} 个镜头</span>
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {state.result.shots.map(shot => (
+                    <article key={shot.id} className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                      <div className="flex items-center justify-between gap-3 text-xs text-slate-500"><span className="font-semibold text-slate-700">镜头 {String(shot.index).padStart(2, '0')}</span><span>{shot.shotTypeLabel} · {shot.duration}s</span></div>
+                      <p className="mt-3 line-clamp-3 text-sm leading-6 text-slate-800">{shot.prompt}</p>
+                      {shot.caption ? <p className="mt-3 border-t border-slate-200 pt-3 text-xs leading-5 text-slate-500">{shot.phaseLabel} · {shot.caption}</p> : null}
+                    </article>
+                  ))}
+                </div>
+              </section>
+            ) : null}
             {state.result?.productionPlan ? (
               <div aria-label="无成本制作计划" className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -100,8 +119,18 @@ export function CreationAgentTaskStage({ state, notice, onCancel, onRetry, onNew
                   <div className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-xs font-semibold text-slate-700">阶段进度</p><p className="mt-1 text-xs leading-5 text-slate-500">{state.result.productionPlan.stages.filter(stage => stage.status === 'completed').length}/{state.result.productionPlan.stages.length} 已规划</p></div>
                   <div className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-xs font-semibold text-slate-700">渲染输出</p><p className="mt-1 text-xs leading-5 text-slate-500">未开始渲染 · 需显式启用付费供应商</p></div>
                 </div>
+                <div className="mt-4 border-t border-slate-200 pt-4">
+                  <p className="text-xs font-semibold text-slate-700">素材资产</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {state.result.productionPlan.materials.map(material => <span key={material.id} className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-600">{material.name}</span>)}
+                  </div>
+                </div>
               </div>
             ) : null}
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={onEdit} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"><PencilLine className="h-4 w-4" aria-hidden="true" />重新编辑</button>
+              <button type="button" onClick={onRegenerate} className="inline-flex items-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-3.5 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800"><RotateCcw className="h-4 w-4" aria-hidden="true" />再生成</button>
+            </div>
           </div>
         ) : null}
         {state.status === 'failed' || state.status === 'cancelled' ? (

@@ -34,6 +34,19 @@ export function parseCreationTaskSseMessage(
       result = {
         title: typeof project.title === 'string' ? project.title : '未命名创作',
         shotCount: shots.length,
+        shots: shots
+          .filter(isRecord)
+          .map((shot, index) => ({
+            id: typeof shot.id === 'string' ? shot.id : `shot-${index + 1}`,
+            index: typeof shot.index === 'number' ? shot.index : index + 1,
+            duration: typeof shot.duration === 'number' ? shot.duration : 0,
+            phaseLabel: typeof shot.phaseLabel === 'string' ? shot.phaseLabel : '分镜',
+            shotTypeLabel: typeof shot.shotTypeLabel === 'string' ? shot.shotTypeLabel : '镜头',
+            prompt: typeof shot.prompt === 'string' ? shot.prompt : '',
+            caption: typeof shot.subtitleText === 'string'
+              ? shot.subtitleText
+              : typeof shot.narrationText === 'string' ? shot.narrationText : '',
+          })),
         productionPlan: parseCreationProductionPlan(task.result.productionPlan),
       };
     }

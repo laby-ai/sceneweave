@@ -11,6 +11,7 @@ import {
   cancelCreation,
   createCreationAgentState,
   createCreationRequestId,
+  prepareCreationForEdit,
   retryCreation,
   validateCreationPrompt,
   type CreationAgentState,
@@ -214,6 +215,19 @@ export function CreationAgentShell() {
     setValidationMessage('');
   };
 
+  const handleEdit = () => {
+    const next = prepareCreationForEdit(state);
+    setState(next);
+    setPrompt(next.prompt);
+    setNotice('');
+    setValidationMessage('');
+  };
+
+  const handleRegenerate = () => {
+    setPrompt(state.prompt);
+    void submit(state);
+  };
+
   const handleQuickStart = (nextSkill: string, nextPrompt: string) => {
     setSkill(nextSkill);
     setPrompt(nextPrompt);
@@ -306,7 +320,7 @@ export function CreationAgentShell() {
             返回平台
           </button>
         </header>
-        <CreationAgentTaskStage state={state} notice={notice} onCancel={handleCancel} onRetry={handleRetry} onNew={handleNew} onQuickStart={handleQuickStart} composer={state.status === 'idle' ? composer : undefined} />
+        <CreationAgentTaskStage state={state} notice={notice} onCancel={handleCancel} onRetry={handleRetry} onEdit={handleEdit} onRegenerate={handleRegenerate} onNew={handleNew} onQuickStart={handleQuickStart} composer={state.status === 'idle' ? composer : undefined} />
         {state.status !== 'idle' ? <div className="sticky bottom-0 z-20 mx-auto w-full max-w-4xl p-4 pt-0 sm:p-5 sm:pt-0">{composer}</div> : null}
       </section>
     </main>
