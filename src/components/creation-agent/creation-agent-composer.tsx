@@ -36,7 +36,7 @@ export function CreationAgentComposer({
 }: CreationAgentComposerProps) {
   return (
     <form
-      className="rounded-2xl border border-slate-200/90 bg-white p-3 shadow-[0_18px_55px_rgba(15,23,42,0.10)] transition focus-within:border-blue-300 focus-within:shadow-[0_20px_60px_rgba(37,99,235,0.12)]"
+      className="relative overflow-hidden rounded-[24px] border border-white/90 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(248,250,255,0.96))] p-3 shadow-[0_22px_65px_rgba(37,99,235,0.13),0_2px_12px_rgba(15,23,42,0.05)] ring-1 ring-blue-100/70 transition duration-300 before:absolute before:inset-x-8 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-blue-400/70 before:to-transparent focus-within:-translate-y-0.5 focus-within:ring-blue-300 focus-within:shadow-[0_28px_75px_rgba(79,70,229,0.17)] motion-reduce:transform-none motion-reduce:transition-none"
       onSubmit={(event) => {
         event.preventDefault();
         onSubmit();
@@ -50,7 +50,7 @@ export function CreationAgentComposer({
         rows={3}
         maxLength={2000}
         placeholder="输入教学主题、脚本想法或上传参考，让 Agent 生成制作方案"
-        className="w-full resize-none bg-transparent px-3 py-2 text-sm leading-6 text-slate-800 outline-none placeholder:text-slate-400"
+        className="relative w-full resize-none bg-transparent px-3 py-2 text-sm leading-6 text-slate-800 outline-none placeholder:text-slate-400"
       />
       {validationMessage ? (
         <p role="alert" className="px-3 pb-2 text-xs text-amber-700">{validationMessage}</p>
@@ -74,8 +74,8 @@ export function CreationAgentComposer({
       {referenceMessage ? (
         <p role="status" className="px-3 pb-2 text-xs text-amber-700">{referenceMessage}</p>
       ) : null}
-      <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
-        <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500 transition hover:border-blue-200">
+      <div className="relative flex flex-wrap items-center gap-2 border-t border-slate-100/90 pt-3">
+        <label className="flex items-center gap-2 rounded-xl border border-slate-200/80 bg-white px-3 py-2 text-xs text-slate-500 shadow-sm transition hover:border-blue-200 hover:bg-blue-50/60">
           <span>Skill</span>
           <select
             value={skill}
@@ -87,7 +87,7 @@ export function CreationAgentComposer({
             <option value="concept-demo">概念演示</option>
           </select>
         </label>
-        <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500 transition hover:border-blue-200">
+        <label className="flex items-center gap-2 rounded-xl border border-slate-200/80 bg-white px-3 py-2 text-xs text-slate-500 shadow-sm transition hover:border-violet-200 hover:bg-violet-50/60">
           <span>模型</span>
           <select
             value={model}
@@ -112,7 +112,7 @@ export function CreationAgentComposer({
         <label
           htmlFor="creation-reference-file"
           aria-disabled={uploadingReference || references.length >= 8}
-          className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 aria-disabled:cursor-not-allowed aria-disabled:text-slate-300"
+          className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200/80 bg-white px-3 py-2 text-xs font-medium text-slate-600 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 aria-disabled:cursor-not-allowed aria-disabled:text-slate-300"
         >
           <ImagePlus className="h-3.5 w-3.5" aria-hidden="true" />
           {uploadingReference ? '正在上传…' : references.length >= 8 ? '参考图已达 8 张' : '选择参考图'}
@@ -120,7 +120,7 @@ export function CreationAgentComposer({
         <button
           type="submit"
           disabled={busy}
-          className="ml-auto inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none motion-reduce:transform-none"
+          className="ml-auto inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(79,70,229,0.24)] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_14px_30px_rgba(79,70,229,0.32)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none motion-reduce:transform-none motion-reduce:transition-none"
         >
           <WandSparkles className="h-4 w-4" aria-hidden="true" />
           {busy ? '正在生成方案…' : '生成制作方案'}

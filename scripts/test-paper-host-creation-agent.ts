@@ -250,6 +250,11 @@ const testEmbeddedShell = () => {
 
   assert.match(html, /data-paper-host-creation-agent="true"/);
   assert.match(html, /data-paper-host-theme="light"/);
+  assert.match(html, /data-paper-host-visual="luminous-workbench"/);
+  assert.match(html, /huiying-workflow-canvas\.png/);
+  assert.match(html, /灵感输入/);
+  assert.match(html, /制作规划/);
+  assert.match(html, /分镜交付/);
   assert.match(html, /科教创作/);
   assert.match(html, /新建创作/);
   assert.match(html, /最近创作/);
