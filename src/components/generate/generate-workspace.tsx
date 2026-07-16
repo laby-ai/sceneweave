@@ -10,6 +10,7 @@ import {
   FileJson,
   Footprints,
   Image as ImageIcon,
+  Loader2,
   MessageSquare,
   Mic,
   Music,
