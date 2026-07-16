@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import { CreationAgentShell } from '../src/components/creation-agent/creation-agent-shell';
 import { CreationAgentTaskStage } from '../src/components/creation-agent/creation-agent-task-stage';
+import * as creationAgentModel from '../src/lib/creation-agent/creation-agent-model';
 import {
   applyCreationEvent,
   beginCreation,
@@ -19,6 +20,19 @@ import {
 } from '../src/lib/paper-host-bridge';
 
 const testCreationState = () => {
+  const buildGuestRequestHeaders = (creationAgentModel as unknown as {
+    buildPaperHostGuestRequestHeaders?: (search: string) => Record<string, string>;
+  }).buildPaperHostGuestRequestHeaders;
+  assert.equal(typeof buildGuestRequestHeaders, 'function');
+  assert.deepEqual(buildGuestRequestHeaders?.(
+    '?host=paper-web&embed=creation-agent&workspaceKey=guest-creation-browser-session-7f9a2c',
+  ), {
+    'x-paper-host-embed': 'creation-agent',
+    'x-paper-host-guest-workspace': 'guest-creation-browser-session-7f9a2c',
+  });
+  assert.deepEqual(buildGuestRequestHeaders?.('?embed=creation-agent&workspaceKey=guest'), {});
+  assert.deepEqual(buildGuestRequestHeaders?.('?embed=research-agent&workspaceKey=guest-creation-browser-session-7f9a2c'), {});
+
   assert.equal(
     createCreationRequestId(() => 'browser-uuid'),
     'request-browser-uuid',

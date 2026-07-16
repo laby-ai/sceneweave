@@ -9,7 +9,7 @@ import {
   startTask,
   updateTaskProgress,
 } from '@/lib/task-manager';
-import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
+import { resolvePaperHostCreationOwnerFromRequest } from '@/lib/task-access';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -31,8 +31,9 @@ function toNumber(value: unknown, fallback: number) {
 }
 
 export async function POST(request: NextRequest) {
-  const owner = await resolveTaskOwnerFromRequest(request);
-  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
+  const access = await resolvePaperHostCreationOwnerFromRequest(request);
+  if (!access) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
+  const { owner, sessionMode } = access;
   try {
     const body = (await request.json().catch(() => ({}))) as DryRunBody;
     const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
@@ -149,6 +150,7 @@ export async function POST(request: NextRequest) {
       success: true,
       usedRealKey: false,
       incurredCost: false,
+      sessionMode,
       taskId,
       task,
       project,

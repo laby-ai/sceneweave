@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import {
   applyCreationEvent,
   beginCreation,
+  buildPaperHostGuestRequestHeaders,
   cancelCreation,
   createCreationAgentState,
   createCreationRequestId,
@@ -87,7 +88,10 @@ export function CreationAgentShell() {
     try {
       const response = await fetch('/api/production/dry-run', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...buildPaperHostGuestRequestHeaders(window.location.search),
+        },
         body: JSON.stringify({ prompt: submitting.prompt, workflow: skill, model }),
       });
       const payload: unknown = await response.json().catch(() => null);

@@ -11,6 +11,25 @@ export async function resolveTaskOwnerFromRequest(request: NextRequest | Request
   return { tenantId: session.tenant_id, memberId: session.member.id };
 }
 
+export async function resolvePaperHostCreationOwnerFromRequest(
+  request: NextRequest | Request,
+): Promise<{ owner: TaskOwner; sessionMode: 'guest' | 'member' } | null> {
+  const memberOwner = await resolveTaskOwnerFromRequest(request);
+  if (memberOwner) return { owner: memberOwner, sessionMode: 'member' };
+
+  const workspace = request.headers.get('x-paper-host-guest-workspace')?.trim() || '';
+  if (
+    request.headers.get('x-paper-host-embed') !== 'creation-agent'
+    || !/^guest-creation-[a-z0-9-]{16,96}$/.test(workspace)
+  ) return null;
+
+  const memberHash = createHash('sha256').update(workspace).digest('hex').slice(0, 32);
+  return {
+    owner: { tenantId: 'paper-host-guest', memberId: `guest-${memberHash}` },
+    sessionMode: 'guest',
+  };
+}
+
 export function monitorOwnerKey(owner: TaskOwner): string {
   return `${owner.tenantId}:${owner.memberId}`;
 }

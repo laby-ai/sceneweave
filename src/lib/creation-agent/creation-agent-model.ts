@@ -48,6 +48,8 @@ export interface PromptValidation {
   message: string;
 }
 
+const PAPER_HOST_GUEST_WORKSPACE_PATTERN = /^guest-creation-[a-z0-9-]{16,96}$/;
+
 const DEFAULT_STATE: CreationAgentState = {
   status: 'idle',
   prompt: '',
@@ -63,6 +65,18 @@ const clampProgress = (progress: number | undefined) => {
   if (!Number.isFinite(progress)) return 0;
   return Math.min(100, Math.max(0, Number(progress)));
 };
+
+export function buildPaperHostGuestRequestHeaders(search: string): Record<string, string> {
+  const params = new URLSearchParams(search);
+  const workspace = params.get('workspaceKey')?.trim() || '';
+  if (params.get('embed') !== 'creation-agent' || !PAPER_HOST_GUEST_WORKSPACE_PATTERN.test(workspace)) {
+    return {};
+  }
+  return {
+    'x-paper-host-embed': 'creation-agent',
+    'x-paper-host-guest-workspace': workspace,
+  };
+}
 
 export function createCreationRequestId(
   randomUUID: (() => string) | null | undefined = globalThis.crypto?.randomUUID?.bind(globalThis.crypto),

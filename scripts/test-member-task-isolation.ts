@@ -174,7 +174,11 @@ async function main() {
     for (const file of apiRoutes) {
       const source = await readFile(file, 'utf8');
       if (/\b(createTask|getTask|getTaskFresh|getAllTasks|TaskMonitor)\s*\(/.test(source)) {
-        assert.match(source, /resolveTaskOwnerFromRequest/, `${path.relative(process.cwd(), file)} must derive task access from the trusted session`);
+        const relativePath = path.relative(process.cwd(), file);
+        const expectedResolver = relativePath === path.join('src', 'app', 'api', 'production', 'dry-run', 'route.ts')
+          ? /resolvePaperHostCreationOwnerFromRequest/
+          : /resolveTaskOwnerFromRequest/;
+        assert.match(source, expectedResolver, `${relativePath} must derive task access from the trusted session`);
       }
     }
 

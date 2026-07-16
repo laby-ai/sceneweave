@@ -109,6 +109,7 @@
     "test:loopback-listener-contract": "node scripts/test-loopback-listener-contract.mjs",
     "test:request-observability": "tsx scripts/test-request-observability.ts",
     "test:paper-host-creation-agent": "tsx scripts/test-paper-host-creation-agent.ts",
+    "test:paper-host-guest-dry-run": "tsx scripts/test-paper-host-guest-dry-run.ts",
     "test:secure-task-observability": "tsx scripts/test-secure-task-observability.ts",
     "test:service-metrics": "tsx scripts/test-service-metrics.ts",
     "test:long-task-admission": "tsx scripts/test-long-task-admission.ts",
