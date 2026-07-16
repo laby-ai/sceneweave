@@ -2,8 +2,13 @@
 
 ## Goal
 
-Add SceneWeave to the UCAS science-and-education platform as the embedded
-“科教” creation agent while keeping the existing KnowTrail “科研” agent intact.
+Add SceneWeave to the UCAS science-and-education platform as a general AIGC
+creation agent while keeping the existing KnowTrail “科研” agent intact. Only
+the paper-web navigation label is “科教”; the embedded product itself must not
+be narrowed to education copy, workflows, or visual language. It supports
+commerce, short drama, advertising, art, image, video, and storyboard work
+through SceneWeave-owned skills.
+
 The integration must remain easy to sync with `laby-ai/sceneweave`, expose only
 the creation workbench in embedded mode, and reuse SceneWeave's existing task,
 storyboard, media, provider, cancellation, retry, and recovery contracts.
@@ -28,6 +33,12 @@ must build on this shell rather than enlarge the host adapter.
 - paper-web baseline commit: `4f66b028`
 - Official LibTV skill contract reference:
   `https://github.com/libtv-labs/libtv-skills`
+- Official OpenMontage production-agent reference:
+  `https://github.com/calesthio/OpenMontage`
+- Selected light-workbench references supplied by the user:
+  `codex-clipboard-f9e41949-dff6-42bd-a31c-79c8891f989d.png`,
+  `codex-clipboard-82e6f44b-c498-445d-b296-2e1b469169dd.png`, and
+  `codex-clipboard-69302f57-4f5a-47ef-b79a-f41a4915a116.png`.
 
 The LibTV product is a behavioral reference for a prompt-first creation agent,
 project history, attachments, model and skill choice, visible task progress,
@@ -100,7 +111,8 @@ tenant, member, owner, or account identifier is ignored.
 
 The embedded route is split into focused owners:
 
-- `creation-agent-shell.tsx`: three-region layout and responsive presentation;
+- `creation-agent-shell.tsx`: compact history plus main-canvas layout and
+  responsive presentation;
 - `creation-agent-composer.tsx`: prompt, attachment, model, skill, and submit
   controls;
 - `creation-agent-task-stage.tsx`: task stage, progress, cancel, retry, result,
@@ -114,15 +126,25 @@ business files should stay below 400 lines.
 
 ## Workbench interaction design
 
-The embedded page uses a dark, restrained creation surface without copying
-LibTV assets or branding:
+The embedded page uses a quiet light AIGC workbench. The selected screenshots
+are layout and density references, not a source for another product's logo,
+assets, private data, or proprietary implementation:
 
-- left: compact new-session action and recent project/session history;
-- center: prompt-first empty state, active task stages, and generated results;
-- composer: attachments, reference subject, model, skill, generation mode,
-  and a single submit action;
-- right or collapsible inspector: selected skill/model description, task
-  details, and result metadata.
+- left: a narrow creation rail with “开启创作”, new/default sessions, and
+  compact recent project history;
+- center: a large whitespace-led prompt-first surface that becomes a
+  chronological result feed after a task starts;
+- composer: one broad two-row input with attachment, Agent mode, automatic
+  pipeline, skill, subject/reference, and a single submit action;
+- top-right: a real asset-library entry; task metadata stays in the result feed
+  or a drawer instead of occupying a permanent dashboard rail;
+- scenario presets and skills are general AIGC capabilities, including product
+  visuals, short drama, advertising, art concepts, image, video, and
+  storyboards. Education is a future skill package, not the shell identity.
+
+The initial empty state says “你好，想创作什么？”. It must not contain “科教创作
+Agent”, “教学脚本”, “课堂演示”, or other education-only positioning. The
+paper-web navigation remains the only visible “科教” label.
 
 The initial release exposes existing SceneWeave capabilities only. Model and
 skill choices are populated from SceneWeave-owned configuration or a static
@@ -290,8 +312,8 @@ After this release is stable, separate specs may add:
 
 1. a LibTV-compatible skill adapter over the public session/project/event
    contract;
-2. education-specific skills for lesson scripts, teaching storyboards, lecture
-   clips, and reference-grounded visual explanations;
+2. optional domain skill packs, including education, commerce, short drama,
+   advertising, and visual arts;
 3. bounded real-provider qualification with explicit cost authorization;
 4. upstream pull-request packaging after the local commits are independently
    reviewable and the repository owner authorizes publication.
