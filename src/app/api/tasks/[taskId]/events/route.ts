@@ -5,7 +5,7 @@ import {
   type BackgroundTask,
   type TaskStatus,
 } from '@/lib/task-manager';
-import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
+import { resolvePaperHostCreationOwnerFromRequest } from '@/lib/task-access';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -84,8 +84,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ taskId: string }> }
 ) {
-  const owner = await resolveTaskOwnerFromRequest(request);
-  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
+  const access = await resolvePaperHostCreationOwnerFromRequest(request);
+  if (!access) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
+  const { owner } = access;
   const { taskId } = await params;
 
   cleanupExpiredTasks();
@@ -156,6 +157,7 @@ export async function GET(
       controller.enqueue(encoder.encode(`retry: ${STREAM_INTERVAL_MS}\n\n`));
 
       emitTask();
+      if (closed) return;
       timers.interval = setInterval(emitTask, STREAM_INTERVAL_MS);
       timers.timeout = setTimeout(() => {
         send('heartbeat', {

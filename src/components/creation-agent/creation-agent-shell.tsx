@@ -19,6 +19,7 @@ import {
   validateCreationReferenceFile,
   type CreationReference,
 } from '@/lib/creation-agent/creation-reference-model';
+import { streamCreationTask } from '@/lib/creation-agent/creation-task-stream';
 import { CreationAgentComposer } from './creation-agent-composer';
 import { CreationAgentHistory } from './creation-agent-history';
 import { CreationAgentTaskStage } from './creation-agent-task-stage';
@@ -94,6 +95,28 @@ export function CreationAgentShell() {
   }, []);
 
   useEffect(() => {
+    if (!restored || !state.taskId || !state.requestId
+      || !['submitting', 'running', 'reconnecting'].includes(state.status)) return;
+    const controller = new AbortController();
+    const requestId = state.requestId;
+    void streamCreationTask({
+      taskId: state.taskId,
+      requestId,
+      headers: buildPaperHostGuestRequestHeaders(window.location.search),
+      signal: controller.signal,
+      onEvent: event => setState(current => applyCreationEvent(current, event)),
+    }).catch(() => {
+      if (controller.signal.aborted) return;
+      setState(current => applyCreationEvent(current, {
+        requestId,
+        taskId: current.taskId,
+        status: 'failed',
+      }));
+    });
+    return () => controller.abort();
+  }, [restored, state.requestId, state.status, state.taskId]);
+
+  useEffect(() => {
     if (restored && typeof window !== 'undefined') {
       window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     }
@@ -146,18 +169,15 @@ export function CreationAgentShell() {
       }
 
       const taskId = typeof data.taskId === 'string' ? data.taskId : '';
-      const project = isRecord(data.project) ? data.project : {};
-      const shots = Array.isArray(data.shots) ? data.shots : [];
-      setState(applyCreationEvent(submitting, {
+      const running = applyCreationEvent(submitting, {
         requestId,
         taskId,
-        status: 'completed',
-        progress: 100,
-        result: {
-          title: typeof project.title === 'string' ? project.title : '科教创作方案',
-          shotCount: shots.length,
-        },
-      }));
+        status: 'running',
+        stage: '同步任务进度',
+        progress: 0,
+        message: '正在连接任务事件流',
+      });
+      setState(running);
     } catch {
       setNotice('网络连接中断，创意已保留，可以直接重试。');
       setState(applyCreationEvent(submitting, {
@@ -170,7 +190,10 @@ export function CreationAgentShell() {
 
   const handleCancel = async () => {
     if (state.taskId) {
-      await fetch(`/api/tasks/${encodeURIComponent(state.taskId)}`, { method: 'DELETE' }).catch(() => null);
+      await fetch(`/api/tasks/${encodeURIComponent(state.taskId)}`, {
+        method: 'DELETE',
+        headers: buildPaperHostGuestRequestHeaders(window.location.search),
+      }).catch(() => null);
     }
     setState(cancelCreation(state));
   };

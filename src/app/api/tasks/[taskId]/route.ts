@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cancelTask, getTaskForOwner, retryTask } from '@/lib/task-manager';
-import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
+import { resolvePaperHostCreationOwnerFromRequest } from '@/lib/task-access';
 
 function publicTask(task: NonNullable<ReturnType<typeof getTaskForOwner>>) {
   const { abortController: _abortController, owner: _owner, idempotencyHash: _idempotencyHash, ...taskInfo } = task;
@@ -16,8 +16,9 @@ export async function GET(
   { params }: { params: Promise<{ taskId: string }> }
 ) {
   try {
-    const owner = await resolveTaskOwnerFromRequest(request);
-    if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
+    const access = await resolvePaperHostCreationOwnerFromRequest(request);
+    if (!access) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
+    const { owner } = access;
     const { taskId } = await params;
     const task = getTaskForOwner(taskId, owner);
 
@@ -57,8 +58,9 @@ export async function DELETE(
   { params }: { params: Promise<{ taskId: string }> }
 ) {
   try {
-    const owner = await resolveTaskOwnerFromRequest(request);
-    if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
+    const access = await resolvePaperHostCreationOwnerFromRequest(request);
+    if (!access) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
+    const { owner } = access;
     const { taskId } = await params;
     const task = getTaskForOwner(taskId, owner);
 
@@ -99,8 +101,9 @@ export async function POST(
   { params }: { params: Promise<{ taskId: string }> }
 ) {
   try {
-    const owner = await resolveTaskOwnerFromRequest(request);
-    if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
+    const access = await resolvePaperHostCreationOwnerFromRequest(request);
+    if (!access) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
+    const { owner } = access;
     const { taskId } = await params;
     const body = await request.json().catch(() => ({}));
     const action = body.action;

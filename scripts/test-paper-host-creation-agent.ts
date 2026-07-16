@@ -19,6 +19,34 @@ import {
   parsePaperHostMessage,
 } from '../src/lib/paper-host-bridge';
 import { validateCreationReferenceFile } from '../src/lib/creation-agent/creation-reference-model';
+import { parseCreationTaskSseMessage } from '../src/lib/creation-agent/creation-task-stream';
+
+const testCreationTaskStream = () => {
+  const event = parseCreationTaskSseMessage('task', JSON.stringify({
+    success: true,
+    task: {
+      id: 'task-stream-1',
+      status: 'completed',
+      progress: 100,
+      stage: '已完成',
+      result: {
+        project: { title: '牛顿第一定律' },
+        shots: [{ id: 'shot-1' }, { id: 'shot-2' }],
+      },
+    },
+  }), 'request-stream-1');
+  assert.deepEqual(event, {
+    requestId: 'request-stream-1',
+    taskId: 'task-stream-1',
+    status: 'completed',
+    stage: '已完成',
+    progress: 100,
+    message: '',
+    result: { title: '牛顿第一定律', shotCount: 2 },
+  });
+  assert.equal(parseCreationTaskSseMessage('heartbeat', '{}', 'request-stream-1'), null);
+  assert.equal(parseCreationTaskSseMessage('task', '{bad-json', 'request-stream-1'), null);
+};
 
 const testCreationReferences = () => {
   assert.deepEqual(validateCreationReferenceFile({
@@ -252,6 +280,7 @@ const testEmbeddedShell = () => {
 
 testCreationState();
 testCreationReferences();
+testCreationTaskStream();
 testPaperHostBridge();
 testEmbeddedShell();
 console.log('paper host creation agent contract: ok');

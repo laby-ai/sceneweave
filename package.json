@@ -111,6 +111,7 @@
     "test:paper-host-creation-agent": "tsx scripts/test-paper-host-creation-agent.ts",
     "test:paper-host-guest-dry-run": "tsx scripts/test-paper-host-guest-dry-run.ts",
     "test:paper-host-guest-reference-images": "tsx scripts/test-paper-host-guest-reference-images.ts",
+    "test:paper-host-guest-task-events": "tsx scripts/test-paper-host-guest-task-events.ts",
     "test:secure-task-observability": "tsx scripts/test-secure-task-observability.ts",
     "test:service-metrics": "tsx scripts/test-service-metrics.ts",
     "test:long-task-admission": "tsx scripts/test-long-task-admission.ts",
