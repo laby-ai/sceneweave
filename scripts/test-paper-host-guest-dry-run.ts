@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-const prompt = '用三幕结构讲解光合作用，输出课堂分镜与讲解节奏。';
+const prompt = '为夏季新品写一条三幕结构短片，输出镜头分镜与视觉节奏。';
 const guestWorkspace = 'guest-creation-browser-session-7f9a2c';
 
 async function main() {
@@ -22,7 +22,7 @@ async function main() {
         'content-type': 'application/json',
         ...headers,
       },
-      body: JSON.stringify({ prompt, workflow: 'lesson-script', model: 'production-dry-run' }),
+      body: JSON.stringify({ prompt, workflow: 'agent-creation', model: 'production-dry-run' }),
     },
   );
 
@@ -53,8 +53,8 @@ async function main() {
     const productionPlan = guestBody.productionPlan as Record<string, unknown>;
     assert.equal(productionPlan.version, 'paper-production-plan-v1');
     assert.deepEqual(productionPlan.pipeline, {
-      id: 'lesson-script',
-      label: '教学脚本',
+      id: 'agent-creation',
+      label: '智能创作',
       mode: 'dry-run',
     });
     assert(Array.isArray(productionPlan.materials) && productionPlan.materials.length > 0);

@@ -1,6 +1,6 @@
 import type { ProductionProject } from '@/lib/production-project';
 
-export type CreationPipelineId = 'lesson-script' | 'course-storyboard' | 'concept-demo';
+export type CreationPipelineId = 'agent-creation' | 'short-drama' | 'product-visual';
 
 export interface CreationProductionPlan {
   version: 'paper-production-plan-v1';
@@ -33,6 +33,18 @@ export interface CreationProductionPlan {
 }
 
 const PIPELINES: Record<CreationPipelineId, string> = {
+  'agent-creation': '智能创作',
+  'short-drama': '短剧分镜',
+  'product-visual': '商品视觉',
+};
+
+const LEGACY_PIPELINES: Record<string, CreationPipelineId> = {
+  'lesson-script': 'agent-creation',
+  'course-storyboard': 'short-drama',
+  'concept-demo': 'product-visual',
+};
+
+const LEGACY_LABELS: Record<string, string> = {
   'lesson-script': '教学脚本',
   'course-storyboard': '课程分镜',
   'concept-demo': '概念演示',
@@ -43,9 +55,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> => (
 );
 
 export function normalizeCreationPipeline(value: unknown): CreationPipelineId {
-  return typeof value === 'string' && value in PIPELINES
-    ? value as CreationPipelineId
-    : 'lesson-script';
+  if (typeof value !== 'string') return 'agent-creation';
+  if (value in PIPELINES) return value as CreationPipelineId;
+  return LEGACY_PIPELINES[value] || 'agent-creation';
 }
 
 export function buildCreationProductionPlan(
@@ -92,8 +104,11 @@ export function parseCreationProductionPlan(value: unknown): CreationProductionP
   const render = value.render;
   if (!isRecord(pipeline) || !isRecord(estimatedCost) || !isRecord(render)) return undefined;
   const pipelineId = normalizeCreationPipeline(pipeline.id);
-  if (pipeline.id !== pipelineId
-    || pipeline.label !== PIPELINES[pipelineId]
+  const legacyId = typeof pipeline.id === 'string' ? LEGACY_PIPELINES[pipeline.id] : undefined;
+  const acceptedLabel = legacyId
+    ? pipeline.label === LEGACY_LABELS[String(pipeline.id)]
+    : pipeline.label === PIPELINES[pipelineId];
+  if (!acceptedLabel
     || pipeline.mode !== 'dry-run'
     || estimatedCost.currency !== 'CNY'
     || estimatedCost.amount !== 0
@@ -109,5 +124,12 @@ export function parseCreationProductionPlan(value: unknown): CreationProductionP
     || !stages.every(item => isRecord(item)
       && ['id', 'name', 'status'].every(key => typeof item[key] === 'string'))) return undefined;
 
-  return value as unknown as CreationProductionPlan;
+  return {
+    ...(value as unknown as CreationProductionPlan),
+    pipeline: {
+      id: pipelineId,
+      label: PIPELINES[pipelineId],
+      mode: 'dry-run',
+    },
+  };
 }

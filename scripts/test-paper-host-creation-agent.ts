@@ -34,8 +34,8 @@ const testCreationTaskStream = () => {
         shots: [{ id: 'shot-1' }, { id: 'shot-2' }],
         productionPlan: {
           version: 'paper-production-plan-v1',
-          pipeline: { id: 'lesson-script', label: '教学脚本', mode: 'dry-run' },
-          materials: [{ id: 'script-1', kind: 'script', name: '教学脚本', status: 'ready' }],
+          pipeline: { id: 'agent-creation', label: '智能创作', mode: 'dry-run' },
+          materials: [{ id: 'script-1', kind: 'script', name: '创作脚本', status: 'ready' }],
           stages: [{ id: 'script', name: '脚本规划', status: 'completed' }],
           estimatedCost: { currency: 'CNY', amount: 0, status: 'no-cost-dry-run' },
           render: {
@@ -59,8 +59,8 @@ const testCreationTaskStream = () => {
       shotCount: 2,
       productionPlan: {
         version: 'paper-production-plan-v1',
-        pipeline: { id: 'lesson-script', label: '教学脚本', mode: 'dry-run' },
-        materials: [{ id: 'script-1', kind: 'script', name: '教学脚本', status: 'ready' }],
+        pipeline: { id: 'agent-creation', label: '智能创作', mode: 'dry-run' },
+        materials: [{ id: 'script-1', kind: 'script', name: '创作脚本', status: 'ready' }],
         stages: [{ id: 'script', name: '脚本规划', status: 'completed' }],
         estimatedCost: { currency: 'CNY', amount: 0, status: 'no-cost-dry-run' },
         render: {
@@ -229,8 +229,8 @@ const testCreationState = () => {
         ...completed.result!,
         productionPlan: {
           version: 'paper-production-plan-v1',
-          pipeline: { id: 'lesson-script', label: '教学脚本', mode: 'dry-run' },
-          materials: [{ id: 'script-1', kind: 'script', name: '教学脚本', status: 'ready' }],
+          pipeline: { id: 'agent-creation', label: '智能创作', mode: 'dry-run' },
+          materials: [{ id: 'script-1', kind: 'script', name: '创作脚本', status: 'ready' }],
           stages: [{ id: 'script', name: '脚本规划', status: 'completed' }],
           estimatedCost: { currency: 'CNY', amount: 0, status: 'no-cost-dry-run' },
           render: {
@@ -307,22 +307,22 @@ const testEmbeddedShell = () => {
 
   assert.match(html, /data-paper-host-creation-agent="true"/);
   assert.match(html, /data-paper-host-theme="light"/);
-  assert.match(html, /data-paper-host-visual="luminous-workbench"/);
-  assert.match(html, /huiying-workflow-canvas\.png/);
-  assert.match(html, /灵感输入/);
-  assert.match(html, /制作规划/);
-  assert.match(html, /分镜交付/);
-  assert.match(html, /科教创作/);
-  assert.match(html, /新建创作/);
-  assert.match(html, /最近创作/);
-  assert.match(html, /教学脚本/);
-  assert.match(html, /课程分镜/);
+  assert.match(html, /data-paper-host-visual="aigc-light-workbench"/);
+  assert.match(html, /你好，想创作什么？/);
+  assert.match(html, /Agent 模式/);
+  assert.match(html, /智能创作/);
+  assert.match(html, /短剧分镜/);
+  assert.match(html, /商品视觉/);
+  assert.match(html, /个人最近项目/);
+  assert.match(html, /开始创作/);
+  assert.match(html, /自动规划（无成本）/);
+  assert.match(html, /资产库/);
   assert.match(html, /参考图/);
   assert.match(html, /选择参考图/);
   assert.match(html, /type="file"/);
   assert.doesNotMatch(html, /参考图 · 接入中/);
-  assert.match(html, /输入教学主题、脚本想法或上传参考/);
-  assert.doesNotMatch(html, /SceneWeave|开启创作|>首页<|>资产<|>设置</);
+  assert.match(html, /输入想法、剧本或上传参考/);
+  assert.doesNotMatch(html, /SceneWeave|科教|教学|课堂|课程|制作上下文|最近创作|创作工作台|huiying-workflow-canvas|data-paper-host-history/);
 
   const failedState = applyCreationEvent(beginCreation(createCreationAgentState(), {
     requestId: 'request-failed',

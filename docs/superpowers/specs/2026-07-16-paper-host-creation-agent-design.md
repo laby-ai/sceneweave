@@ -111,13 +111,12 @@ tenant, member, owner, or account identifier is ignored.
 
 The embedded route is split into focused owners:
 
-- `creation-agent-shell.tsx`: compact history plus main-canvas layout and
-  responsive presentation;
+- `creation-agent-shell.tsx`: prompt-first canvas layout and responsive
+  presentation;
 - `creation-agent-composer.tsx`: prompt, attachment, model, skill, and submit
   controls;
 - `creation-agent-task-stage.tsx`: task stage, progress, cancel, retry, result,
   and refresh recovery;
-- `creation-agent-history.tsx`: current owner-scoped projects and sessions;
 - `creation-agent-model.ts`: pure view-state transitions and stable error copy;
 - `paper-host-bridge.ts`: validated host messages and return navigation.
 
@@ -130,10 +129,12 @@ The embedded page uses a quiet light AIGC workbench. The selected screenshots
 are layout and density references, not a source for another product's logo,
 assets, private data, or proprietary implementation:
 
-- left: a narrow creation rail with “开启创作”, new/default sessions, and
-  compact recent project history;
-- center: a large whitespace-led prompt-first surface that becomes a
-  chronological result feed after a task starts;
+- home: a full-width, whitespace-led prompt-first surface with no permanent
+  project-history sidebar and no drag-and-drop node canvas;
+- recent work: a compact project grid below the composer, following the LibTV
+  home information architecture without copying its brand or private assets;
+- task view: the same surface becomes a chronological result feed after a task
+  starts;
 - composer: one broad two-row input with attachment, Agent mode, automatic
   pipeline, skill, subject/reference, and a single submit action;
 - top-right: a real asset-library entry; task metadata stays in the result feed

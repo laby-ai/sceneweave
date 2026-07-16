@@ -32,7 +32,7 @@ export function parseCreationTaskSseMessage(
       const project = isRecord(task.result.project) ? task.result.project : {};
       const shots = Array.isArray(task.result.shots) ? task.result.shots : [];
       result = {
-        title: typeof project.title === 'string' ? project.title : '科教创作方案',
+        title: typeof project.title === 'string' ? project.title : '未命名创作',
         shotCount: shots.length,
         productionPlan: parseCreationProductionPlan(task.result.productionPlan),
       };
