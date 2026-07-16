@@ -26,6 +26,9 @@ type DeleteTasksResponse = {
 const TASK_SYNC_TIMEOUT_MS = 15_000;
 const TASK_MUTATION_TIMEOUT_MS = 20_000;
 
+export const shouldSyncGlobalTasks = (pathname: string) =>
+  !pathname.replace(/\/$/, '').endsWith('/embed/creation-agent');
+
 const isTerminalTask = (task: BackgroundTask) =>
   ['completed', 'failed', 'cancelled'].includes(task.status);
 
@@ -254,6 +257,11 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       log('初始化 TaskContext...');
+      if (!shouldSyncGlobalTasks(window.location.pathname)) {
+        setTasks([]);
+        setInitialized(true);
+        return;
+      }
       const stored = localStorage.getItem(STORAGE_KEY);
       let initialTasks: BackgroundTask[] = [];
       

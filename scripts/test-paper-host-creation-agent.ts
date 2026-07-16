@@ -20,6 +20,14 @@ import {
 } from '../src/lib/paper-host-bridge';
 import { validateCreationReferenceFile } from '../src/lib/creation-agent/creation-reference-model';
 import { parseCreationTaskSseMessage } from '../src/lib/creation-agent/creation-task-stream';
+import { shouldSyncGlobalTasks } from '../src/contexts/TaskContext';
+
+assert.equal(
+  shouldSyncGlobalTasks('/sceneweave/embed/creation-agent'),
+  false,
+  'the isolated creation-agent embed must not request the authenticated global task list',
+);
+assert.equal(shouldSyncGlobalTasks('/sceneweave/'), true);
 
 const testCreationTaskStream = () => {
   const event = parseCreationTaskSseMessage('task', JSON.stringify({
