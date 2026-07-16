@@ -6,6 +6,8 @@ import {
   AtSign,
   Check,
   ChevronDown,
+  Download,
+  FileJson,
   Footprints,
   Image as ImageIcon,
   MessageSquare,
@@ -41,6 +43,10 @@ import {
   createVimaxRunCoordinator,
   recoverVimaxProjectMessages,
 } from '@/lib/skills/vimax-short-drama/vimax-project-session';
+import {
+  buildVimaxResultDelivery,
+  createVimaxManifestDataUrl,
+} from '@/lib/skills/vimax-short-drama/vimax-result-delivery';
 
 type CreationMode = 'agent' | 'image' | 'video' | 'music' | 'voice' | 'avatar' | 'motion';
 
@@ -631,6 +637,8 @@ function MessageBubble({ message, onQuickOption, hideQuickOptions }: { message: 
   }
 
   const agent = message.vimaxAgent;
+  const delivery = agent ? buildVimaxResultDelivery(message) : null;
+  const manifestName = `${(agent?.title || 'vimax-project').replace(/[^\p{L}\p{N}-]+/gu, '-').replace(/^-|-$/g, '') || 'vimax-project'}-manifest.json`;
   return (
     <div className="flex justify-start">
       <div className="w-full max-w-[92%] rounded-2xl rounded-bl-md border border-border bg-card px-4 py-3">
@@ -645,6 +653,46 @@ function MessageBubble({ message, onQuickOption, hideQuickOptions }: { message: 
         ) : null}
 
         <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">{message.content}</p>
+
+        {delivery ? (
+          <div className="mt-3 space-y-3" data-testid="vimax-result-delivery">
+            <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label="制作阶段">
+              {delivery.stages.map((stage, index) => (
+                <li
+                  key={stage.id}
+                  className={`rounded-lg border px-3 py-2 text-xs ${stage.state === 'completed'
+                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                    : stage.state === 'active'
+                      ? 'border-[#4F6CFF]/35 bg-[#4F6CFF]/10 text-[#3653E7] dark:text-[#70E0FF]'
+                      : stage.state === 'failed'
+                        ? 'border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-300'
+                        : 'border-border bg-accent/25 text-muted-foreground'}`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-medium">{index + 1}</span>
+                    <span>{stage.label}</span>
+                    {stage.state === 'completed' ? <Check className="ml-auto h-3.5 w-3.5" /> : null}
+                    {stage.state === 'active' ? <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin" /> : null}
+                    {stage.state === 'failed' ? <X className="ml-auto h-3.5 w-3.5" /> : null}
+                  </div>
+                </li>
+              ))}
+            </ol>
+
+            {delivery.inventory.length > 0 ? (
+              <div className="rounded-xl border border-border/70 bg-accent/20 px-3 py-2.5">
+                <div className="mb-2 text-xs font-medium text-foreground/80">制作素材</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {delivery.inventory.map((item, index) => (
+                    <span key={`${item.kind}-${item.label}-${index}`} className="rounded-md border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground">
+                      {item.label} · {item.status === 'generated' ? '已生成' : item.status === 'blocked' ? '受阻' : '已规划'}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         {message.generatedImages && message.generatedImages.length > 0 && !(agent?.shots || []).some(shot => shot.referenceUrl) && (
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -701,6 +749,34 @@ function MessageBubble({ message, onQuickOption, hideQuickOptions }: { message: 
             ))}
           </div>
         )}
+
+        {delivery ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border/70 pt-3">
+            <a
+              data-testid="vimax-export-manifest"
+              href={createVimaxManifestDataUrl(message)}
+              download={manifestName}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground/80 transition-colors hover:border-[#4F6CFF]/40 hover:text-[#3653E7]"
+            >
+              <FileJson className="h-3.5 w-3.5" />
+              导出制作清单
+            </a>
+            {delivery.downloads.map(item => (
+              <a
+                key={`${item.kind}-${item.url}`}
+                data-testid="vimax-download-result"
+                href={item.url}
+                download={item.filename}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#4F6CFF] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#405BE3]"
+              >
+                <Download className="h-3.5 w-3.5" />
+                下载{item.label}
+              </a>
+            ))}
+          </div>
+        ) : null}
 
         {!hideQuickOptions && message.quickOptions && message.quickOptions.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
