@@ -64,6 +64,13 @@ export interface PromptValidation {
 
 const PAPER_HOST_GUEST_WORKSPACE_PATTERN = /^guest-creation-[a-z0-9-]{16,96}$/;
 
+export interface PaperHostEmbedContext {
+  embedded: boolean;
+  workspaceKey?: string;
+  storageScope?: string;
+  requestHeaders: Record<string, string>;
+}
+
 const DEFAULT_STATE: CreationAgentState = {
   status: 'idle',
   prompt: '',
@@ -81,14 +88,26 @@ const clampProgress = (progress: number | undefined) => {
 };
 
 export function buildPaperHostGuestRequestHeaders(search: string): Record<string, string> {
+  return resolvePaperHostEmbedContext(search).requestHeaders;
+}
+
+export function resolvePaperHostEmbedContext(search: string): PaperHostEmbedContext {
   const params = new URLSearchParams(search);
   const workspace = params.get('workspaceKey')?.trim() || '';
   if (params.get('embed') !== 'creation-agent' || !PAPER_HOST_GUEST_WORKSPACE_PATTERN.test(workspace)) {
-    return {};
+    return {
+      embedded: false,
+      requestHeaders: {},
+    };
   }
   return {
-    'x-paper-host-embed': 'creation-agent',
-    'x-paper-host-guest-workspace': workspace,
+    embedded: true,
+    workspaceKey: workspace,
+    storageScope: `paper-host:${workspace}`,
+    requestHeaders: {
+      'x-paper-host-embed': 'creation-agent',
+      'x-paper-host-guest-workspace': workspace,
+    },
   };
 }
 

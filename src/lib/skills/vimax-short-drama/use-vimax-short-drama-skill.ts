@@ -39,10 +39,12 @@ export interface VimaxPlanContext {
   settings?: VimaxGenerationSettings;
 }
 
+type VimaxAssetKind = NonNullable<NonNullable<ChatMessage['vimaxAgent']>['assets']>[number]['kind'];
+
 interface PartialPlan {
   title?: string;
   summary?: string;
-  assets: Array<{ kind?: string; label?: string; prompt?: string }>;
+  assets: Array<{ kind?: VimaxAssetKind; label?: string; prompt?: string }>;
   shots: Array<{ index?: number; title?: string; duration?: number; camera?: string; prompt?: string }>;
 }
 
@@ -104,6 +106,8 @@ interface VimaxShortDramaSkillDeps {
   setIsLoading: (loading: boolean) => void;
   setInputValue: (value: string) => void;
   setCurrentStep: (step: number) => void;
+  requestHeaders?: Record<string, string>;
+  onAuthenticationRequired?: (reason: string) => void;
 }
 
 export interface VimaxShortDramaSkill {
@@ -113,7 +117,15 @@ export interface VimaxShortDramaSkill {
 }
 
 export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxShortDramaSkill {
-  const { messagesRef, setMessages, setIsLoading, setInputValue, setCurrentStep } = deps;
+  const {
+    messagesRef,
+    setMessages,
+    setIsLoading,
+    setInputValue,
+    setCurrentStep,
+    requestHeaders,
+    onAuthenticationRequired,
+  } = deps;
 
   const handlePlanStep = useCallback(async (context: VimaxPlanContext) => {
     const prompt = context.prompt;
@@ -151,12 +163,17 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       const planTimeout = setTimeout(() => planController.abort(), 60_000);
       const response = await fetch('/api/smart/vimax-agent-step', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...requestHeaders },
         body: JSON.stringify(buildVimaxPlanRequest({ ...context, settings: generationSettings })),
         signal: planController.signal,
       });
       clearTimeout(planTimeout);
 
+      if (response.status === 401) {
+        const reason = '当前创作需要登录后继续，已保留本页内容。';
+        onAuthenticationRequired?.(reason);
+        throw new Error(reason);
+      }
       if (!response.ok || !response.body) {
         const errText = await response.text().catch(() => '');
         throw new Error('AgentPlan 调用失败：' + (errText.slice(0, 200) || response.statusText));
@@ -168,9 +185,9 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       const decoder = new TextDecoder();
       let sseBuffer = '';
       let rawPlanText = '';
-      let plan: any = {};
-      let assets: any[] = [];
-      let shots: any[] = [];
+      let plan: PartialPlan & { nextAction?: string } = { assets: [], shots: [] };
+      let assets: PartialPlan['assets'] = [];
+      let shots: PartialPlan['shots'] = [];
       let planModel = '';
       let streamError = '';
 
@@ -300,7 +317,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
     } finally {
       setIsLoading(false);
     }
-  }, [setMessages, setIsLoading, setInputValue, setCurrentStep]);
+  }, [onAuthenticationRequired, requestHeaders, setMessages, setIsLoading, setInputValue, setCurrentStep]);
 
   const handleReferenceAssetsStep = useCallback(async () => {
     const planMessage = [...messagesRef.current].reverse().find(message => message.vimaxAgent?.phase === 'plan' && message.vimaxAgent.assets?.length);
@@ -341,7 +358,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       const refTimeout = setTimeout(() => refController.abort(), 100_000);
       const response = await fetch('/api/smart/vimax-agent-step', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...requestHeaders },
         body: JSON.stringify({
           phase: 'reference_assets',
           plan: {
@@ -367,6 +384,11 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       });
       clearTimeout(refTimeout);
       const data = await response.json();
+      if (response.status === 401) {
+        const reason = '当前创作需要登录后继续，已保留分镜计划。';
+        onAuthenticationRequired?.(reason);
+        throw new Error(reason);
+      }
       if (!response.ok || !data.success) {
         throw new Error(data.error || 'Seedream 参考素材生成失败');
       }
@@ -433,7 +455,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
     } finally {
       setIsLoading(false);
     }
-  }, [messagesRef, setMessages, setIsLoading]);
+  }, [messagesRef, onAuthenticationRequired, requestHeaders, setMessages, setIsLoading]);
 
   const handleVideoStep = useCallback(async () => {
     const reversed = [...messagesRef.current].reverse();
@@ -484,7 +506,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       const timeout = setTimeout(() => controller.abort(), 900_000);
       const response = await fetch('/api/smart/vimax-agent-step', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...requestHeaders },
         body: JSON.stringify({
           phase: 'video',
           confirm: true,
@@ -520,6 +542,11 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       });
       clearTimeout(timeout);
       const data = await response.json().catch(() => ({}));
+      if (response.status === 401) {
+        const reason = '当前成片生成需要登录后继续，分镜与参考素材已保留。';
+        onAuthenticationRequired?.(reason);
+        throw new Error(reason);
+      }
       if (!response.ok || !data.success || !data.videoUrl) {
         throw new Error(data.error || 'Seedance 视频生成失败');
       }
@@ -568,7 +595,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
     } finally {
       setIsLoading(false);
     }
-  }, [messagesRef, setMessages, setIsLoading]);
+  }, [messagesRef, onAuthenticationRequired, requestHeaders, setMessages, setIsLoading]);
 
   return { handlePlanStep, handleReferenceAssetsStep, handleVideoStep };
 }

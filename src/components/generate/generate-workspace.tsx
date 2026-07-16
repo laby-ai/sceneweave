@@ -87,11 +87,20 @@ function parseVimaxDurationSpec(text: string) {
 interface GenerateWorkspaceProps {
   initialPrompt?: string;
   onNavigate?: (section: string, prompt?: string, transfer?: { imageRefs?: string[] }) => void;
+  requestHeaders?: Record<string, string>;
+  storageScope?: string;
+  onAuthenticationRequired?: (reason: string) => void;
 }
 
 type SubjectItem = { id: string; name: string; type: 'character' | 'scene' | 'object'; imageUrl: string };
 
-export function GenerateWorkspace({ initialPrompt, onNavigate }: GenerateWorkspaceProps) {
+export function GenerateWorkspace({
+  initialPrompt,
+  onNavigate,
+  requestHeaders,
+  storageScope,
+  onAuthenticationRequired,
+}: GenerateWorkspaceProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState(initialPrompt || '');
   const [mode, setMode] = useState<CreationMode>('agent');
@@ -107,7 +116,7 @@ export function GenerateWorkspace({ initialPrompt, onNavigate }: GenerateWorkspa
   const [selectedRatio, setSelectedRatio] = useState('16:9');
   const [selectedQuality, setSelectedQuality] = useState('高清');
   const [history, setHistory] = useState<ChatHistoryEntry[]>([]);
-  useEffect(() => { setHistory(loadChatHistory()); }, []);
+  useEffect(() => { setHistory(loadChatHistory(storageScope)); }, [storageScope]);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -118,7 +127,7 @@ export function GenerateWorkspace({ initialPrompt, onNavigate }: GenerateWorkspa
 
   // 自动保存当前对话到 localStorage，刷新后最近列表可见
   useEffect(() => {
-    saveMessages(messages);
+    saveMessages(messages, storageScope);
     if (messages.length > 0) {
       const firstUser = messages.find(m => m.role === 'user');
       const title = firstUser ? firstUser.content.slice(0, 30) : '未命名创作';
@@ -138,11 +147,11 @@ export function GenerateWorkspace({ initialPrompt, onNavigate }: GenerateWorkspa
         } else {
           next = [entry, ...prev];
         }
-        saveChatHistory(next.slice(0, 20));
+        saveChatHistory(next.slice(0, 20), storageScope);
         return next;
       });
     }
-  }, [messages]);
+  }, [messages, storageScope]);
 
   const messagesRef = useRef<ChatMessage[]>(messages);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
@@ -157,6 +166,8 @@ export function GenerateWorkspace({ initialPrompt, onNavigate }: GenerateWorkspa
     setIsLoading,
     setInputValue: setInput,
     setCurrentStep: () => {},
+    requestHeaders,
+    onAuthenticationRequired,
   });
 
   const activeMode = CREATION_MODES.find(item => item.id === mode) || CREATION_MODES[0];

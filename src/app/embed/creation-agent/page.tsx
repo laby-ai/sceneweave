@@ -1,5 +1,5 @@
-import { CreationAgentShell } from '@/components/creation-agent/creation-agent-shell';
+import { VimaxCreationAgentShell } from '@/components/creation-agent/vimax-creation-agent-shell';
 
 export default function PaperHostCreationAgentPage() {
-  return <CreationAgentShell />;
+  return <VimaxCreationAgentShell />;
 }
