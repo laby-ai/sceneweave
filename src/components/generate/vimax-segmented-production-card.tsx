@@ -5,15 +5,22 @@ import { Download, Loader2, RefreshCw, RotateCcw, Rows3 } from 'lucide-react';
 
 import { clientApiFetch } from '@/lib/client-api';
 import {
+  applyVimaxSegmentTaskSnapshot,
   buildVimaxSegmentedProductionView,
   type VimaxSegmentedProductionAction,
   type VimaxSegmentedProductionTaskResult,
   type VimaxSegmentedProductionView,
 } from '@/lib/skills/vimax-short-drama/vimax-segmented-production';
+import { streamCreationTask } from '@/lib/creation-agent/creation-task-stream';
 
 interface TaskResponse {
   success: boolean;
-  task?: { result?: VimaxSegmentedProductionTaskResult };
+  task?: {
+    status?: string;
+    progress?: number;
+    stage?: string;
+    result?: VimaxSegmentedProductionTaskResult;
+  };
 }
 
 interface ExportResponse {
@@ -26,6 +33,7 @@ const SEGMENT_STATUS: Record<string, string> = {
   running: '制作中',
   completed: '已完成',
   failed: '失败',
+  cancelled: '已取消',
   skipped: '已跳过',
   planned: '已规划',
 };
@@ -49,7 +57,21 @@ export function VimaxSegmentedProductionCard({
         headers: requestHeaders,
         redirectOnUnauthorized: false,
       });
-      setView(buildVimaxSegmentedProductionView(taskId, response.task?.result));
+      const baseView = buildVimaxSegmentedProductionView(taskId, response.task?.result);
+      const snapshots = Object.fromEntries(await Promise.all(baseView.segments
+        .filter(segment => Boolean(segment.taskId))
+        .map(async segment => {
+          const child = await clientApiFetch<TaskResponse>(`/api/tasks/${encodeURIComponent(segment.taskId!)}`, {
+            headers: requestHeaders,
+            redirectOnUnauthorized: false,
+          });
+          return [segment.taskId!, {
+            status: child.task?.status,
+            progress: child.task?.progress,
+            stage: child.task?.stage,
+          }];
+        })));
+      setView(buildVimaxSegmentedProductionView(taskId, response.task?.result, snapshots));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '无法读取分段任务状态');
     } finally {
@@ -59,14 +81,43 @@ export function VimaxSegmentedProductionCard({
 
   useEffect(() => { void refresh(); }, [refresh]);
 
+  const streamTargetKey = view?.segments
+    .filter(segment => segment.taskId && (segment.status === 'queued' || segment.status === 'running'))
+    .map(segment => segment.taskId)
+    .join('|') || '';
+
+  useEffect(() => {
+    if (!streamTargetKey) return;
+    const controllers = streamTargetKey.split('|').map(childTaskId => {
+      const controller = new AbortController();
+      void streamCreationTask({
+        taskId: childTaskId,
+        requestId: `creation-segment-${childTaskId}`,
+        headers: requestHeaders || {},
+        signal: controller.signal,
+        onEvent: event => setView(current => current
+          ? applyVimaxSegmentTaskSnapshot(current, childTaskId, {
+            status: event.status,
+            progress: event.progress,
+            stage: event.stage,
+          })
+          : current),
+      }).catch(() => {
+        if (!controller.signal.aborted) setError('任务阶段同步中断，可点击刷新继续。');
+      });
+      return controller;
+    });
+    return () => controllers.forEach(controller => controller.abort());
+  }, [requestHeaders, streamTargetKey]);
+
   const runAction = useCallback(async (action: VimaxSegmentedProductionAction, key: string) => {
     setBusyKey(key);
     setError(null);
     try {
       await clientApiFetch(action.path, {
-        method: 'POST',
+        method: action.method || 'POST',
         headers: requestHeaders,
-        body: JSON.stringify(action.body),
+        ...(action.method === 'DELETE' ? {} : { body: JSON.stringify(action.body) }),
         redirectOnUnauthorized: false,
       });
       await refresh();
@@ -123,7 +174,23 @@ export function VimaxSegmentedProductionCard({
                 <span className="text-[#9299a4]">{segment.duration}s</span>
                 <span className="ml-auto text-[#68717d]">{SEGMENT_STATUS[segment.status] || segment.status}</span>
               </div>
-              {segment.error ? <p className="mt-1 line-clamp-2 text-red-500">该片段未完成，可单独重试。</p> : null}
+              {segment.stage || segment.status === 'queued' || segment.status === 'running' ? (
+                <div className="mt-2">
+                  <div className="flex items-center justify-between text-[11px] text-[#7d8590]">
+                    <span>{segment.stage || '正在同步任务阶段'}</span>
+                    <span>{segment.progress}%</span>
+                  </div>
+                  <div className="mt-1 h-1 overflow-hidden rounded-full bg-[#edf0f4]">
+                    <div className="h-full rounded-full bg-[#2f6bff] transition-[width]" style={{ width: `${segment.progress}%` }} />
+                  </div>
+                </div>
+              ) : null}
+              {segment.error ? <p className="mt-1 line-clamp-2 text-red-500">{segment.error}</p> : null}
+              {segment.cancelAction ? (
+                <button type="button" onClick={() => void runAction(segment.cancelAction!, `cancel-${segment.index}`)} disabled={Boolean(busyKey)} className="mt-2 inline-flex items-center gap-1 rounded-md border border-[#dfe4eb] bg-white px-2 py-1 text-[11px] text-[#68717d] disabled:opacity-50">
+                  {busyKey === `cancel-${segment.index}` ? <Loader2 className="h-3 w-3 animate-spin" /> : null}取消此片段
+                </button>
+              ) : null}
               {segment.retryAction ? (
                 <button type="button" onClick={() => void runAction(segment.retryAction!, `retry-${segment.index}`)} disabled={Boolean(busyKey)} className="mt-2 inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-[11px] text-amber-700 disabled:opacity-50">
                   <RotateCcw className={`h-3 w-3 ${busyKey === `retry-${segment.index}` ? 'animate-spin' : ''}`} />仅重试此片段
