@@ -48,6 +48,14 @@ check(
   'home submit and project continuation must stay on the mature Vimax chain',
 );
 check(
+  'vimax-completed-result-can-continue-or-regenerate-without-overwrite',
+  /resolveVimaxResultIteration/.test(generateWorkspace)
+    && /handleResultIteration/.test(generateWorkspace)
+    && /继续编辑/.test(generateWorkspace)
+    && /再生成/.test(generateWorkspace),
+  'a selected completed result must feed the existing composer or start a new attempt on the same Vimax route',
+);
+check(
   'vimax-generation-preferences-reach-plan-and-video',
   /selectedRatio/.test(generateWorkspace)
     && /selectedQuality/.test(generateWorkspace)

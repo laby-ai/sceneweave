@@ -23,6 +23,33 @@ export interface VimaxDeliveryInventoryItem {
   url?: string;
 }
 
+export interface VimaxResultIterationContext {
+  sourceMessageId: string;
+  sourcePrompt: string;
+  sourceTitle: string;
+  nextAttempt: number;
+}
+
+export function resolveVimaxResultIteration(
+  messages: ChatMessage[],
+  sourceMessageId: string,
+): VimaxResultIterationContext | null {
+  const sourceIndex = messages.findIndex(message => message.id === sourceMessageId);
+  if (sourceIndex < 0) return null;
+  const source = messages[sourceIndex];
+  if (source.role !== 'assistant' || source.generationStatus !== 'completed' || !source.vimaxAgent) return null;
+  const sourcePrompt = [...messages.slice(0, sourceIndex)].reverse().find(message => message.role === 'user')?.content.trim();
+  if (!sourcePrompt) return null;
+  const completedAttempts = messages.slice(0, sourceIndex + 1).filter(message => message.role === 'assistant'
+    && message.generationStatus === 'completed'
+    && Boolean(message.vimaxAgent)).length;
+  return { sourceMessageId, sourcePrompt, sourceTitle: source.vimaxAgent.title, nextAttempt: completedAttempts + 1 };
+}
+
+export function buildVimaxContinueEditPrompt(context: VimaxResultIterationContext): string {
+  return `基于上一版「${context.sourceTitle}」继续修改：\n原始需求：${context.sourcePrompt}\n\n修改要求：`;
+}
+
 function isSafeResultUrl(value: string | undefined): value is string {
   if (!value) return false;
   try {

@@ -57,8 +57,10 @@ import {
   type VimaxWorkspaceView,
 } from '@/lib/skills/vimax-short-drama/vimax-project-catalog';
 import {
+  buildVimaxContinueEditPrompt,
   buildVimaxResultDelivery,
   createVimaxManifestDataUrl,
+  resolveVimaxResultIteration,
 } from '@/lib/skills/vimax-short-drama/vimax-result-delivery';
 
 type CreationMode = 'agent' | 'image' | 'video' | 'music' | 'voice' | 'avatar' | 'motion';
@@ -427,6 +429,17 @@ export function GenerateWorkspace({
     setTimeout(() => handleSend(value), 50);
   }, [handleSend, messages]);
 
+  const handleResultIteration = useCallback((messageId: string, action: 'edit' | 'regenerate') => {
+    const context = resolveVimaxResultIteration(messages, messageId);
+    if (!context) return;
+    if (action === 'edit') {
+      setInput(buildVimaxContinueEditPrompt(context));
+      setTimeout(() => textareaRef.current?.focus(), 0);
+      return;
+    }
+    void handleSend(context.sourcePrompt);
+  }, [handleSend, messages]);
+
   return (
     <div className="relative flex h-full w-full overflow-hidden bg-[#f6f7f9] text-[#181a20]">
       <div className="flex min-w-0 flex-1 flex-col">
@@ -458,6 +471,7 @@ export function GenerateWorkspace({
                         key={message.id}
                         message={message}
                         onQuickOption={handleQuickOption}
+                        onResultIteration={handleResultIteration}
                         hideQuickOptions={latestCompletedVideoIndex > index}
                       />
                     ))}
@@ -666,7 +680,12 @@ export function GenerateWorkspace({
   }
 }
 
-function MessageBubble({ message, onQuickOption, hideQuickOptions }: { message: ChatMessage; onQuickOption: (value: string) => void; hideQuickOptions?: boolean }) {
+function MessageBubble({ message, onQuickOption, onResultIteration, hideQuickOptions }: {
+  message: ChatMessage;
+  onQuickOption: (value: string) => void;
+  onResultIteration: (messageId: string, action: 'edit' | 'regenerate') => void;
+  hideQuickOptions?: boolean;
+}) {
   if (message.role === 'user') {
     return (
       <div className="flex justify-end">
@@ -791,6 +810,16 @@ function MessageBubble({ message, onQuickOption, hideQuickOptions }: { message: 
 
         {delivery ? (
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#e3e7ed] pt-3">
+            {message.generationStatus === 'completed' ? (
+              <>
+                <button type="button" onClick={() => onResultIteration(message.id, 'edit')} title="带入当前结果继续修改，并保留这一版" className="inline-flex items-center gap-1.5 rounded-lg border border-[#dfe4eb] bg-white px-3 py-1.5 text-xs font-medium text-[#555d68] transition-colors hover:border-[#a9bfff] hover:text-[#2f6bff]">
+                  继续编辑
+                </button>
+                <button type="button" onClick={() => onResultIteration(message.id, 'regenerate')} title="使用原始需求创建新版本，并保留这一版" className="inline-flex items-center gap-1.5 rounded-lg border border-[#dfe4eb] bg-white px-3 py-1.5 text-xs font-medium text-[#555d68] transition-colors hover:border-[#a9bfff] hover:text-[#2f6bff]">
+                  再生成
+                </button>
+              </>
+            ) : null}
             <a
               data-testid="vimax-export-manifest"
               href={createVimaxManifestDataUrl(message)}
