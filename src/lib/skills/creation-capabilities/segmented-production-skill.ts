@@ -1,0 +1,53 @@
+import type { CreationCapabilitySkill } from './types';
+
+export const segmentedProductionSkill = {
+  id: 'segmented-production',
+  name: '分段生产与恢复',
+  description: '把分镜变成可追踪片段队列，只恢复失败片段并交付可继续剪辑的草稿包。',
+  sourceProject: 'ArcReel',
+  standard: 'sceneweave-vimax-skill-v1',
+  referenceMode: 'behavioral-reference',
+  implementation: 'sceneweave-native',
+  runtime: 'sceneweave',
+  executor: 'existing-sceneweave-chain',
+  inputs: ['taskId', 'productionProject', 'shots', 'segmentIndex'],
+  outputs: ['assemblyPlan', 'segmentTasks', 'recoveryState', 'cutDraft'],
+  operations: [
+    {
+      id: 'segments.plan',
+      name: '建立分段计划',
+      description: '根据项目和分镜建立 assemblyPlan。',
+      runtime: 'sceneweave',
+      entrypoint: '/api/production/assembly-plan',
+      method: 'POST',
+      cost: 'no-cost',
+    },
+    {
+      id: 'segments.queue',
+      name: '排入片段队列',
+      description: '为每个镜头创建可追踪的片段子任务。',
+      runtime: 'sceneweave',
+      entrypoint: '/api/production/assembly-plan/queue',
+      method: 'POST',
+      cost: 'no-cost',
+    },
+    {
+      id: 'segments.retry-failed',
+      name: '恢复失败片段',
+      description: '只重试失败或缺失片段，不覆盖已完成资产。',
+      runtime: 'sceneweave',
+      entrypoint: '/api/production/assembly-plan/segment/retry',
+      method: 'POST',
+      cost: 'provider-gated',
+    },
+    {
+      id: 'segments.export-cut-draft',
+      name: '导出剪辑草稿',
+      description: '导出保留项目、分镜、片段、恢复状态和成片关系的草稿包。',
+      runtime: 'sceneweave',
+      entrypoint: '/api/production/export',
+      method: 'GET',
+      cost: 'no-cost',
+    },
+  ],
+} satisfies CreationCapabilitySkill;
