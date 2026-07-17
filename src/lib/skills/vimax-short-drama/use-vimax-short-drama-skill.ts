@@ -14,6 +14,10 @@ import {
   type VimaxRunCoordinator,
   type VimaxRunToken,
 } from '@/lib/skills/vimax-short-drama/vimax-project-session';
+import {
+  parseVimaxProductionPlan,
+  type VimaxProductionPlan,
+} from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 
 /**
  * ViMAX 短剧制作 = Agent 驱动的一个 skill。
@@ -210,6 +214,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       let assets: PartialPlan['assets'] = [];
       let shots: PartialPlan['shots'] = [];
       let planModel = '';
+      let productionPlan: VimaxProductionPlan | undefined;
       let streamError = '';
 
       for (;;) {
@@ -274,6 +279,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
               assets = Array.isArray(plan.assets) ? plan.assets : [];
               shots = Array.isArray(plan.shots) ? plan.shots : [];
               planModel = data.model || '';
+              productionPlan = parseVimaxProductionPlan(data.productionPlan);
             } else if (event === 'plan.error') {
               streamError = data.error || '流式规划失败';
             }
@@ -283,6 +289,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
 
       if (streamError) throw new Error(streamError);
       if (!plan.title) throw new Error('模型未返回有效的分镜规划。');
+      if (!productionPlan) throw new Error('制作计划契约缺失，请重新规划。');
       updateRunMessages(run, prev => prev.map(message => message.id === progressMsgId ? {
         ...message,
         content: plan.summary || '已生成短剧分镜规划，请预览并确认。',
@@ -301,6 +308,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
           summary: plan.summary || '',
           model: planModel || 'Ark AgentPlan',
           generationSettings,
+          productionPlan,
           costState: 'incurred',
           nextAction: plan.nextAction || '确认分镜后进入 Seedream 参考素材生成。',
           assets: assets.map((asset: { kind?: NonNullable<NonNullable<ChatMessage['vimaxAgent']>['assets']>[number]['kind']; label?: string; prompt?: string }) => ({
@@ -387,6 +395,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         headers: { 'Content-Type': 'application/json', ...requestHeaders },
         body: JSON.stringify({
           phase: 'reference_assets',
+          productionPlan: plan.productionPlan,
           plan: {
             title: plan.title,
             summary: plan.summary,
@@ -540,6 +549,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         body: JSON.stringify({
           phase: 'video',
           confirm: true,
+          productionPlan: agent.productionPlan,
           ratio: generationSettings.ratio,
           resolution: generationSettings.resolution,
           plan: {

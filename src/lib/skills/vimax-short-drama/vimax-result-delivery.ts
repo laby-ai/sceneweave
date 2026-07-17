@@ -158,6 +158,7 @@ export function createVimaxManifestDataUrl(message: ChatMessage) {
       model: agent?.model,
       phase: agent?.phase,
       generationSettings: agent?.generationSettings,
+      productionPlan: agent?.productionPlan,
       costState: agent?.costState,
       nextAction: agent?.nextAction,
     },

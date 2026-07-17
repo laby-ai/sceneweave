@@ -5,59 +5,11 @@ import { buildProductionProject } from '@/lib/production-project';
 import { generateShotsFromUserPrompt } from '@/lib/storyboard-generator';
 import { extractLastFrameForHandoff } from '@/lib/video-frame-extraction';
 import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
+import type { VimaxAgentPlan, VimaxAgentReferenceAsset, VimaxAgentStepBody } from '@/lib/skills/vimax-short-drama/vimax-agent-contract';
 import { VIMAX_PLAN_MODEL } from '@/lib/skills/vimax-short-drama/vimax-generation-preferences';
+import { assertVimaxProductionPlanForPhase, buildVimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-type VimaxAgentPhase = 'plan' | 'reference_assets' | 'video';
-
-interface VimaxAgentReferenceAsset {
-  kind?: string;
-  label?: string;
-  prompt?: string;
-  url?: string;
-  shotIndex?: number;
-}
-
-interface VimaxAgentStepBody {
-  phase?: VimaxAgentPhase;
-  prompt?: string;
-  plan?: VimaxAgentPlan;
-  assets?: VimaxAgentReferenceAsset[];
-  model?: string;
-  ratio?: string;
-  resolution?: string;
-  duration?: number;
-  segmentDuration?: number;
-  segmentCount?: number;
-  sceneType?: string;
-  style?: string;
-  stream?: boolean;
-  /** 视频阶段必须显式确认，避免误触发计费。 */
-  confirm?: boolean;
-}
-
-interface VimaxAgentPlan {
-  title: string;
-  summary: string;
-  assets: Array<{
-    kind: 'script' | 'character' | 'scene' | 'prop' | 'shot' | 'reference';
-    label: string;
-    prompt: string;
-    referenceUrl?: string;
-    videoUrl?: string;
-  }>;
-  shots: Array<{
-    index: number;
-    title: string;
-    duration: number;
-    camera: string;
-    prompt: string;
-    referenceUrl?: string;
-    videoUrl?: string;
-  }>;
-  nextAction: string;
-}
 
 function getArkConfig() {
   // Text model uses the plan/v3 endpoint with the agent key.
@@ -390,6 +342,32 @@ function buildProductionBackedVimaxPlan(prompt: string, basePlan: VimaxAgentPlan
     }),
     nextAction: assemblyPlan.nextAction || '确认分镜后进入参考图和真实视频生成。',
   };
+}
+
+function buildVimaxPlanEnvelope(
+  prompt: string,
+  model: string,
+  basePlan: VimaxAgentPlan,
+  body: VimaxAgentStepBody,
+) {
+  const plan = buildProductionBackedVimaxPlan(prompt, basePlan, body);
+  const config = getArkConfig();
+  const productionPlan = buildVimaxProductionPlan({
+    title: plan.title,
+    ratio: body.ratio || '16:9',
+    resolution: body.resolution || '720p',
+    planModel: model,
+    imageModel: config.imageModel,
+    videoModel: config.videoModel,
+    providerReadiness: {
+      plan: Boolean(config.apiKey),
+      referenceAssets: Boolean(config.imageApiKey),
+      video: Boolean(config.imageApiKey),
+    },
+    assets: plan.assets,
+    shots: plan.shots,
+  });
+  return { plan, productionPlan };
 }
 
 // 流式 plan：原生 fetch + SSE，逐 token 把 delta 透传给前端
@@ -779,8 +757,8 @@ export async function POST(request: NextRequest) {
               const result = await callArkTextStream(prompt, body.model, (delta) => {
                 send('plan.delta', { delta });
               });
-              const productionBackedPlan = buildProductionBackedVimaxPlan(prompt, result.plan, body);
-              send('plan.complete', { success: true, phase: 'plan', model: result.model, plan: productionBackedPlan });
+              const envelope = buildVimaxPlanEnvelope(prompt, result.model, result.plan, body);
+              send('plan.complete', { success: true, phase: 'plan', model: result.model, ...envelope });
             } catch (error) {
               send('plan.error', { error: error instanceof Error ? error.message : 'unknown' });
             } finally {
@@ -792,13 +770,14 @@ export async function POST(request: NextRequest) {
       }
 
       const result = await callArkText(prompt, body.model);
+      const envelope = buildVimaxPlanEnvelope(prompt, result.model, result.plan, body);
       return NextResponse.json({
         success: true,
         phase,
         usedRealKey: true,
         incurredCost: true,
         model: result.model,
-        plan: buildProductionBackedVimaxPlan(prompt, result.plan, body),
+        ...envelope,
       });
     }
 
@@ -806,6 +785,12 @@ export async function POST(request: NextRequest) {
       if (!body.plan) {
         throw new Error('缺少上一阶段真实 AgentPlan 结果，不能直接生成参考素材。');
       }
+      const config = getArkConfig();
+      assertVimaxProductionPlanForPhase(body.productionPlan, 'reference_assets', {
+        plan: config.textModel,
+        referenceAssets: config.imageModel,
+        video: config.videoModel,
+      });
       const result = await callSeedreamReferenceImages(body.plan);
       return NextResponse.json({
         success: true,
@@ -832,6 +817,12 @@ export async function POST(request: NextRequest) {
       if (!body.plan) {
         throw new Error('缺少分镜规划，无法生成视频。');
       }
+      const config = getArkConfig();
+      assertVimaxProductionPlanForPhase(body.productionPlan, 'video', {
+        plan: config.textModel,
+        referenceAssets: config.imageModel,
+        video: config.videoModel,
+      });
       const assets = Array.isArray(body.assets) ? body.assets : (body.plan.assets as VimaxAgentReferenceAsset[] | undefined) || [];
       const result = await callSeedanceVideo(body.plan, assets, { ratio: body.ratio, resolution: body.resolution });
       return NextResponse.json({

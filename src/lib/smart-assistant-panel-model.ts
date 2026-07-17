@@ -119,6 +119,7 @@ export interface ChatMessage {
       ratio: string;
       resolution: string;
     };
+    productionPlan?: import('@/lib/skills/vimax-short-drama/vimax-production-plan').VimaxProductionPlan;
     assets?: Array<{
       kind: 'script' | 'character' | 'scene' | 'prop' | 'shot' | 'reference';
       label: string;

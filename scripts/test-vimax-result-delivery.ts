@@ -4,7 +4,23 @@ import {
   createVimaxManifestDataUrl,
 } from '../src/lib/skills/vimax-short-drama/vimax-result-delivery';
 import { VIMAX_PLAN_MODEL } from '../src/lib/skills/vimax-short-drama/vimax-generation-preferences';
+import { buildVimaxProductionPlan } from '../src/lib/skills/vimax-short-drama/vimax-production-plan';
 import type { ChatMessage } from '../src/lib/smart-assistant-panel-model';
+
+const productionPlan = buildVimaxProductionPlan({
+  title: '品牌短片',
+  ratio: '16:9',
+  resolution: '1080p',
+  planModel: VIMAX_PLAN_MODEL,
+  imageModel: 'doubao-seedream-5-0-260128',
+  videoModel: 'doubao-seedance-1-5-pro-251215',
+  providerReadiness: { plan: true, referenceAssets: true, video: true },
+  assets: [{ kind: 'character', label: '主角' }, { kind: 'scene', label: '城市天台' }],
+  shots: [
+    { index: 1, title: '开场', duration: 5, camera: '推进', prompt: '主角登场' },
+    { index: 2, title: '转折', duration: 5, camera: '环绕', prompt: '品牌揭示' },
+  ],
+});
 
 const planMessage: ChatMessage = {
   id: 'plan-1',
@@ -18,6 +34,7 @@ const planMessage: ChatMessage = {
     summary: '三镜头品牌片',
     model: VIMAX_PLAN_MODEL,
     costState: 'incurred',
+    productionPlan,
     nextAction: '生成参考图',
     assets: [
       { kind: 'character', label: '主角', prompt: '人物设定', status: 'planned' },
@@ -84,6 +101,7 @@ assert.ok(manifestUrl.startsWith('data:application/json;charset=utf-8,'));
 const manifest = JSON.parse(decodeURIComponent(manifestUrl.split(',')[1] || ''));
 assert.equal(manifest.schema, 'sceneweave.vimax.delivery.v1');
 assert.equal(manifest.project.title, '品牌短片');
+assert.deepEqual(manifest.project.productionPlan, productionPlan);
 assert.equal(manifest.storyboard.length, 2);
 assert.equal(manifest.results.finalVideoUrl, 'https://assets.example/final.mp4');
 

@@ -26,6 +26,7 @@ import { VimaxProjectBar } from '@/components/generate/vimax-project-bar';
 import { VimaxProjectHome } from '@/components/generate/vimax-project-home';
 import { clientApiFetch, clientApiRequest } from '@/lib/client-api';
 import { genId, loadChatHistory, loadMessages, saveChatHistory, saveMessages, type ChatHistoryEntry, type ChatMessage } from '@/lib/smart-assistant-panel-model';
+import { VimaxProductionPlanCard } from '@/components/generate/vimax-production-plan-card';
 import {
   useVimaxShortDramaSkill,
   VIMAX_REFERENCE_CONFIRM_REGEX,
@@ -714,6 +715,7 @@ function MessageBubble({ message, onQuickOption, onResultIteration, hideQuickOpt
 
         {delivery ? (
           <div className="mt-3 space-y-3" data-testid="vimax-result-delivery">
+            {agent?.productionPlan ? <VimaxProductionPlanCard plan={agent.productionPlan} /> : null}
             <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label="制作阶段">
               {delivery.stages.map((stage, index) => (
                 <li
