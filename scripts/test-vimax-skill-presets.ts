@@ -14,6 +14,10 @@ import {
 } from '../src/lib/skills/vimax-short-drama/vimax-generation-preferences';
 
 assert.equal(new Set(VIMAX_SKILL_PRESETS.map(preset => preset.id)).size, VIMAX_SKILL_PRESETS.length);
+assert.doesNotMatch(
+  VIMAX_SKILL_PRESETS.map(preset => `${preset.name} ${preset.description} ${preset.prompt}`).join('\n'),
+  /ViMAX|Vimax|VIMAX/,
+);
 assert.equal(searchVimaxSkillPresets('电商')[0]?.id, 'commerce-video');
 assert.ok(searchVimaxSkillPresets('  分镜  ').some(preset => preset.id === 'storyboard-director'));
 assert.equal(searchVimaxSkillPresets('不存在的技能').length, 0);

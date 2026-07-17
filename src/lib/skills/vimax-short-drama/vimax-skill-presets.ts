@@ -12,8 +12,8 @@ export const VIMAX_SKILL_PRESETS: VimaxSkillPreset[] = [
   {
     id: 'short-drama',
     name: '短剧一键成片',
-    description: '剧本、分镜、参考图与成片的完整 ViMAX 链路',
-    prompt: '用 ViMAX 做一部短剧：题材是【】，主角是【】，关键场景是【】。先出分镜规划。',
+    description: '剧本、分镜、参考图与成片的完整创作链路',
+    prompt: '制作一部短剧：题材是【】，主角是【】，关键场景是【】。先出分镜规划。',
     sceneType: 'drama',
     style: '电影感短剧',
     keywords: ['短剧', '漫剧', '剧情', '成片'],

@@ -602,7 +602,7 @@ export function GenerateWorkspace({
             </button>
             {skillMenuOpen && (
               <div className="absolute left-0 top-full z-20 mt-2 w-80 overflow-hidden rounded-xl border border-[#e1e5eb] bg-white p-2 text-[#252931] shadow-[0_18px_38px_rgba(31,41,55,0.14)]">
-                <p className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-wider text-[#9299a4]">ViMAX Skill</p>
+                <p className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-wider text-[#9299a4]">创作 Skill</p>
                 <label className="mb-2 flex items-center gap-2 rounded-lg border border-[#e1e5eb] bg-[#f8f9fb] px-2.5 py-2">
                   <Search className="h-3.5 w-3.5 text-[#9299a4]" />
                   <input
