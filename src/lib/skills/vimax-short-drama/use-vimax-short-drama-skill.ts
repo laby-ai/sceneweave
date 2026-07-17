@@ -141,7 +141,8 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
   const runCoordinator = providedRunCoordinator || fallbackRunCoordinatorRef.current;
 
   const updateRunMessages = useCallback((run: VimaxRunToken, update: (messages: ChatMessage[]) => ChatMessage[]) => {
-    setMessages(current => runCoordinator.isCurrent(run) ? update(current) : current);
+    if (!runCoordinator.isCurrent(run)) return;
+    setMessages(update);
   }, [runCoordinator, setMessages]);
 
   const handlePlanStep = useCallback(async (context: VimaxPlanContext) => {
