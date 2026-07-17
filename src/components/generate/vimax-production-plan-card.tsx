@@ -38,6 +38,20 @@ export function VimaxProductionPlanCard({ plan }: { plan: VimaxProductionPlan })
         ))}
       </div>
 
+      <div className="mt-3 border-t border-[#e2e7ee] pt-2.5">
+        <p className="text-[11px] font-semibold text-[#4d5663]">本次创作流程</p>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {plan.workflow.executionStages.map((stage, index) => (
+            <div key={stage.id} className="flex items-center gap-1.5">
+              {index > 0 ? <span aria-hidden="true" className="text-[10px] text-[#b6bdc7]">→</span> : null}
+              <span className="rounded-full border border-[#dfe5ed] bg-white px-2.5 py-1 text-[10px] font-medium text-[#596270]">
+                {stage.label}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
       <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-[#7c8592]">
         <span>{completed}/{plan.checkpoints.length} 阶段完成</span>
         <span>·</span>

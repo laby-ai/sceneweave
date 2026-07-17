@@ -1,3 +1,9 @@
+import {
+  parseVimaxSkillRuntimeBinding,
+  resolveVimaxSkillRuntimeBinding,
+  type VimaxSkillRuntimeBinding,
+} from '@/lib/skills/vimax-short-drama/vimax-skill-runtime-binding';
+
 export type VimaxProductionPhase = 'plan' | 'reference_assets' | 'video';
 export type VimaxProductionCheckpoint = VimaxProductionPhase | 'render';
 
@@ -11,6 +17,7 @@ export interface VimaxProductionPlan {
     id: 'vimax-short-drama';
     label: '创作智能体分阶段生成';
   };
+  workflow: VimaxSkillRuntimeBinding;
   title: string;
   preferences: {
     ratio: string;
@@ -63,6 +70,7 @@ interface VimaxProductionPlanInput {
   };
   assets: Array<{ kind: string; label: string; prompt?: string }>;
   shots: Array<{ index: number; title: string; duration: number; camera: string; prompt: string }>;
+  workflow?: VimaxSkillRuntimeBinding;
 }
 
 interface ExpectedProductionModels {
@@ -99,6 +107,7 @@ export function buildVimaxProductionPlan(input: VimaxProductionPlanInput): Vimax
   return {
     version: 'sceneweave-production-plan-v1',
     pipeline: { id: 'vimax-short-drama', label: '创作智能体分阶段生成' },
+    workflow: input.workflow || resolveVimaxSkillRuntimeBinding(),
     title: input.title,
     preferences: { ratio: input.ratio, resolution: input.resolution },
     providerRoutes,
@@ -154,6 +163,11 @@ export function parseVimaxProductionPlan(value: unknown): VimaxProductionPlan | 
     || !isRecord(value.estimatedCost)
     || !isRecord(value.render)) return undefined;
 
+  const workflow = value.workflow === undefined
+    ? resolveVimaxSkillRuntimeBinding()
+    : parseVimaxSkillRuntimeBinding(value.workflow);
+  if (!workflow) return undefined;
+
   const validRoutes = value.providerRoutes.length === 3 && value.providerRoutes.every(route => (
     isRecord(route)
     && ['plan', 'reference_assets', 'video'].includes(String(route.stage))
@@ -181,7 +195,7 @@ export function parseVimaxProductionPlan(value: unknown): VimaxProductionPlan | 
     && value.render.status === 'not-started';
 
   return validRoutes && validMaterials && validCheckpoints && validCost && validRender
-    ? value as unknown as VimaxProductionPlan
+    ? { ...value, workflow } as unknown as VimaxProductionPlan
     : undefined;
 }
 
@@ -195,6 +209,13 @@ export function assertVimaxProductionPlanForPhase(
   }
   const plan = parseVimaxProductionPlan(value);
   if (!plan) throw new Error('制作计划已失效，请返回计划阶段重新确认。');
+
+  const requiredOperation = phase === 'reference_assets' ? 'director.reference-assets' : 'director.video';
+  if (!plan.workflow.operationOrder.includes(requiredOperation)) {
+    throw new Error(phase === 'video'
+      ? '本次创作流程不包含视频生成阶段。'
+      : '本次创作流程不包含参考素材阶段。');
+  }
 
   const expectedModel = phase === 'reference_assets'
     ? expected.referenceAssets || VIMAX_IMAGE_MODEL_ID

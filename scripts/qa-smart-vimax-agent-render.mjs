@@ -77,8 +77,8 @@ check(
     && /buildProductionAssemblyPlan/.test(route)
     && /generateShotsFromUserPrompt/.test(route)
     && /buildProductionBackedVimaxPlan/.test(route)
-    && /ViMAX ShotFrameContract/.test(route)
-    && /ViMAX Variation/.test(route),
+    && /【首尾帧契约】/.test(route)
+    && /【镜头变化】/.test(route),
   'short-drama skill must not bypass the embedded ViMAX-style production artifacts',
 );
 check('route-honors-requested-vimax-segment-count', /segmentCount\?: number/.test(route) && /targetSegmentCount/.test(route) && /Array\.from\(\{ length: targetSegmentCount \}/.test(route));

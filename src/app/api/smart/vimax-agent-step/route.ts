@@ -8,6 +8,7 @@ import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
 import type { VimaxAgentPlan, VimaxAgentReferenceAsset, VimaxAgentStepBody } from '@/lib/skills/vimax-short-drama/vimax-agent-contract';
 import { VIMAX_PLAN_MODEL } from '@/lib/skills/vimax-short-drama/vimax-generation-preferences';
 import { assertVimaxProductionPlanForPhase, buildVimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
+import { resolveVimaxSkillRuntimeBinding } from '@/lib/skills/vimax-short-drama/vimax-skill-runtime-binding';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -330,12 +331,12 @@ function buildProductionBackedVimaxPlan(prompt: string, basePlan: VimaxAgentPlan
         index: index + 1,
         title: sourceShot?.title || `${projectShot?.storyBeat || '镜头'} ${index + 1}`,
         duration: baseDuration + (index < durationRemainder ? 1 : 0),
-        camera: projectShot?.shotTypeLabel || sourceShot?.camera || 'ViMAX 分段镜头',
+        camera: projectShot?.shotTypeLabel || sourceShot?.camera || '分段镜头',
         prompt: [
           segment.prompt,
-          `【ViMAX ShotFrameContract】首帧=${segment.shotFrameContract.firstFrame.description}；尾帧=${segment.shotFrameContract.lastFrame.description}`,
-          `【ViMAX Variation】${segment.shotFrameContract.variationType}: ${segment.shotFrameContract.variationReason}`,
-          `【ViMAX Motion】${segment.shotFrameContract.motionDescription}`,
+          `【首尾帧契约】首帧=${segment.shotFrameContract.firstFrame.description}；尾帧=${segment.shotFrameContract.lastFrame.description}`,
+          `【镜头变化】${segment.shotFrameContract.variationType}: ${segment.shotFrameContract.variationReason}`,
+          `【画面运动】${segment.shotFrameContract.motionDescription}`,
           segment.expectedInputs.boundaryBridgePrompt ? `【BoundaryBridge】${segment.expectedInputs.boundaryBridgePrompt}` : '',
         ].filter(Boolean).join('\n'),
       };
@@ -352,6 +353,7 @@ function buildVimaxPlanEnvelope(
 ) {
   const plan = buildProductionBackedVimaxPlan(prompt, basePlan, body);
   const config = getArkConfig();
+  const workflow = resolveVimaxSkillRuntimeBinding({ skillId: body.skillId });
   const productionPlan = buildVimaxProductionPlan({
     title: plan.title,
     ratio: body.ratio || '16:9',
@@ -366,6 +368,7 @@ function buildVimaxPlanEnvelope(
     },
     assets: plan.assets,
     shots: plan.shots,
+    workflow,
   });
   return { plan, productionPlan };
 }
@@ -844,7 +847,7 @@ export async function POST(request: NextRequest) {
       {
         success: false,
         phase,
-        error: '未知的 ViMAX Agent 阶段。',
+        error: '未知的创作阶段。',
       },
       { status: 400 },
     );
@@ -852,7 +855,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'ViMAX Agent 阶段执行失败',
+        error: error instanceof Error ? error.message : '创作阶段执行失败',
       },
       { status: 502 },
     );

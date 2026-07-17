@@ -45,6 +45,7 @@ export interface VimaxAgentStepBody {
   segmentCount?: number;
   sceneType?: string;
   style?: string;
+  skillId?: string;
   stream?: boolean;
   productionPlan?: VimaxProductionPlan;
   /** 视频阶段必须显式确认，避免误触发计费。 */
