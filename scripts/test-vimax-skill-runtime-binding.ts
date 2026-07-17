@@ -5,6 +5,7 @@ import {
   resolveVimaxSkillRuntimeBinding,
 } from '../src/lib/skills/vimax-short-drama/vimax-skill-runtime-binding';
 import {
+  approveVimaxProductionPlan,
   assertVimaxProductionPlanForPhase,
   buildVimaxProductionPlan,
   parseVimaxProductionPlan,
@@ -55,7 +56,7 @@ forgedPlan.workflow.operationOrder = ['segments.queue', 'director.video'];
 assert.equal(parseVimaxProductionPlan(forgedPlan), undefined, '客户端伪造能力与顺序必须被拒绝');
 
 assert.throws(
-  () => assertVimaxProductionPlanForPhase(storyboardPlan, 'video', {
+  () => assertVimaxProductionPlanForPhase(approveVimaxProductionPlan(storyboardPlan), 'video', {
     plan: 'plan-model',
     referenceAssets: 'image-model',
     video: 'video-model',
@@ -66,7 +67,7 @@ assert.throws(
 const mediaBinding = resolveVimaxSkillRuntimeBinding({ skillId: 'commerce-video' });
 const mediaPlan = buildVimaxProductionPlan({ ...commonPlanInput, workflow: mediaBinding });
 assert.equal(
-  assertVimaxProductionPlanForPhase(mediaPlan, 'video', {
+  assertVimaxProductionPlanForPhase(approveVimaxProductionPlan(mediaPlan), 'video', {
     plan: 'plan-model',
     referenceAssets: 'image-model',
     video: 'video-model',
@@ -84,7 +85,7 @@ const planCardSource = readFileSync(
   'utf8',
 );
 assert.match(planCardSource, /本次创作流程/);
-assert.match(planCardSource, /plan\.workflow\.executionStages/);
+assert.match(planCardSource, /currentPlan\.workflow\.executionStages/);
 
 const routeSource = readFileSync(
   new URL('../src/app/api/smart/vimax-agent-step/route.ts', import.meta.url),

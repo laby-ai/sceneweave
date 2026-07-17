@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cancelTask, getTaskForOwner, retryTask } from '@/lib/task-manager';
+import { cancelTask, getTaskForOwner, retryTask, updateTask } from '@/lib/task-manager';
 import { resolvePaperHostCreationOwnerFromRequest } from '@/lib/task-access';
+import { approveVimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 
 function publicTask(task: NonNullable<ReturnType<typeof getTaskForOwner>>) {
   const { abortController: _abortController, owner: _owner, idempotencyHash: _idempotencyHash, ...taskInfo } = task;
@@ -107,6 +108,27 @@ export async function POST(
     const { taskId } = await params;
     const body = await request.json().catch(() => ({}));
     const action = body.action;
+
+    if (action === 'approve-production-plan') {
+      const task = getTaskForOwner(taskId, owner);
+      if (!task) {
+        return NextResponse.json(
+          { success: false, error: '任务不存在', task: null },
+          { status: 404 },
+        );
+      }
+      const productionPlan = approveVimaxProductionPlan(task.result?.productionPlan);
+      updateTask(taskId, {
+        result: { ...task.result, productionPlan },
+      });
+      return NextResponse.json({
+        success: true,
+        usedRealKey: false,
+        incurredCost: false,
+        productionPlan,
+        message: '制作计划已确认，可继续准备参考素材。',
+      });
+    }
 
     if (action !== 'retry') {
       return NextResponse.json(

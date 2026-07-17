@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 
 import {
+  approveVimaxProductionPlan,
   assertVimaxProductionPlanForPhase,
   buildVimaxProductionPlan,
   parseVimaxProductionPlan,
@@ -48,24 +49,29 @@ assert.equal(plan.render.locked, true);
 assert.equal(plan.render.allowSilentFallback, false);
 
 assert.deepEqual(parseVimaxProductionPlan(JSON.parse(JSON.stringify(plan))), plan);
-assert.doesNotThrow(() => assertVimaxProductionPlanForPhase(plan, 'reference_assets'));
 assert.throws(
-  () => assertVimaxProductionPlanForPhase(plan, 'video'),
+  () => assertVimaxProductionPlanForPhase(plan, 'reference_assets'),
+  /请先确认制作计划/,
+);
+const approvedPlan = approveVimaxProductionPlan(plan);
+assert.doesNotThrow(() => assertVimaxProductionPlanForPhase(approvedPlan, 'reference_assets'));
+assert.throws(
+  () => assertVimaxProductionPlanForPhase(approvedPlan, 'video'),
   /视频模型服务尚未就绪/,
 );
 
 assert.throws(
   () => assertVimaxProductionPlanForPhase({
-    ...plan,
-    render: { ...plan.render, runtime: 'unknown-runtime' },
+    ...approvedPlan,
+    render: { ...approvedPlan.render, runtime: 'unknown-runtime' },
   }, 'reference_assets'),
   /制作运行时与已确认计划不一致/,
 );
 
 assert.throws(
   () => assertVimaxProductionPlanForPhase({
-    ...plan,
-    providerRoutes: plan.providerRoutes.map(route => route.stage === 'reference_assets'
+    ...approvedPlan,
+    providerRoutes: approvedPlan.providerRoutes.map(route => route.stage === 'reference_assets'
       ? { ...route, model: 'silent-fallback-model' }
       : route),
   }, 'reference_assets'),
@@ -75,5 +81,5 @@ assert.throws(
 console.log(JSON.stringify({
   ok: true,
   script: 'test-vimax-production-plan',
-  checks: 18,
+  checks: 19,
 }));

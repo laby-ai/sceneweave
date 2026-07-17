@@ -6,6 +6,7 @@ import {
 
 export type VimaxProductionPhase = 'plan' | 'reference_assets' | 'video';
 export type VimaxProductionCheckpoint = VimaxProductionPhase | 'render';
+export type VimaxProductionCheckpointStatus = 'completed' | 'pending' | 'blocked' | 'awaiting-human';
 
 export const VIMAX_IMAGE_MODEL_ID = 'doubao-seedream-5-0-260128';
 export const VIMAX_VIDEO_MODEL_ID = 'doubao-seedance-1-5-pro-251215';
@@ -39,8 +40,16 @@ export interface VimaxProductionPlan {
   checkpoints: Array<{
     id: VimaxProductionCheckpoint;
     name: string;
-    status: 'completed' | 'pending' | 'blocked';
+    status: VimaxProductionCheckpointStatus;
   }>;
+  governance: {
+    status: 'awaiting-plan-approval' | 'plan-approved' | 'blocked';
+    decisionLog: Array<{
+      checkpoint: 'plan';
+      action: 'approved';
+      at: string;
+    }>;
+  };
   estimatedCost: {
     currency: 'CNY';
     amount: null;
@@ -102,7 +111,7 @@ export function buildVimaxProductionPlan(input: VimaxProductionPlanInput): Vimax
     { stage: 'reference_assets', provider: PROVIDERS.reference_assets, model: input.imageModel, ready: input.providerReadiness.referenceAssets, locked: true },
     { stage: 'video', provider: PROVIDERS.video, model: input.videoModel, ready: input.providerReadiness.video, locked: true },
   ];
-  const mediaReady = input.providerReadiness.referenceAssets && input.providerReadiness.video;
+  const planApprovalReady = input.providerReadiness.referenceAssets;
 
   return {
     version: 'sceneweave-production-plan-v1',
@@ -127,10 +136,14 @@ export function buildVimaxProductionPlan(input: VimaxProductionPlanInput): Vimax
     ],
     checkpoints: [
       { id: 'plan', name: CHECKPOINT_NAMES.plan, status: 'completed' },
-      { id: 'reference_assets', name: CHECKPOINT_NAMES.reference_assets, status: input.providerReadiness.referenceAssets ? 'pending' : 'blocked' },
-      { id: 'video', name: CHECKPOINT_NAMES.video, status: input.providerReadiness.video ? 'pending' : 'blocked' },
-      { id: 'render', name: CHECKPOINT_NAMES.render, status: mediaReady ? 'pending' : 'blocked' },
+      { id: 'reference_assets', name: CHECKPOINT_NAMES.reference_assets, status: planApprovalReady ? 'awaiting-human' : 'blocked' },
+      { id: 'video', name: CHECKPOINT_NAMES.video, status: 'blocked' },
+      { id: 'render', name: CHECKPOINT_NAMES.render, status: 'blocked' },
     ],
+    governance: {
+      status: planApprovalReady ? 'awaiting-plan-approval' : 'blocked',
+      decisionLog: [],
+    },
     estimatedCost: {
       currency: 'CNY',
       amount: null,
@@ -167,6 +180,16 @@ export function parseVimaxProductionPlan(value: unknown): VimaxProductionPlan | 
     ? resolveVimaxSkillRuntimeBinding()
     : parseVimaxSkillRuntimeBinding(value.workflow);
   if (!workflow) return undefined;
+  const governance = value.governance === undefined
+    ? { status: 'plan-approved' as const, decisionLog: [] }
+    : value.governance;
+  if (!isRecord(governance)
+    || !['awaiting-plan-approval', 'plan-approved', 'blocked'].includes(String(governance.status))
+    || !Array.isArray(governance.decisionLog)
+    || !governance.decisionLog.every(decision => isRecord(decision)
+      && decision.checkpoint === 'plan'
+      && decision.action === 'approved'
+      && typeof decision.at === 'string')) return undefined;
 
   const validRoutes = value.providerRoutes.length === 3 && value.providerRoutes.every(route => (
     isRecord(route)
@@ -183,7 +206,7 @@ export function parseVimaxProductionPlan(value: unknown): VimaxProductionPlan | 
   const validCheckpoints = value.checkpoints.length === 4 && value.checkpoints.every(checkpoint => isRecord(checkpoint)
     && ['plan', 'reference_assets', 'video', 'render'].includes(String(checkpoint.id))
     && checkpoint.name === CHECKPOINT_NAMES[checkpoint.id as VimaxProductionCheckpoint]
-    && ['completed', 'pending', 'blocked'].includes(String(checkpoint.status)));
+    && ['completed', 'pending', 'blocked', 'awaiting-human'].includes(String(checkpoint.status)));
   const validCost = value.estimatedCost.currency === 'CNY'
     && value.estimatedCost.amount === null
     && value.estimatedCost.status === 'provider-confirmation-required'
@@ -195,8 +218,33 @@ export function parseVimaxProductionPlan(value: unknown): VimaxProductionPlan | 
     && value.render.status === 'not-started';
 
   return validRoutes && validMaterials && validCheckpoints && validCost && validRender
-    ? { ...value, workflow } as unknown as VimaxProductionPlan
+    ? { ...value, workflow, governance } as unknown as VimaxProductionPlan
     : undefined;
+}
+
+export function approveVimaxProductionPlan(value: unknown): VimaxProductionPlan {
+  const plan = parseVimaxProductionPlan(value);
+  if (!plan) throw new Error('制作计划已失效，请重新规划。');
+  if (plan.governance.status === 'plan-approved') return plan;
+  if (plan.governance.status !== 'awaiting-plan-approval') {
+    throw new Error('当前制作计划尚未具备确认条件。');
+  }
+  const referenceRoute = plan.providerRoutes.find(route => route.stage === 'reference_assets');
+  if (!referenceRoute?.ready) throw new Error('参考素材服务尚未就绪，暂不能确认制作计划。');
+
+  return {
+    ...plan,
+    checkpoints: plan.checkpoints.map(checkpoint => checkpoint.id === 'reference_assets'
+      ? { ...checkpoint, status: 'pending' as const }
+      : checkpoint),
+    governance: {
+      status: 'plan-approved',
+      decisionLog: [
+        ...plan.governance.decisionLog,
+        { checkpoint: 'plan', action: 'approved', at: new Date().toISOString() },
+      ],
+    },
+  };
 }
 
 export function assertVimaxProductionPlanForPhase(
@@ -209,6 +257,9 @@ export function assertVimaxProductionPlanForPhase(
   }
   const plan = parseVimaxProductionPlan(value);
   if (!plan) throw new Error('制作计划已失效，请返回计划阶段重新确认。');
+  if (plan.governance.status !== 'plan-approved') {
+    throw new Error('请先确认制作计划，再进入后续制作阶段。');
+  }
 
   const requiredOperation = phase === 'reference_assets' ? 'director.reference-assets' : 'director.video';
   if (!plan.workflow.operationOrder.includes(requiredOperation)) {

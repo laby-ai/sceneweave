@@ -36,6 +36,7 @@ import {
   resolveVimaxGenerationSettings,
   VIMAX_PLAN_MODEL,
 } from '@/lib/skills/vimax-short-drama/vimax-generation-preferences';
+import type { VimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 import {
   loadVimaxSkillPreset,
   resolveVimaxSkillPreset,
@@ -474,6 +475,11 @@ export function GenerateWorkspace({
                         message={message}
                         onQuickOption={handleQuickOption}
                         onResultIteration={handleResultIteration}
+                        onProductionPlanChange={(productionPlan) => setMessages(current => current.map(candidate => (
+                          candidate.id === message.id && candidate.vimaxAgent
+                            ? { ...candidate, vimaxAgent: { ...candidate.vimaxAgent, productionPlan } }
+                            : candidate
+                        )))}
                         requestHeaders={requestHeaders}
                         hideQuickOptions={latestCompletedVideoIndex > index}
                       />
@@ -683,10 +689,11 @@ export function GenerateWorkspace({
   }
 }
 
-function MessageBubble({ message, onQuickOption, onResultIteration, requestHeaders, hideQuickOptions }: {
+function MessageBubble({ message, onQuickOption, onResultIteration, onProductionPlanChange, requestHeaders, hideQuickOptions }: {
   message: ChatMessage;
   onQuickOption: (value: string) => void;
   onResultIteration: (messageId: string, action: 'edit' | 'regenerate') => void;
+  onProductionPlanChange: (plan: VimaxProductionPlan) => void;
   requestHeaders?: Record<string, string>;
   hideQuickOptions?: boolean;
 }) {
@@ -718,7 +725,14 @@ function MessageBubble({ message, onQuickOption, onResultIteration, requestHeade
 
         {delivery ? (
           <div className="mt-3 space-y-3" data-testid="vimax-result-delivery">
-            {agent?.productionPlan ? <VimaxProductionPlanCard plan={agent.productionPlan} /> : null}
+            {agent?.productionPlan ? (
+              <VimaxProductionPlanCard
+                plan={agent.productionPlan}
+                taskId={agent.taskId}
+                requestHeaders={requestHeaders}
+                onPlanChange={onProductionPlanChange}
+              />
+            ) : null}
             <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label="制作阶段">
               {delivery.stages.map((stage, index) => (
                 <li

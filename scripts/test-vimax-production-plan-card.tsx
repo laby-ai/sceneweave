@@ -24,7 +24,8 @@ assert.match(html, /16:9/);
 assert.match(html, /1080p/);
 assert.match(html, /素材 2 项/);
 assert.match(html, /视频服务待就绪/);
-assert.match(html, /费用待确认/);
+assert.match(html, /计划待确认/);
+assert.match(html, /确认制作计划/);
 assert.doesNotMatch(html, /Vimax|ViMAX|SceneWeave|OpenMontage/);
 
-console.log(JSON.stringify({ ok: true, script: 'test-vimax-production-plan-card', checks: 7 }));
+console.log(JSON.stringify({ ok: true, script: 'test-vimax-production-plan-card', checks: 8 }));
