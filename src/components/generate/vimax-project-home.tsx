@@ -43,7 +43,7 @@ export function VimaxProjectHome({
       <section className="mx-auto flex w-full max-w-[920px] flex-col items-center">
         <div className="mb-4 flex items-center gap-2 rounded-full border border-[#dce7ff] bg-[#f3f7ff] px-3 py-1.5 text-xs font-medium text-[#2f6bff]">
           <Sparkles className="h-3.5 w-3.5" />
-          Vimax 创作智能体
+          创作智能体
         </div>
         <h1 className="text-center text-[34px] font-semibold tracking-[-0.035em] text-[#15171c]">
           你好，想创作什么？

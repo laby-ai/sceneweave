@@ -37,6 +37,7 @@ assert.match(home, /星际短片/);
 assert.match(home, /短剧一键成片/);
 assert.match(home, /data-testid="composer"/);
 assert.match(home, /aria-label="管理项目 星际短片"/);
+assert.doesNotMatch(home, /Vimax 创作智能体/i);
 assert.doesNotMatch(home, /vimax-history-sidebar/);
 
 const bar = renderToStaticMarkup(createElement(VimaxProjectBar, {
@@ -67,4 +68,4 @@ const embedShellSource = readFileSync(
 assert.doesNotMatch(embedShellSource, /bg-black/);
 assert.match(embedShellSource, /bg-\[#f7f8fa\]/);
 
-console.log(JSON.stringify({ ok: true, script: 'test-vimax-project-layout', checks: 15 }));
+console.log(JSON.stringify({ ok: true, script: 'test-vimax-project-layout', checks: 16 }));
