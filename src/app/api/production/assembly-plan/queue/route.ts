@@ -5,7 +5,7 @@ import type { ProductionProject } from '@/lib/production-project';
 import { evaluateAssemblyShotFrameReadiness } from '@/lib/production-shot-frame-contract';
 import { buildAssemblySegmentDependencyConfig } from '@/lib/production-segment-transition';
 import { createTask, getAllTasksForOwner, getTaskForOwner, getTaskFresh, updateTask, type TaskOwner } from '@/lib/task-manager';
-import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
+import { resolvePaperHostCreationOwnerFromRequest } from '@/lib/task-access';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -23,8 +23,9 @@ function pickTask(owner: TaskOwner, taskId?: string) {
 }
 
 export async function POST(request: NextRequest) {
-  const owner = await resolveTaskOwnerFromRequest(request);
-  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
+  const access = await resolvePaperHostCreationOwnerFromRequest(request);
+  if (!access) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
+  const { owner } = access;
   try {
     const body = await request.json().catch(() => ({})) as QueueRequestBody;
     const task = pickTask(owner, body.taskId);

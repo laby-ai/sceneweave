@@ -4,7 +4,7 @@ import { buildProductionAssemblyPlan } from '@/lib/production-assembly-plan';
 import { evaluateStoryReadability } from '@/lib/production-story-readability';
 import { getAllTasksForOwner, getTaskForOwner, updateTask, type TaskOwner } from '@/lib/task-manager';
 import type { ProductionProject } from '@/lib/production-project';
-import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
+import { resolvePaperHostCreationOwnerFromRequest } from '@/lib/task-access';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -17,8 +17,9 @@ function pickTask(owner: TaskOwner, taskId?: string) {
 }
 
 export async function POST(request: NextRequest) {
-  const owner = await resolveTaskOwnerFromRequest(request);
-  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
+  const access = await resolvePaperHostCreationOwnerFromRequest(request);
+  if (!access) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
+  const { owner } = access;
   try {
     const body = await request.json().catch(() => ({})) as { taskId?: string; persist?: boolean };
     const task = pickTask(owner, body.taskId);

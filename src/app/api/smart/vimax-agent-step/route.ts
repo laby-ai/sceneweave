@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { mergeVideosWithLocalFfmpeg } from '@/lib/local-video-merge';
-import { buildProductionAssemblyPlan } from '@/lib/production-assembly-plan';
-import { buildProductionProject } from '@/lib/production-project';
-import { generateShotsFromUserPrompt } from '@/lib/storyboard-generator';
 import { extractLastFrameForHandoff } from '@/lib/video-frame-extraction';
-import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
+import { resolvePaperHostCreationOwnerFromRequest } from '@/lib/task-access';
+import { createTask, type TaskOwner } from '@/lib/task-manager';
 import type { VimaxAgentPlan, VimaxAgentReferenceAsset, VimaxAgentStepBody } from '@/lib/skills/vimax-short-drama/vimax-agent-contract';
 import { VIMAX_PLAN_MODEL } from '@/lib/skills/vimax-short-drama/vimax-generation-preferences';
+import { buildProductionBackedVimaxPlan } from '@/lib/skills/vimax-short-drama/vimax-plan-artifacts';
+import { persistVimaxPlanTask } from '@/lib/skills/vimax-short-drama/vimax-plan-task';
 import { assertVimaxProductionPlanForPhase, buildVimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 import { resolveVimaxSkillRuntimeBinding } from '@/lib/skills/vimax-short-drama/vimax-skill-runtime-binding';
 export const runtime = 'nodejs';
@@ -233,125 +233,14 @@ async function callArkText(prompt: string, modelOverride?: string): Promise<{ mo
   return { model, plan: extractJsonObject(text), rawText: text };
 }
 
-function inferDurationSeconds(prompt: string, explicit?: unknown) {
-  const configured = Number(explicit);
-  if (Number.isFinite(configured) && configured > 0) return Math.max(5, Math.min(120, Math.floor(configured)));
-  const match = /(\d{1,3})\s*(秒|s|S)/.exec(prompt);
-  const seconds = match ? Number(match[1]) : 30;
-  return Math.max(5, Math.min(120, Math.floor(seconds || 30)));
-}
-
-function inferSegmentSpec(prompt: string, duration: number, body: VimaxAgentStepBody) {
-  const explicitDuration = Math.floor(Number(body.segmentDuration) || 0);
-  const explicitCount = Math.floor(Number(body.segmentCount) || 0);
-  const compact = prompt.replace(/\s+/g, '');
-  const countDurationMatch =
-    /(\d{1,2})(?:个|段|条)(\d{1,2})(?:秒|s|S)(?:clip|Clip|CLIP|镜头|分镜|片段)?/.exec(compact)
-    || /(\d{1,2})(?:个|段|条)?(?:clip|Clip|CLIP|镜头|分镜|片段)(?:，|,|、)?(?:每(?:个|段|条)?)?(\d{1,2})(?:秒|s|S)/.exec(compact);
-  const countOnlyMatch = /(\d{1,2})(?:个|段|条)(?:clip|Clip|CLIP|镜头|分镜|片段)/.exec(compact);
-  const perDurationMatch = /每(?:个|段|条)?(?:clip|Clip|CLIP|镜头|分镜|片段)?(\d{1,2})(?:秒|s|S)/.exec(compact);
-
-  const promptCount = countDurationMatch
-    ? Number(countDurationMatch[1])
-    : countOnlyMatch
-      ? Number(countOnlyMatch[1])
-      : 0;
-  const promptSegmentDuration = countDurationMatch
-    ? Number(countDurationMatch[2])
-    : perDurationMatch
-      ? Number(perDurationMatch[1])
-      : 0;
-
-  const segmentDuration = Math.max(3, Math.min(15, explicitDuration || promptSegmentDuration || (duration <= 30 ? 5 : 10)));
-  const segmentCount = Math.max(1, Math.min(12, explicitCount || promptCount || Math.ceil(duration / segmentDuration)));
-  return { segmentDuration, segmentCount };
-}
-
-function buildProductionBackedVimaxPlan(prompt: string, basePlan: VimaxAgentPlan, body: VimaxAgentStepBody): VimaxAgentPlan {
-  const duration = inferDurationSeconds(prompt, body.duration);
-  const { segmentDuration, segmentCount: targetSegmentCount } = inferSegmentSpec(prompt, duration, body);
-  const style = body.style || '电影感短剧';
-  const sceneType = body.sceneType || 'drama';
-  const ratio = body.ratio || '16:9';
-  const generated = generateShotsFromUserPrompt(prompt, duration, {
-    maxShotDuration: segmentDuration,
-    preferredSceneType: sceneType,
-  });
-  const productionProject = buildProductionProject({
-    taskId: `vimax-agent-${Date.now()}`,
-    prompt,
-    duration,
-    segmentDuration,
-    style,
-    sceneType,
-    ratio,
-    entities: generated.entities,
-    visualAnchors: generated.visualAnchors as Array<{ element: string; category: string }>,
-    narrativeSummary: generated.narrativeSummary,
-    subtitleSuggestion: generated.subtitleSuggestion,
-    narrationSuggestion: generated.narrationSuggestion,
-    shots: generated.shots.map((shot, index) => ({
-      ...shot,
-      index: index + 1,
-      status: 'planned',
-    })),
-  });
-  const assemblyPlan = buildProductionAssemblyPlan({
-    productionProject,
-    sourceTaskId: `${productionProject.id}-vimax-agent`,
-  });
-  const normalizedSegments = Array.from({ length: targetSegmentCount }, (_, index) => {
-    const sourceIndex = assemblyPlan.segments[index]
-      ? index
-      : Math.min(assemblyPlan.segments.length - 1, Math.floor(index * assemblyPlan.segments.length / targetSegmentCount));
-    return assemblyPlan.segments[Math.max(0, sourceIndex)];
-  }).filter(Boolean);
-  const segmentCount = normalizedSegments.length || 1;
-  const baseDuration = Math.floor(duration / segmentCount);
-  const durationRemainder = duration - baseDuration * segmentCount;
-
-  const productionAssets = productionProject.assets
-    .filter(asset => ['script', 'character', 'scene', 'prop', 'storyboard'].includes(asset.kind))
-    .slice(0, 8)
-    .map(asset => ({
-      kind: asset.kind === 'storyboard' ? 'shot' as const : asset.kind as VimaxAgentPlan['assets'][number]['kind'],
-      label: asset.name,
-      prompt: asset.summary,
-    }));
-
-  return {
-    title: basePlan.title || productionProject.title,
-    summary: productionProject.narrativeSummary || basePlan.summary,
-    assets: productionAssets.length ? productionAssets : basePlan.assets,
-    shots: normalizedSegments.map((segment, index) => {
-      const mappedIndex = Math.min(productionProject.storyboard.shots.length - 1, Math.floor(index * productionProject.storyboard.shots.length / segmentCount));
-      const projectShot = productionProject.storyboard.shots[index] || productionProject.storyboard.shots[Math.max(0, mappedIndex)];
-      const sourceShot = basePlan.shots[index] || basePlan.shots[Math.max(0, Math.min(basePlan.shots.length - 1, mappedIndex))];
-      return {
-        index: index + 1,
-        title: sourceShot?.title || `${projectShot?.storyBeat || '镜头'} ${index + 1}`,
-        duration: baseDuration + (index < durationRemainder ? 1 : 0),
-        camera: projectShot?.shotTypeLabel || sourceShot?.camera || '分段镜头',
-        prompt: [
-          segment.prompt,
-          `【首尾帧契约】首帧=${segment.shotFrameContract.firstFrame.description}；尾帧=${segment.shotFrameContract.lastFrame.description}`,
-          `【镜头变化】${segment.shotFrameContract.variationType}: ${segment.shotFrameContract.variationReason}`,
-          `【画面运动】${segment.shotFrameContract.motionDescription}`,
-          segment.expectedInputs.boundaryBridgePrompt ? `【BoundaryBridge】${segment.expectedInputs.boundaryBridgePrompt}` : '',
-        ].filter(Boolean).join('\n'),
-      };
-    }),
-    nextAction: assemblyPlan.nextAction || '确认分镜后进入参考图和真实视频生成。',
-  };
-}
-
 function buildVimaxPlanEnvelope(
   prompt: string,
   model: string,
   basePlan: VimaxAgentPlan,
   body: VimaxAgentStepBody,
+  taskId: string,
 ) {
-  const plan = buildProductionBackedVimaxPlan(prompt, basePlan, body);
+  const { plan, productionProject, assemblyPlan } = buildProductionBackedVimaxPlan(prompt, basePlan, body, taskId);
   const config = getArkConfig();
   const workflow = resolveVimaxSkillRuntimeBinding({ skillId: body.skillId });
   const productionPlan = buildVimaxProductionPlan({
@@ -370,7 +259,42 @@ function buildVimaxPlanEnvelope(
     shots: plan.shots,
     workflow,
   });
-  return { plan, productionPlan };
+  return { plan, productionPlan, productionProject, assemblyPlan };
+}
+
+function createPersistedPlanEnvelope(
+  owner: TaskOwner,
+  prompt: string,
+  model: string,
+  basePlan: VimaxAgentPlan,
+  body: VimaxAgentStepBody,
+) {
+  const taskId = createTask('storyboard', {
+    prompt,
+    duration: `${body.duration || 30}s`,
+    ratio: body.ratio || '16:9',
+    resolution: body.resolution || '720p',
+    style: body.style || '电影感短剧',
+    sceneType: body.sceneType || 'drama',
+    workflow: 'vimax-agent',
+    skillId: body.skillId,
+  }, owner);
+  const { plan, productionPlan, productionProject, assemblyPlan } = buildVimaxPlanEnvelope(
+    prompt,
+    model,
+    basePlan,
+    body,
+    taskId,
+  );
+  persistVimaxPlanTask({
+    taskId,
+    prompt,
+    plan,
+    productionPlan,
+    productionProject,
+    assemblyPlan,
+  });
+  return { taskId, plan, productionPlan };
 }
 
 // 流式 plan：原生 fetch + SSE，逐 token 把 delta 透传给前端
@@ -740,8 +664,9 @@ async function callSeedanceVideo(
 }
 
 export async function POST(request: NextRequest) {
-  const owner = await resolveTaskOwnerFromRequest(request);
-  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
+  const access = await resolvePaperHostCreationOwnerFromRequest(request);
+  if (!access) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
+  const { owner } = access;
   try {
     const body = (await request.json().catch(() => ({}))) as VimaxAgentStepBody;
     const phase = body.phase || 'plan';
@@ -760,7 +685,7 @@ export async function POST(request: NextRequest) {
               const result = await callArkTextStream(prompt, body.model, (delta) => {
                 send('plan.delta', { delta });
               });
-              const envelope = buildVimaxPlanEnvelope(prompt, result.model, result.plan, body);
+              const envelope = createPersistedPlanEnvelope(owner, prompt, result.model, result.plan, body);
               send('plan.complete', { success: true, phase: 'plan', model: result.model, ...envelope });
             } catch (error) {
               send('plan.error', { error: error instanceof Error ? error.message : 'unknown' });
@@ -773,7 +698,7 @@ export async function POST(request: NextRequest) {
       }
 
       const result = await callArkText(prompt, body.model);
-      const envelope = buildVimaxPlanEnvelope(prompt, result.model, result.plan, body);
+      const envelope = createPersistedPlanEnvelope(owner, prompt, result.model, result.plan, body);
       return NextResponse.json({
         success: true,
         phase,

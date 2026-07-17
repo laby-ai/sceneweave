@@ -27,6 +27,7 @@ import { VimaxProjectHome } from '@/components/generate/vimax-project-home';
 import { clientApiFetch, clientApiRequest } from '@/lib/client-api';
 import { genId, loadChatHistory, loadMessages, saveChatHistory, saveMessages, type ChatHistoryEntry, type ChatMessage } from '@/lib/smart-assistant-panel-model';
 import { VimaxProductionPlanCard } from '@/components/generate/vimax-production-plan-card';
+import { VimaxSegmentedProductionCard } from '@/components/generate/vimax-segmented-production-card';
 import {
   useVimaxShortDramaSkill,
   VIMAX_REFERENCE_CONFIRM_REGEX,
@@ -473,6 +474,7 @@ export function GenerateWorkspace({
                         message={message}
                         onQuickOption={handleQuickOption}
                         onResultIteration={handleResultIteration}
+                        requestHeaders={requestHeaders}
                         hideQuickOptions={latestCompletedVideoIndex > index}
                       />
                     ))}
@@ -681,10 +683,11 @@ export function GenerateWorkspace({
   }
 }
 
-function MessageBubble({ message, onQuickOption, onResultIteration, hideQuickOptions }: {
+function MessageBubble({ message, onQuickOption, onResultIteration, requestHeaders, hideQuickOptions }: {
   message: ChatMessage;
   onQuickOption: (value: string) => void;
   onResultIteration: (messageId: string, action: 'edit' | 'regenerate') => void;
+  requestHeaders?: Record<string, string>;
   hideQuickOptions?: boolean;
 }) {
   if (message.role === 'user') {
@@ -752,6 +755,10 @@ function MessageBubble({ message, onQuickOption, onResultIteration, hideQuickOpt
               </div>
             ) : null}
           </div>
+        ) : null}
+
+        {agent?.taskId && message.generationStatus === 'completed' ? (
+          <VimaxSegmentedProductionCard taskId={agent.taskId} requestHeaders={requestHeaders} />
         ) : null}
 
         {message.generatedImages && message.generatedImages.length > 0 && !(agent?.shots || []).some(shot => shot.referenceUrl) && (

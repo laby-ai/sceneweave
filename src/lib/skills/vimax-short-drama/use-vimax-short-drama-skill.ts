@@ -214,6 +214,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       let assets: PartialPlan['assets'] = [];
       let shots: PartialPlan['shots'] = [];
       let planModel = '';
+      let planTaskId = '';
       let productionPlan: VimaxProductionPlan | undefined;
       let streamError = '';
 
@@ -279,6 +280,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
               assets = Array.isArray(plan.assets) ? plan.assets : [];
               shots = Array.isArray(plan.shots) ? plan.shots : [];
               planModel = data.model || '';
+              planTaskId = typeof data.taskId === 'string' ? data.taskId : '';
               productionPlan = parseVimaxProductionPlan(data.productionPlan);
             } else if (event === 'plan.error') {
               streamError = data.error || '流式规划失败';
@@ -307,6 +309,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
           title: plan.title || '短剧制作计划',
           summary: plan.summary || '',
           model: planModel || 'Ark AgentPlan',
+          taskId: planTaskId || undefined,
           generationSettings,
           productionPlan,
           costState: 'incurred',

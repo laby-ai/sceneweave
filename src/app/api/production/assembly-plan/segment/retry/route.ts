@@ -5,14 +5,17 @@ import {
   retryProductionAssemblySegment,
   type RetryProductionSegmentInput,
 } from '@/lib/production-segment-retry';
+import { resolvePaperHostCreationOwnerFromRequest } from '@/lib/task-access';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
+  const access = await resolvePaperHostCreationOwnerFromRequest(request);
+  if (!access) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
   try {
     const body = await request.json().catch(() => ({})) as RetryProductionSegmentInput;
-    const result = retryProductionAssemblySegment(body);
+    const result = retryProductionAssemblySegment(body, access.owner);
     return NextResponse.json(result);
   } catch (error) {
     if (error instanceof ProductionSegmentRetryError) {
