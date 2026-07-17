@@ -69,6 +69,13 @@ export function resolveVimaxSkillPreset(id?: string | null): VimaxSkillPreset {
   return VIMAX_SKILL_PRESETS.find(preset => preset.id === id) || VIMAX_SKILL_PRESETS[0];
 }
 
+export function resolveVimaxSkillPresetForRuntime(id?: string | null): VimaxSkillPreset {
+  if (!id) return VIMAX_SKILL_PRESETS[0];
+  const preset = VIMAX_SKILL_PRESETS.find(candidate => candidate.id === id);
+  if (!preset) throw new Error('未知创作预设，请重新选择后再试。');
+  return preset;
+}
+
 export function searchVimaxSkillPresets(query: string): VimaxSkillPreset[] {
   const normalized = query.trim().toLocaleLowerCase();
   if (!normalized) return VIMAX_SKILL_PRESETS;

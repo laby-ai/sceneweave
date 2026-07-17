@@ -9,6 +9,10 @@ import { buildProductionBackedVimaxPlan } from '@/lib/skills/vimax-short-drama/v
 import { persistVimaxPlanTask } from '@/lib/skills/vimax-short-drama/vimax-plan-task';
 import { assertVimaxProductionPlanForPhase, buildVimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 import { resolveVimaxSkillRuntimeBinding } from '@/lib/skills/vimax-short-drama/vimax-skill-runtime-binding';
+import {
+  resolveVimaxSkillPresetForRuntime,
+  type VimaxSkillPreset,
+} from '@/lib/skills/vimax-short-drama/vimax-skill-presets';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -35,12 +39,14 @@ function getArkConfig() {
   return { apiKey, apiBase, textModel, imageApiKey, imageApiBase, imageModel, videoModel };
 }
 
-const PLAN_SYSTEM_PROMPT = [
-  '你是 SceneWeave 的 ViMAX 短剧制作 Agent，只输出 JSON，不要任何解释、验收话术、QA 语言或兜底路径。',
+function buildPlanSystemPrompt(preset: VimaxSkillPreset) {
+  return [
+  `你是创作工作台的“${preset.name}”制作 Agent，只输出 JSON，不要任何解释、验收话术、QA 语言或兜底路径。`,
+  `当前预设目标：${preset.description}。场景类型=${preset.sceneType}；视觉风格=${preset.style}。`,
   '严格按照下面的 schema 输出，字段名和类型都不能改，assets 和 shots 必须是数组，不能写成对象：',
   '{',
-  '  "title": "短剧标题，string",',
-  '  "summary": "一句话剧情梗概，string",',
+  '  "title": "作品标题，string",',
+  '  "summary": "一句话创作梗概，string",',
   '  "assets": [',
   '    { "kind": "character|scene|prop|reference", "label": "资产名称 string", "prompt": "用于图像模型的画面描述 string" }',
   '  ],',
@@ -50,22 +56,25 @@ const PLAN_SYSTEM_PROMPT = [
   '  "nextAction": "下一步建议 string"',
   '}',
   'duration 必须是数字（秒），不能是 "0-5s" 这种字符串区间。',
-  'assets 给 3-6 个（角色/场景/道具/参考帧），shots 给 4-8 个，全部用于后续视频生成。',
+  preset.id === 'storyboard-director'
+    ? 'assets 给 3-6 个（角色/场景/道具/参考帧），shots 给 4-8 个；本预设只交付分镜与参考素材，不进入视频生成。'
+    : 'assets 给 3-6 个（角色/场景/道具/参考帧），shots 给 4-8 个，全部用于后续视频生成。',
   '输出硬性要求：只输出一个 JSON 对象，不要 markdown 代码块、不要注释、不要前后多余文字；',
   '所有字符串值里的双引号和换行必须转义（\\" 和 \\n）；对象与数组元素之间必须有逗号，结尾不要多余逗号；务必输出完整闭合的 JSON。',
 ].join('\n');
+}
 
-function buildPlanMessages(prompt: string) {
+function buildPlanMessages(prompt: string, preset: VimaxSkillPreset) {
   return [
-    { role: 'system', content: PLAN_SYSTEM_PROMPT },
-    { role: 'user', content: `请严格按 brief 指定的总时长、clip 数量和每段时长生成短剧制作计划；如果 brief 写了 30 秒、6 个 5 秒 clip，就必须返回 6 个 duration=5 的 shots。只返回符合上面 schema 的 JSON：\n${prompt}` },
+    { role: 'system', content: buildPlanSystemPrompt(preset) },
+    { role: 'user', content: `请严格按 brief 指定的总时长、clip 数量和每段时长生成“${preset.name}”制作计划；如果 brief 写了 30 秒、6 个 5 秒 clip，就必须返回 6 个 duration=5 的 shots。只返回符合上面 schema 的 JSON：\n${prompt}` },
   ];
 }
 
 function assertPrompt(prompt: unknown): string {
   const text = typeof prompt === 'string' ? prompt.trim() : '';
   if (text.length < 4) {
-    throw new Error('请先输入明确的短剧创作 brief，至少包含人物、目标或场景。');
+    throw new Error('请先输入明确的创作 brief，至少包含主体、目标或场景。');
   }
   return text;
 }
@@ -186,7 +195,7 @@ function extractJsonObject(text: string): VimaxAgentPlan {
   const assets = extractCompleteObjects(clean, 'assets');
   const shots = extractCompleteObjects(clean, 'shots');
   if (!titleMatch || shots.length === 0) {
-    throw new Error('真实模型未返回可解析的结构化短剧计划（标题或分镜缺失）。');
+    throw new Error('真实模型未返回可解析的结构化创作计划（标题或分镜缺失）。');
   }
   return normalizePlan({
     title: decode(titleMatch[1]),
@@ -197,7 +206,7 @@ function extractJsonObject(text: string): VimaxAgentPlan {
   });
 }
 
-async function callArkText(prompt: string, modelOverride?: string): Promise<{ model: string; plan: VimaxAgentPlan; rawText: string }> {
+async function callArkText(prompt: string, preset: VimaxSkillPreset, modelOverride?: string): Promise<{ model: string; plan: VimaxAgentPlan; rawText: string }> {
   const { apiKey, apiBase, textModel } = getArkConfig();
   const model = (modelOverride && modelOverride.trim()) || textModel;
   if (!apiKey) {
@@ -214,7 +223,7 @@ async function callArkText(prompt: string, modelOverride?: string): Promise<{ mo
       model,
       temperature: 0.2,
       max_tokens: 4000,
-      messages: buildPlanMessages(prompt),
+      messages: buildPlanMessages(prompt, preset),
     }),
   });
 
@@ -298,7 +307,7 @@ function createPersistedPlanEnvelope(
 }
 
 // 流式 plan：原生 fetch + SSE，逐 token 把 delta 透传给前端
-async function callArkTextStream(prompt: string, modelOverride: string | undefined, writer: (delta: string) => void): Promise<{ model: string; plan: VimaxAgentPlan; rawText: string }> {
+async function callArkTextStream(prompt: string, preset: VimaxSkillPreset, modelOverride: string | undefined, writer: (delta: string) => void): Promise<{ model: string; plan: VimaxAgentPlan; rawText: string }> {
   const { apiKey, apiBase, textModel } = getArkConfig();
   const model = (modelOverride && modelOverride.trim()) || textModel;
   if (!apiKey) throw new Error('缺少 API Key，无法进入 AgentPlan 阶段。');
@@ -314,7 +323,7 @@ async function callArkTextStream(prompt: string, modelOverride: string | undefin
       temperature: 0.2,
       max_tokens: 4000,
       stream: true,
-      messages: buildPlanMessages(prompt),
+      messages: buildPlanMessages(prompt, preset),
     }),
   });
 
@@ -673,6 +682,13 @@ export async function POST(request: NextRequest) {
 
     if (phase === 'plan') {
       const prompt = assertPrompt(body.prompt);
+      const preset = resolveVimaxSkillPresetForRuntime(body.skillId);
+      const trustedBody: VimaxAgentStepBody = {
+        ...body,
+        skillId: preset.id,
+        sceneType: preset.sceneType,
+        style: preset.style,
+      };
       const wantStream = body.stream === true;
 
       if (wantStream) {
@@ -682,10 +698,10 @@ export async function POST(request: NextRequest) {
             const send = (event: string, data: unknown) => controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
             try {
               send('plan.start', { phase: 'plan' });
-              const result = await callArkTextStream(prompt, body.model, (delta) => {
+              const result = await callArkTextStream(prompt, preset, body.model, (delta) => {
                 send('plan.delta', { delta });
               });
-              const envelope = createPersistedPlanEnvelope(owner, prompt, result.model, result.plan, body);
+              const envelope = createPersistedPlanEnvelope(owner, prompt, result.model, result.plan, trustedBody);
               send('plan.complete', { success: true, phase: 'plan', model: result.model, ...envelope });
             } catch (error) {
               send('plan.error', { error: error instanceof Error ? error.message : 'unknown' });
@@ -697,8 +713,8 @@ export async function POST(request: NextRequest) {
         return new Response(stream, { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' } });
       }
 
-      const result = await callArkText(prompt, body.model);
-      const envelope = createPersistedPlanEnvelope(owner, prompt, result.model, result.plan, body);
+      const result = await callArkText(prompt, preset, body.model);
+      const envelope = createPersistedPlanEnvelope(owner, prompt, result.model, result.plan, trustedBody);
       return NextResponse.json({
         success: true,
         phase,

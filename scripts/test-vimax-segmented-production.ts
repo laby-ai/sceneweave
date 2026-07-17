@@ -229,7 +229,7 @@ assert.equal(deliveryExport.status, 200);
 const workspaceSource = readFileSync(new URL('../src/components/generate/generate-workspace.tsx', import.meta.url), 'utf8');
 assert.match(workspaceSource, /VimaxSegmentedProductionCard taskId=\{agent\.taskId\}/);
 const routeSource = readFileSync(new URL('../src/app/api/smart/vimax-agent-step/route.ts', import.meta.url), 'utf8');
-assert.match(routeSource, /createPersistedPlanEnvelope\(owner, prompt, result\.model, result\.plan, body\)/);
+assert.match(routeSource, /createPersistedPlanEnvelope\(owner, prompt, result\.model, result\.plan, trustedBody\)/);
 
 rmSync(taskFile, { force: true });
 console.log(JSON.stringify({ ok: true, script: 'test-vimax-segmented-production', checks: 38 }));
