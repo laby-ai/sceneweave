@@ -74,26 +74,26 @@ async function main() {
 
   const persisted = taskManager.getTaskFresh(taskId);
   const approvedPlan = planModule.parseVimaxProductionPlan(persisted?.result?.productionPlan);
-  assert.equal(approvedPlan?.governance.status, 'plan-approved');
+  assert.equal(approvedPlan?.governance.status, 'awaiting-cost-decision');
   assert.equal(
     approvedPlan?.checkpoints.find(checkpoint => checkpoint.id === 'reference_assets')?.status,
-    'pending',
+    'awaiting-human',
   );
   assert.equal(approvedPlan?.checkpoints.find(checkpoint => checkpoint.id === 'video')?.status, 'blocked');
   assert.equal(approvedPlan?.render.status, 'not-started');
   assert.equal(approvedPlan?.governance.decisionLog.length, 1);
   assert.equal(approvedPlan?.governance.decisionLog[0]?.action, 'approved');
   assert.deepEqual(governanceView.buildVimaxProductionGovernanceView(approvedPlan), {
-    state: 'plan-approved',
-    label: '制作计划已确认',
+    state: 'awaiting-cost-decision',
+    label: '费用与执行方式',
     canApprove: false,
-    description: '确认记录已保存，刷新后仍可从当前检查点继续。',
+    description: '计划已确认。真实媒体费用待供应商确认，也可以先准备不调用模型的制作草稿。',
   });
-  assert.doesNotThrow(() => planModule.assertVimaxProductionPlanForPhase(approvedPlan, 'reference_assets', {
+  assert.throws(() => planModule.assertVimaxProductionPlanForPhase(approvedPlan, 'reference_assets', {
     plan: 'plan-model',
     referenceAssets: 'image-model',
     video: 'video-model',
-  }));
+  }), /真实费用/);
 
   const duplicateResponse = await taskRoute.POST(approveRequest(), { params: Promise.resolve({ taskId }) });
   assert.equal(duplicateResponse.status, 200);

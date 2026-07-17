@@ -54,24 +54,28 @@ assert.throws(
   /请先确认制作计划/,
 );
 const approvedPlan = approveVimaxProductionPlan(plan);
-assert.doesNotThrow(() => assertVimaxProductionPlanForPhase(approvedPlan, 'reference_assets'));
 assert.throws(
-  () => assertVimaxProductionPlanForPhase(approvedPlan, 'video'),
-  /视频模型服务尚未就绪/,
+  () => assertVimaxProductionPlanForPhase(approvedPlan, 'reference_assets'),
+  /真实费用/,
 );
+const costConfirmedPlan = {
+  ...approvedPlan,
+  governance: { ...approvedPlan.governance, status: 'ready' as const },
+  estimatedCost: { ...approvedPlan.estimatedCost, amount: 1, status: 'confirmed' as const },
+};
 
 assert.throws(
   () => assertVimaxProductionPlanForPhase({
-    ...approvedPlan,
-    render: { ...approvedPlan.render, runtime: 'unknown-runtime' },
+    ...costConfirmedPlan,
+    render: { ...costConfirmedPlan.render, runtime: 'unknown-runtime' },
   }, 'reference_assets'),
   /制作运行时与已确认计划不一致/,
 );
 
 assert.throws(
   () => assertVimaxProductionPlanForPhase({
-    ...approvedPlan,
-    providerRoutes: approvedPlan.providerRoutes.map(route => route.stage === 'reference_assets'
+    ...costConfirmedPlan,
+    providerRoutes: costConfirmedPlan.providerRoutes.map(route => route.stage === 'reference_assets'
       ? { ...route, model: 'silent-fallback-model' }
       : route),
   }, 'reference_assets'),

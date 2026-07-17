@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 
+import { clientApiFetch } from '@/lib/client-api';
 import { buildVimaxProductionGovernanceView } from '@/lib/skills/vimax-short-drama/vimax-production-governance';
 import { parseVimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 import type { VimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
@@ -12,6 +13,10 @@ const stageLabels: Record<VimaxProductionPlan['providerRoutes'][number]['stage']
   video: '视频成片',
 };
 
+interface ExportResponse {
+  exportPackage: unknown;
+}
+
 export function VimaxProductionPlanCard({ plan, taskId, requestHeaders, onPlanChange }: {
   plan: VimaxProductionPlan;
   taskId?: string;
@@ -19,8 +24,8 @@ export function VimaxProductionPlanCard({ plan, taskId, requestHeaders, onPlanCh
   onPlanChange?: (plan: VimaxProductionPlan) => void;
 }) {
   const [currentPlan, setCurrentPlan] = useState(plan);
-  const [approving, setApproving] = useState(false);
-  const [approvalError, setApprovalError] = useState('');
+  const [pendingAction, setPendingAction] = useState('');
+  const [actionError, setActionError] = useState('');
   const onPlanChangeRef = useRef(onPlanChange);
 
   useEffect(() => {
@@ -51,27 +56,65 @@ export function VimaxProductionPlanCard({ plan, taskId, requestHeaders, onPlanCh
   const videoReady = currentPlan.providerRoutes.find(route => route.stage === 'video')?.ready === true;
   const completed = currentPlan.checkpoints.filter(checkpoint => checkpoint.status === 'completed').length;
 
-  async function approvePlan() {
-    if (!taskId || !governance.canApprove || approving) return;
-    setApproving(true);
-    setApprovalError('');
+  async function updatePlan(action: string, fallbackError: string) {
+    if (!taskId || pendingAction) return;
+    setPendingAction(action);
+    setActionError('');
     try {
       const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...requestHeaders },
-        body: JSON.stringify({ action: 'approve-production-plan' }),
+        body: JSON.stringify({ action }),
       });
       const data = await response.json().catch(() => ({}));
-      const approved = parseVimaxProductionPlan(data.productionPlan);
-      if (!response.ok || !approved) throw new Error(data.error || '制作计划确认失败');
-      setCurrentPlan(approved);
-      onPlanChangeRef.current?.(approved);
+      const updated = parseVimaxProductionPlan(data.productionPlan);
+      if (!response.ok || !updated) throw new Error(data.error || fallbackError);
+      setCurrentPlan(updated);
+      onPlanChangeRef.current?.(updated);
     } catch (error) {
-      setApprovalError(error instanceof Error ? error.message : '制作计划确认失败');
+      setActionError(error instanceof Error ? error.message : fallbackError);
     } finally {
-      setApproving(false);
+      setPendingAction('');
     }
   }
+
+  async function downloadDraft() {
+    if (!taskId || pendingAction) return;
+    setPendingAction('download-production-draft');
+    setActionError('');
+    try {
+      const exportPath = `/api/production/export?taskId=${encodeURIComponent(taskId)}&format=cut-draft-json`;
+      const response = await clientApiFetch<ExportResponse>(exportPath, {
+        headers: requestHeaders,
+        redirectOnUnauthorized: false,
+      });
+      const blob = new Blob([JSON.stringify(response.exportPackage, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `creation-cut-draft-${taskId.slice(0, 8)}.json`;
+      anchor.click();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : '制作草稿下载失败');
+    } finally {
+      setPendingAction('');
+    }
+  }
+
+  const awaitingCost = governance.state === 'awaiting-cost-decision' || governance.state === 'plan-approved';
+  const ready = governance.state === 'ready';
+  const paused = governance.state === 'paused';
+  const deliveryReady = governance.state === 'delivery-ready';
+  const statusLabel = governance.state === 'awaiting-plan-approval'
+    ? '计划待确认'
+    : awaitingCost
+      ? '费用待决定'
+      : paused
+        ? '流程已暂停'
+        : deliveryReady
+          ? '草稿可交付'
+          : '流程已就绪';
 
   return (
     <section className="rounded-xl border border-[#dfe5ed] bg-[#f8fafc] p-3" data-testid="creation-production-plan">
@@ -83,7 +126,7 @@ export function VimaxProductionPlanCard({ plan, taskId, requestHeaders, onPlanCh
           </p>
         </div>
         <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700">
-          {governance.state === 'plan-approved' ? '计划已确认' : '计划待确认'}
+          {statusLabel}
         </span>
       </div>
 
@@ -123,22 +166,75 @@ export function VimaxProductionPlanCard({ plan, taskId, requestHeaders, onPlanCh
         <span>不允许静默更换模型</span>
       </div>
 
+      <div className="mt-3 rounded-lg border border-[#e2e7ee] bg-white px-3 py-2.5">
+        <p className="text-[11px] font-semibold text-[#4d5663]">费用与执行方式</p>
+        <p className="mt-0.5 text-[10px] text-[#858e9a]">
+          {currentPlan.estimatedCost.status === 'draft-only-confirmed'
+            ? '已选择无成本草稿：不会调用图像或视频模型。'
+            : '真实媒体费用待供应商确认；在获得明确报价前不会调用付费模型。'}
+        </p>
+      </div>
+
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#e2e7ee] bg-white px-3 py-2.5">
         <div>
           <p className="text-[11px] font-medium text-[#4d5663]">{governance.label}</p>
           <p className="mt-0.5 text-[10px] text-[#858e9a]">{governance.description}</p>
-          {approvalError ? <p className="mt-1 text-[10px] text-red-600">{approvalError}</p> : null}
+          {actionError ? <p className="mt-1 text-[10px] text-red-600">{actionError}</p> : null}
         </div>
+        <div className="flex flex-wrap items-center gap-2">
         {governance.canApprove ? (
           <button
             type="button"
-            disabled={!taskId || approving}
-            onClick={() => void approvePlan()}
+            disabled={!taskId || Boolean(pendingAction)}
+            onClick={() => void updatePlan('approve-production-plan', '制作计划确认失败')}
             className="rounded-lg bg-[#2f6bff] px-3 py-1.5 text-[11px] font-medium text-white transition hover:bg-[#245de3] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {approving ? '正在保存…' : '确认制作计划'}
+            {pendingAction === 'approve-production-plan' ? '正在保存…' : '确认制作计划'}
           </button>
         ) : null}
+        {awaitingCost ? (
+          <button
+            type="button"
+            disabled={!taskId || Boolean(pendingAction)}
+            onClick={() => void updatePlan('confirm-production-draft', '执行方式保存失败')}
+            className="rounded-lg bg-[#2f6bff] px-3 py-1.5 text-[11px] font-medium text-white transition hover:bg-[#245de3] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {pendingAction === 'confirm-production-draft' ? '正在保存…' : '继续无成本草稿'}
+          </button>
+        ) : null}
+        {ready ? (
+          <>
+            <button
+              type="button"
+              disabled={!taskId || Boolean(pendingAction)}
+              onClick={() => void updatePlan('pause-production', '暂停流程失败')}
+              className="rounded-lg border border-[#dfe5ed] bg-white px-3 py-1.5 text-[11px] font-medium text-[#4d5663] transition hover:bg-[#f5f7fa] disabled:opacity-50"
+            >暂停流程</button>
+            <button
+              type="button"
+              disabled={!taskId || Boolean(pendingAction)}
+              onClick={() => void updatePlan('prepare-production-draft', '准备交付草稿失败')}
+              className="rounded-lg bg-[#2f6bff] px-3 py-1.5 text-[11px] font-medium text-white transition hover:bg-[#245de3] disabled:opacity-50"
+            >准备交付草稿</button>
+          </>
+        ) : null}
+        {paused ? (
+          <button
+            type="button"
+            disabled={!taskId || Boolean(pendingAction)}
+            onClick={() => void updatePlan('resume-production', '继续流程失败')}
+            className="rounded-lg bg-[#2f6bff] px-3 py-1.5 text-[11px] font-medium text-white transition hover:bg-[#245de3] disabled:opacity-50"
+          >继续流程</button>
+        ) : null}
+        {deliveryReady && taskId ? (
+          <button
+            type="button"
+            disabled={Boolean(pendingAction)}
+            onClick={() => void downloadDraft()}
+            className="rounded-lg bg-[#2f6bff] px-3 py-1.5 text-[11px] font-medium text-white transition hover:bg-[#245de3]"
+          >{pendingAction === 'download-production-draft' ? '正在下载…' : '下载制作草稿'}</button>
+        ) : null}
+        </div>
       </div>
     </section>
   );

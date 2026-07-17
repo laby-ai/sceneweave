@@ -1,6 +1,12 @@
 import type { TaskResult } from '@/lib/task-manager';
+import { parseVimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 
-export type VimaxSegmentedProductionTaskResult = Pick<TaskResult, 'assemblyPlan' | 'assemblyQueue'>;
+export type VimaxSegmentedProductionTaskResult = Pick<TaskResult, 'assemblyPlan' | 'assemblyQueue'> & {
+  productionPlan?: unknown;
+  productionProject?: {
+    assets?: Array<{ kind?: string; metadata?: { videoUrl?: string } }>;
+  };
+};
 
 export interface VimaxSegmentedProductionAction {
   label?: string;
@@ -22,7 +28,7 @@ export interface VimaxSegmentedProductionView {
   statusLabel: string;
   segments: VimaxSegmentedProductionSegmentView[];
   primaryAction: VimaxSegmentedProductionAction | null;
-  exportPath: string;
+  exportPath: string | null;
 }
 
 const STATUS_LABELS: Record<VimaxSegmentedProductionView['state'], string> = {
@@ -50,6 +56,16 @@ export function buildVimaxSegmentedProductionView(
   result?: VimaxSegmentedProductionTaskResult,
 ): VimaxSegmentedProductionView {
   const state = resolveState(result);
+  const productionPlan = parseVimaxProductionPlan(result?.productionPlan);
+  const hasSuccessfulFinalVideo = result?.productionProject?.assets?.some(asset => (
+    asset.kind === 'finalVideo'
+    && typeof asset.metadata?.videoUrl === 'string'
+    && asset.metadata.videoUrl.length > 0
+  )) === true;
+  const canExport = hasSuccessfulFinalVideo || (
+    productionPlan?.governance.status === 'delivery-ready'
+    && productionPlan.render.status === 'draft-ready'
+  );
   const segments = (result?.assemblyPlan?.segments || []).map(segment => {
     const childTaskId = segment.expectedOutputs?.taskId || undefined;
     return {
@@ -78,6 +94,6 @@ export function buildVimaxSegmentedProductionView(
       path: '/api/production/assembly-plan/queue',
       body: { taskId },
     } : null,
-    exportPath: `/api/production/export?taskId=${encodeURIComponent(taskId)}`,
+    exportPath: canExport ? `/api/production/export?taskId=${encodeURIComponent(taskId)}` : null,
   };
 }

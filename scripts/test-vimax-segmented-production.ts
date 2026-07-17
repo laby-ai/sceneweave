@@ -14,11 +14,13 @@ const { generateShotsFromUserPrompt } = await import('../src/lib/storyboard-gene
 const { createTask, getTaskFresh, updateTask } = await import('../src/lib/task-manager');
 const { persistVimaxPlanTask } = await import('../src/lib/skills/vimax-short-drama/vimax-plan-task');
 const { buildVimaxSegmentedProductionView } = await import('../src/lib/skills/vimax-short-drama/vimax-segmented-production');
-const [{ NextRequest }, queueRoute, exportRoute, retryRoute] = await Promise.all([
+const productionPlanModule = await import('../src/lib/skills/vimax-short-drama/vimax-production-plan');
+const [{ NextRequest }, queueRoute, exportRoute, retryRoute, taskRoute] = await Promise.all([
   import('next/server'),
   import('../src/app/api/production/assembly-plan/queue/route'),
   import('../src/app/api/production/export/route'),
   import('../src/app/api/production/assembly-plan/segment/retry/route'),
+  import('../src/app/api/tasks/[taskId]/route'),
 ]);
 
 const guestWorkspace = 'guest-creation-segmented-production-7f9a2c';
@@ -45,6 +47,23 @@ const productionProject = buildProductionProject({
   shots: generated.shots.map((shot, index) => ({ ...shot, index: index + 1, status: 'planned' })),
 });
 const assemblyPlan = buildProductionAssemblyPlan({ productionProject, sourceTaskId: taskId });
+const productionPlan = productionPlanModule.approveVimaxProductionPlan(productionPlanModule.buildVimaxProductionPlan({
+  title: '雨夜重逢',
+  ratio: '16:9',
+  resolution: '1080p',
+  planModel: 'plan-model',
+  imageModel: 'image-model',
+  videoModel: 'video-model',
+  providerReadiness: { plan: true, referenceAssets: true, video: true },
+  assets: [],
+  shots: assemblyPlan.segments.map(segment => ({
+    index: segment.index + 1,
+    title: `片段 ${segment.index + 1}`,
+    duration: segment.duration,
+    camera: '连续运镜',
+    prompt: segment.prompt,
+  })),
+}));
 
 persistVimaxPlanTask({
   taskId,
@@ -64,7 +83,7 @@ persistVimaxPlanTask({
   },
   productionProject,
   assemblyPlan,
-  productionPlan: { version: 'sceneweave-production-plan-v1' },
+  productionPlan,
 });
 
 const persisted = getTaskFresh(taskId);
@@ -81,7 +100,7 @@ assert.deepEqual(readyView.primaryAction, {
   path: '/api/production/assembly-plan/queue',
   body: { taskId },
 });
-assert.equal(readyView.exportPath, `/api/production/export?taskId=${taskId}`);
+assert.equal(readyView.exportPath, null);
 
 const guestHeaders = {
   'content-type': 'application/json',
@@ -102,7 +121,29 @@ assert.equal(queueBody.taskId, taskId);
 const exportResponse = await exportRoute.GET(new NextRequest(`http://localhost/api/production/export?taskId=${taskId}`, {
   headers: guestHeaders,
 }));
-assert.equal(exportResponse.status, 200);
+assert.equal(exportResponse.status, 409);
+
+async function updateProduction(action: string) {
+  return taskRoute.POST(new NextRequest(`http://localhost/api/tasks/${taskId}`, {
+    method: 'POST',
+    headers: guestHeaders,
+    body: JSON.stringify({ action }),
+  }), { params: Promise.resolve({ taskId }) });
+}
+
+assert.equal((await updateProduction('confirm-production-draft')).status, 200);
+assert.equal((await updateProduction('pause-production')).status, 200);
+assert.equal((await updateProduction('prepare-production-draft')).status, 409);
+assert.equal((await updateProduction('resume-production')).status, 200);
+assert.equal((await updateProduction('prepare-production-draft')).status, 200);
+
+const deliveryTask = getTaskFresh(taskId);
+const deliveryView = buildVimaxSegmentedProductionView(taskId, deliveryTask?.result);
+assert.equal(deliveryView.exportPath, `/api/production/export?taskId=${taskId}`);
+const deliveryExport = await exportRoute.GET(new NextRequest(`http://localhost${deliveryView.exportPath}`, {
+  headers: guestHeaders,
+}));
+assert.equal(deliveryExport.status, 200);
 
 const failedResult = {
   ...persisted?.result,
@@ -160,7 +201,7 @@ const routeSource = readFileSync(new URL('../src/app/api/smart/vimax-agent-step/
 assert.match(routeSource, /createPersistedPlanEnvelope\(owner, prompt, result\.model, result\.plan, body\)/);
 
 rmSync(taskFile, { force: true });
-console.log(JSON.stringify({ ok: true, script: 'test-vimax-segmented-production', checks: 22 }));
+console.log(JSON.stringify({ ok: true, script: 'test-vimax-segmented-production', checks: 29 }));
 }
 
 main().catch(error => {

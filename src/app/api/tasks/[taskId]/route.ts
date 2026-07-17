@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cancelTask, getTaskForOwner, retryTask, updateTask } from '@/lib/task-manager';
 import { resolvePaperHostCreationOwnerFromRequest } from '@/lib/task-access';
-import { approveVimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
+import {
+  approveVimaxProductionPlan,
+  confirmVimaxProductionDraft,
+  pauseVimaxProduction,
+  prepareVimaxProductionDraft,
+  resumeVimaxProduction,
+} from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 
 function publicTask(task: NonNullable<ReturnType<typeof getTaskForOwner>>) {
   const { abortController: _abortController, owner: _owner, idempotencyHash: _idempotencyHash, ...taskInfo } = task;
@@ -128,6 +134,51 @@ export async function POST(
         productionPlan,
         message: '制作计划已确认，可继续准备参考素材。',
       });
+    }
+
+    if ([
+      'confirm-production-draft',
+      'pause-production',
+      'resume-production',
+      'prepare-production-draft',
+    ].includes(action)) {
+      const task = getTaskForOwner(taskId, owner);
+      if (!task) {
+        return NextResponse.json(
+          { success: false, error: '任务不存在', task: null },
+          { status: 404 },
+        );
+      }
+      try {
+        const productionPlan = action === 'confirm-production-draft'
+          ? confirmVimaxProductionDraft(task.result?.productionPlan)
+          : action === 'pause-production'
+            ? pauseVimaxProduction(task.result?.productionPlan)
+            : action === 'resume-production'
+              ? resumeVimaxProduction(task.result?.productionPlan)
+              : prepareVimaxProductionDraft(task.result?.productionPlan);
+        updateTask(taskId, { result: { ...task.result, productionPlan } });
+        const messages: Record<string, string> = {
+          'confirm-production-draft': '已选择无成本草稿交付，不会调用图像或视频模型。',
+          'pause-production': '制作流程已暂停，刷新后可继续。',
+          'resume-production': '制作流程已继续。',
+          'prepare-production-draft': '制作草稿已准备完成，可以下载。',
+        };
+        return NextResponse.json({
+          success: true,
+          usedRealKey: false,
+          incurredCost: false,
+          productionPlan,
+          message: messages[action],
+        });
+      } catch (error) {
+        return NextResponse.json({
+          success: false,
+          usedRealKey: false,
+          incurredCost: false,
+          error: error instanceof Error ? error.message : '制作流程状态更新失败',
+        }, { status: 409 });
+      }
     }
 
     if (action !== 'retry') {

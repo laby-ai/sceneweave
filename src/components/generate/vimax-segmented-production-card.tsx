@@ -77,7 +77,7 @@ export function VimaxSegmentedProductionCard({
   }, [refresh, requestHeaders]);
 
   const downloadExport = useCallback(async () => {
-    if (!view) return;
+    if (!view?.exportPath) return;
     setBusyKey('export');
     setError(null);
     try {
@@ -142,13 +142,15 @@ export function VimaxSegmentedProductionCard({
             {busyKey === 'queue' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Rows3 className="h-3.5 w-3.5" />}{view.primaryAction.label}
           </button>
         ) : null}
-        {view ? (
+        {view?.exportPath ? (
           <button type="button" onClick={() => void downloadExport()} disabled={Boolean(busyKey)} className="inline-flex items-center gap-1.5 rounded-lg border border-[#dfe4eb] bg-white px-3 py-1.5 text-xs font-medium text-[#555d68] disabled:opacity-50">
             {busyKey === 'export' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}导出制作草稿
           </button>
         ) : null}
       </div>
-      <p className="mt-2 text-[11px] leading-5 text-[#9299a4]">创建队列只保存片段任务，不会直接调用视频模型；失败片段可单独恢复。</p>
+      <p className="mt-2 text-[11px] leading-5 text-[#9299a4]">
+        创建队列只保存片段任务，不会直接调用视频模型；失败片段可单独恢复。{view && !view.exportPath ? '完成交付准备后即可导出制作草稿。' : ''}
+      </p>
     </section>
   );
 }

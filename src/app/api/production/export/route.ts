@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { buildProductionCutDraftJson } from '@/lib/production-export-package';
+import { assertVimaxProductionDraftDelivery } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 import { getTaskForOwner } from '@/lib/task-manager';
 import { resolvePaperHostCreationOwnerFromRequest } from '@/lib/task-access';
 
@@ -56,6 +57,24 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const productionProject = task.result?.productionProject as {
+      assets?: Array<{ kind?: string; metadata?: { videoUrl?: string } }>;
+    } | undefined;
+    const hasSuccessfulFinalVideo = productionProject?.assets?.some(asset => (
+      asset.kind === 'finalVideo' && typeof asset.metadata?.videoUrl === 'string' && asset.metadata.videoUrl.length > 0
+    )) === true;
+    if (task.result?.productionPlan && !hasSuccessfulFinalVideo) {
+      try {
+        assertVimaxProductionDraftDelivery(task.result.productionPlan);
+      } catch (error) {
+        return NextResponse.json({
+          success: false,
+          error: error instanceof Error ? error.message : '制作草稿尚未准备完成。',
+          usedRealKey: false,
+          incurredCost: false,
+        }, { status: 409 });
+      }
+    }
     const exportPackage = buildProductionCutDraftJson(task);
     return NextResponse.json(
       {

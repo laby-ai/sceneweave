@@ -66,8 +66,17 @@ assert.throws(
 
 const mediaBinding = resolveVimaxSkillRuntimeBinding({ skillId: 'commerce-video' });
 const mediaPlan = buildVimaxProductionPlan({ ...commonPlanInput, workflow: mediaBinding });
+const approvedMediaPlan = approveVimaxProductionPlan(mediaPlan);
+const costConfirmedMediaPlan = {
+  ...approvedMediaPlan,
+  checkpoints: approvedMediaPlan.checkpoints.map(checkpoint => checkpoint.id === 'video'
+    ? { ...checkpoint, status: 'pending' as const }
+    : checkpoint),
+  governance: { ...approvedMediaPlan.governance, status: 'ready' as const },
+  estimatedCost: { ...approvedMediaPlan.estimatedCost, amount: 1, status: 'confirmed' as const },
+};
 assert.equal(
-  assertVimaxProductionPlanForPhase(approveVimaxProductionPlan(mediaPlan), 'video', {
+  assertVimaxProductionPlanForPhase(costConfirmedMediaPlan, 'video', {
     plan: 'plan-model',
     referenceAssets: 'image-model',
     video: 'video-model',

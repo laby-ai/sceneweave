@@ -6,7 +6,21 @@ import {
 
 export type VimaxProductionPhase = 'plan' | 'reference_assets' | 'video';
 export type VimaxProductionCheckpoint = VimaxProductionPhase | 'render';
-export type VimaxProductionCheckpointStatus = 'completed' | 'pending' | 'blocked' | 'awaiting-human';
+export type VimaxProductionCheckpointStatus = 'completed' | 'pending' | 'blocked' | 'awaiting-human' | 'skipped';
+export type VimaxProductionGovernanceStatus =
+  | 'awaiting-plan-approval'
+  | 'awaiting-cost-decision'
+  | 'plan-approved'
+  | 'ready'
+  | 'paused'
+  | 'delivery-ready'
+  | 'blocked';
+export type VimaxProductionDecisionAction =
+  | 'approved'
+  | 'draft-only-confirmed'
+  | 'paused'
+  | 'resumed'
+  | 'draft-delivered';
 
 export const VIMAX_IMAGE_MODEL_ID = 'doubao-seedream-5-0-260128';
 export const VIMAX_VIDEO_MODEL_ID = 'doubao-seedance-1-5-pro-251215';
@@ -43,17 +57,17 @@ export interface VimaxProductionPlan {
     status: VimaxProductionCheckpointStatus;
   }>;
   governance: {
-    status: 'awaiting-plan-approval' | 'plan-approved' | 'blocked';
+    status: VimaxProductionGovernanceStatus;
     decisionLog: Array<{
-      checkpoint: 'plan';
-      action: 'approved';
+      checkpoint: 'plan' | 'cost' | 'execution' | 'render';
+      action: VimaxProductionDecisionAction;
       at: string;
     }>;
   };
   estimatedCost: {
     currency: 'CNY';
-    amount: null;
-    status: 'provider-confirmation-required';
+    amount: number | null;
+    status: 'provider-confirmation-required' | 'draft-only-confirmed' | 'confirmed';
     requiresConfirmation: true;
     reason: string;
   };
@@ -61,7 +75,7 @@ export interface VimaxProductionPlan {
     runtime: typeof VIMAX_RENDER_RUNTIME;
     locked: true;
     allowSilentFallback: false;
-    status: 'not-started';
+    status: 'not-started' | 'draft-ready';
   };
 }
 
@@ -184,11 +198,19 @@ export function parseVimaxProductionPlan(value: unknown): VimaxProductionPlan | 
     ? { status: 'plan-approved' as const, decisionLog: [] }
     : value.governance;
   if (!isRecord(governance)
-    || !['awaiting-plan-approval', 'plan-approved', 'blocked'].includes(String(governance.status))
+    || ![
+      'awaiting-plan-approval',
+      'awaiting-cost-decision',
+      'plan-approved',
+      'ready',
+      'paused',
+      'delivery-ready',
+      'blocked',
+    ].includes(String(governance.status))
     || !Array.isArray(governance.decisionLog)
     || !governance.decisionLog.every(decision => isRecord(decision)
-      && decision.checkpoint === 'plan'
-      && decision.action === 'approved'
+      && ['plan', 'cost', 'execution', 'render'].includes(String(decision.checkpoint))
+      && ['approved', 'draft-only-confirmed', 'paused', 'resumed', 'draft-delivered'].includes(String(decision.action))
       && typeof decision.at === 'string')) return undefined;
 
   const validRoutes = value.providerRoutes.length === 3 && value.providerRoutes.every(route => (
@@ -206,16 +228,21 @@ export function parseVimaxProductionPlan(value: unknown): VimaxProductionPlan | 
   const validCheckpoints = value.checkpoints.length === 4 && value.checkpoints.every(checkpoint => isRecord(checkpoint)
     && ['plan', 'reference_assets', 'video', 'render'].includes(String(checkpoint.id))
     && checkpoint.name === CHECKPOINT_NAMES[checkpoint.id as VimaxProductionCheckpoint]
-    && ['completed', 'pending', 'blocked', 'awaiting-human'].includes(String(checkpoint.status)));
+    && ['completed', 'pending', 'blocked', 'awaiting-human', 'skipped'].includes(String(checkpoint.status)));
+  const costAmountValid = value.estimatedCost.amount === null
+    || (typeof value.estimatedCost.amount === 'number' && Number.isFinite(value.estimatedCost.amount) && value.estimatedCost.amount >= 0);
+  const confirmedCostValid = value.estimatedCost.status !== 'confirmed'
+    || typeof value.estimatedCost.amount === 'number';
   const validCost = value.estimatedCost.currency === 'CNY'
-    && value.estimatedCost.amount === null
-    && value.estimatedCost.status === 'provider-confirmation-required'
+    && costAmountValid
+    && confirmedCostValid
+    && ['provider-confirmation-required', 'draft-only-confirmed', 'confirmed'].includes(String(value.estimatedCost.status))
     && value.estimatedCost.requiresConfirmation === true
     && typeof value.estimatedCost.reason === 'string';
   const validRender = value.render.runtime === VIMAX_RENDER_RUNTIME
     && value.render.locked === true
     && value.render.allowSilentFallback === false
-    && value.render.status === 'not-started';
+    && ['not-started', 'draft-ready'].includes(String(value.render.status));
 
   return validRoutes && validMaterials && validCheckpoints && validCost && validRender
     ? { ...value, workflow, governance } as unknown as VimaxProductionPlan
@@ -225,7 +252,9 @@ export function parseVimaxProductionPlan(value: unknown): VimaxProductionPlan | 
 export function approveVimaxProductionPlan(value: unknown): VimaxProductionPlan {
   const plan = parseVimaxProductionPlan(value);
   if (!plan) throw new Error('制作计划已失效，请重新规划。');
-  if (plan.governance.status === 'plan-approved') return plan;
+  if (plan.governance.decisionLog.some(decision => decision.checkpoint === 'plan' && decision.action === 'approved')) {
+    return plan;
+  }
   if (plan.governance.status !== 'awaiting-plan-approval') {
     throw new Error('当前制作计划尚未具备确认条件。');
   }
@@ -234,17 +263,112 @@ export function approveVimaxProductionPlan(value: unknown): VimaxProductionPlan 
 
   return {
     ...plan,
-    checkpoints: plan.checkpoints.map(checkpoint => checkpoint.id === 'reference_assets'
-      ? { ...checkpoint, status: 'pending' as const }
-      : checkpoint),
+    checkpoints: plan.checkpoints,
     governance: {
-      status: 'plan-approved',
+      status: 'awaiting-cost-decision',
       decisionLog: [
         ...plan.governance.decisionLog,
         { checkpoint: 'plan', action: 'approved', at: new Date().toISOString() },
       ],
     },
   };
+}
+
+export function confirmVimaxProductionDraft(value: unknown): VimaxProductionPlan {
+  const plan = parseVimaxProductionPlan(value);
+  if (!plan) throw new Error('制作计划已失效，请重新规划。');
+  if (plan.estimatedCost.status === 'draft-only-confirmed') return plan;
+  if (!['awaiting-cost-decision', 'plan-approved'].includes(plan.governance.status)) {
+    throw new Error('请先确认制作计划，再选择执行方式。');
+  }
+  return {
+    ...plan,
+    checkpoints: plan.checkpoints.map(checkpoint => {
+      if (checkpoint.id === 'reference_assets' || checkpoint.id === 'video') {
+        return { ...checkpoint, status: 'skipped' as const };
+      }
+      if (checkpoint.id === 'render') return { ...checkpoint, status: 'pending' as const };
+      return checkpoint;
+    }),
+    governance: {
+      status: 'ready',
+      decisionLog: [
+        ...plan.governance.decisionLog,
+        { checkpoint: 'cost', action: 'draft-only-confirmed', at: new Date().toISOString() },
+      ],
+    },
+    estimatedCost: {
+      ...plan.estimatedCost,
+      status: 'draft-only-confirmed',
+      reason: '本次仅准备制作草稿，不调用图像或视频模型，不产生模型费用。',
+    },
+  };
+}
+
+export function pauseVimaxProduction(value: unknown): VimaxProductionPlan {
+  const plan = parseVimaxProductionPlan(value);
+  if (!plan) throw new Error('制作计划已失效，请重新规划。');
+  if (plan.governance.status === 'paused') return plan;
+  if (plan.governance.status !== 'ready') throw new Error('当前流程尚不能暂停。');
+  return {
+    ...plan,
+    governance: {
+      status: 'paused',
+      decisionLog: [
+        ...plan.governance.decisionLog,
+        { checkpoint: 'execution', action: 'paused', at: new Date().toISOString() },
+      ],
+    },
+  };
+}
+
+export function resumeVimaxProduction(value: unknown): VimaxProductionPlan {
+  const plan = parseVimaxProductionPlan(value);
+  if (!plan) throw new Error('制作计划已失效，请重新规划。');
+  if (plan.governance.status === 'ready') return plan;
+  if (plan.governance.status !== 'paused') throw new Error('当前流程没有暂停记录。');
+  return {
+    ...plan,
+    governance: {
+      status: 'ready',
+      decisionLog: [
+        ...plan.governance.decisionLog,
+        { checkpoint: 'execution', action: 'resumed', at: new Date().toISOString() },
+      ],
+    },
+  };
+}
+
+export function prepareVimaxProductionDraft(value: unknown): VimaxProductionPlan {
+  const plan = parseVimaxProductionPlan(value);
+  if (!plan) throw new Error('制作计划已失效，请重新规划。');
+  if (plan.governance.status === 'delivery-ready') return plan;
+  if (plan.governance.status === 'paused') throw new Error('请先继续流程，再准备交付草稿。');
+  if (plan.governance.status !== 'ready' || plan.estimatedCost.status !== 'draft-only-confirmed') {
+    throw new Error('请先确认无成本草稿交付方式。');
+  }
+  return {
+    ...plan,
+    checkpoints: plan.checkpoints.map(checkpoint => checkpoint.id === 'render'
+      ? { ...checkpoint, status: 'completed' as const }
+      : checkpoint),
+    governance: {
+      status: 'delivery-ready',
+      decisionLog: [
+        ...plan.governance.decisionLog,
+        { checkpoint: 'render', action: 'draft-delivered', at: new Date().toISOString() },
+      ],
+    },
+    render: { ...plan.render, status: 'draft-ready' },
+  };
+}
+
+export function assertVimaxProductionDraftDelivery(value: unknown): VimaxProductionPlan {
+  const plan = parseVimaxProductionPlan(value);
+  if (!plan || plan.governance.status !== 'delivery-ready' || plan.render.status !== 'draft-ready') {
+    throw new Error('制作草稿尚未准备完成。');
+  }
+  return plan;
 }
 
 export function assertVimaxProductionPlanForPhase(
@@ -257,15 +381,18 @@ export function assertVimaxProductionPlanForPhase(
   }
   const plan = parseVimaxProductionPlan(value);
   if (!plan) throw new Error('制作计划已失效，请返回计划阶段重新确认。');
-  if (plan.governance.status !== 'plan-approved') {
-    throw new Error('请先确认制作计划，再进入后续制作阶段。');
-  }
 
   const requiredOperation = phase === 'reference_assets' ? 'director.reference-assets' : 'director.video';
   if (!plan.workflow.operationOrder.includes(requiredOperation)) {
     throw new Error(phase === 'video'
       ? '本次创作流程不包含视频生成阶段。'
       : '本次创作流程不包含参考素材阶段。');
+  }
+  if (plan.governance.status === 'paused') {
+    throw new Error('制作流程已暂停，请先继续流程。');
+  }
+  if (plan.governance.status !== 'ready' || plan.estimatedCost.status !== 'confirmed') {
+    throw new Error('请先确认制作计划与真实费用，再进入模型制作阶段。');
   }
 
   const expectedModel = phase === 'reference_assets'
