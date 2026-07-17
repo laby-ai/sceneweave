@@ -371,6 +371,24 @@ export function assertVimaxProductionDraftDelivery(value: unknown): VimaxProduct
   return plan;
 }
 
+export function assertVimaxProductionOperation(
+  value: unknown,
+  operationId: string,
+  allowedStatuses: VimaxProductionGovernanceStatus[],
+): VimaxProductionPlan {
+  const plan = parseVimaxProductionPlan(value);
+  if (!plan) throw new Error('制作计划已失效，请返回计划阶段重新确认。');
+  if (!plan.workflow.operationOrder.includes(operationId)) {
+    throw new Error('本次创作流程不包含该制作阶段。');
+  }
+  if (!allowedStatuses.includes(plan.governance.status)) {
+    throw new Error(plan.governance.status === 'paused'
+      ? '制作流程已暂停，请先继续流程。'
+      : '请先完成制作计划确认与执行方式选择。');
+  }
+  return plan;
+}
+
 export function assertVimaxProductionPlanForPhase(
   value: unknown,
   phase: Exclude<VimaxProductionPhase, 'plan'>,

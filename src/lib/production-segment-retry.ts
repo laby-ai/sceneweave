@@ -1,5 +1,6 @@
 import type { ProductionAssemblyPlan, ProductionSegmentPlan } from '@/lib/production-assembly-plan';
 import type { ProductionProject } from '@/lib/production-project';
+import { assertVimaxProductionOperation } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 import {
   createTask,
   getTaskForOwner,
@@ -210,6 +211,22 @@ export function retryProductionAssemblySegment(
       '父任务、制作项目或片段计划不存在，请先运行导演链和 assembly-plan。',
       404
     );
+  }
+
+  if (parentTask.result.productionPlan) {
+    try {
+      assertVimaxProductionOperation(
+        parentTask.result.productionPlan,
+        'segments.retry-failed',
+        ['ready', 'delivery-ready'],
+      );
+    } catch (error) {
+      throw new ProductionSegmentRetryError(
+        error instanceof Error ? error.message : '当前制作流程尚不能重试片段。',
+        409,
+        { parentTaskId, segmentIndex },
+      );
+    }
   }
 
   if (resolvedChildTask && resolvedChildTask.config?.workflow !== 'production-assembly-segment') {

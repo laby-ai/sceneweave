@@ -80,6 +80,8 @@ export function buildVimaxSegmentedProductionView(
     productionPlan?.governance.status === 'delivery-ready'
     && productionPlan.render.status === 'draft-ready'
   );
+  const canQueue = productionPlan?.workflow.operationOrder.includes('segments.queue') === true
+    && (productionPlan.governance.status === 'ready' || productionPlan.governance.status === 'delivery-ready');
   const segments = (result?.assemblyPlan?.segments || []).map(segment => {
     const childTaskId = segment.expectedOutputs?.taskId || undefined;
     const childTask = childTaskId ? taskSnapshots[childTaskId] : undefined;
@@ -117,7 +119,7 @@ export function buildVimaxSegmentedProductionView(
     state,
     statusLabel: STATUS_LABELS[state],
     segments,
-    primaryAction: state === 'ready' ? {
+    primaryAction: state === 'ready' && canQueue ? {
       label: '创建分段任务',
       path: '/api/production/assembly-plan/queue',
       body: { taskId },

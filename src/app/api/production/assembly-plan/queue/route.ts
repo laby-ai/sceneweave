@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import type { ProductionAssemblyPlan } from '@/lib/production-assembly-plan';
+import { buildProductionAssemblyPlan, type ProductionAssemblyPlan } from '@/lib/production-assembly-plan';
 import type { ProductionProject } from '@/lib/production-project';
 import { evaluateAssemblyShotFrameReadiness } from '@/lib/production-shot-frame-contract';
 import { buildAssemblySegmentDependencyConfig } from '@/lib/production-segment-transition';
+import { assertVimaxProductionOperation } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 import { createTask, getAllTasksForOwner, getTaskForOwner, getTaskFresh, updateTask, type TaskOwner } from '@/lib/task-manager';
 import { resolvePaperHostCreationOwnerFromRequest } from '@/lib/task-access';
 
@@ -41,9 +42,29 @@ export async function POST(request: NextRequest) {
       }, { status: 404 });
     }
 
+    if (task.result.productionPlan) {
+      try {
+        assertVimaxProductionOperation(task.result.productionPlan, 'segments.queue', ['ready', 'delivery-ready']);
+      } catch (error) {
+        return NextResponse.json({
+          success: false,
+          error: error instanceof Error ? error.message : '当前制作流程尚不能创建片段任务。',
+          usedRealKey: false,
+          incurredCost: false,
+        }, { status: 409 });
+      }
+    }
+
     const productionProject = task.result.productionProject as ProductionProject;
-    const assemblyPlan = task.result.assemblyPlan as ProductionAssemblyPlan;
-    const readiness = assemblyPlan.readiness || evaluateAssemblyShotFrameReadiness(assemblyPlan.segments);
+    let assemblyPlan = task.result.assemblyPlan as ProductionAssemblyPlan;
+    let readiness = assemblyPlan.readiness || evaluateAssemblyShotFrameReadiness(assemblyPlan.segments);
+    const onlyProjectWritebackStale = !readiness.pass
+      && readiness.issues.length > 0
+      && readiness.issues.every(issue => issue.code === 'artifact-stale-after-project-writeback');
+    if (onlyProjectWritebackStale) {
+      assemblyPlan = buildProductionAssemblyPlan({ productionProject, sourceTaskId: task.id });
+      readiness = assemblyPlan.readiness || evaluateAssemblyShotFrameReadiness(assemblyPlan.segments);
+    }
     if (!readiness.pass) {
       return NextResponse.json({
         success: false,

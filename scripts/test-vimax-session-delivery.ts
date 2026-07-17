@@ -91,6 +91,11 @@ async function main() {
     productionPlan,
   });
 
+  const draftDecisionResponse = await taskRoute.POST(new NextRequest(`http://localhost/api/tasks/${parentTaskId}`, {
+    method: 'POST', headers, body: JSON.stringify({ action: 'confirm-production-draft' }),
+  }), { params: Promise.resolve({ taskId: parentTaskId }) });
+  assert.equal(draftDecisionResponse.status, 200);
+
   const queueResponse = await queueRoute.POST(new NextRequest('http://localhost/api/production/assembly-plan/queue', {
     method: 'POST', headers, body: JSON.stringify({ taskId: parentTaskId }),
   }));
