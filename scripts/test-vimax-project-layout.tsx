@@ -41,11 +41,13 @@ const bar = renderToStaticMarkup(createElement(VimaxProjectBar, {
   title: '星际短片',
   onBack: () => undefined,
   onNewProject: () => undefined,
+  onRenameProject: () => undefined,
 }));
 
 assert.match(bar, /返回项目/);
 assert.match(bar, /新建项目/);
 assert.match(bar, /星际短片/);
+assert.match(bar, /重命名项目/);
 
 const embedShellSource = readFileSync(
   new URL('../src/components/creation-agent/vimax-creation-agent-shell.tsx', import.meta.url),
@@ -55,4 +57,4 @@ const embedShellSource = readFileSync(
 assert.doesNotMatch(embedShellSource, /bg-black/);
 assert.match(embedShellSource, /bg-\[#f7f8fa\]/);
 
-console.log(JSON.stringify({ ok: true, script: 'test-vimax-project-layout', checks: 11 }));
+console.log(JSON.stringify({ ok: true, script: 'test-vimax-project-layout', checks: 12 }));

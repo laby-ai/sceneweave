@@ -45,9 +45,14 @@ import {
   recoverVimaxProjectMessages,
 } from '@/lib/skills/vimax-short-drama/vimax-project-session';
 import {
+  createVimaxProject,
+  loadActiveVimaxProjectId,
+  renameVimaxProject,
   restoreVimaxWorkspaceView,
+  saveActiveVimaxProjectId,
   saveVimaxWorkspaceView,
   summarizeVimaxProjects,
+  upsertVimaxProjectMessages,
   type VimaxWorkspaceView,
 } from '@/lib/skills/vimax-short-drama/vimax-project-catalog';
 import {
@@ -132,6 +137,7 @@ export function GenerateWorkspace({
     return { scope: skillScope, id: preset.id };
   });
   const [history, setHistory] = useState<ChatHistoryEntry[]>([]);
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [restoredScope, setRestoredScope] = useState<string | null>(null);
   const restoredScopeRef = useRef<string | null>(null);
   const [workspaceView, setWorkspaceView] = useState<VimaxWorkspaceView>('home');
@@ -144,7 +150,10 @@ export function GenerateWorkspace({
   const selectedSkill = resolveVimaxSkillPreset(skillSelection.scope === skillScope ? skillSelection.id : undefined);
   const visibleSkillPresets = searchVimaxSkillPresets(skillSearch);
   const projects = summarizeVimaxProjects(history);
-  const activeTitle = messages.find(message => message.role === 'user')?.content.slice(0, 30) || '未命名创作';
+  const activeProject = activeProjectId ? history.find(project => project.id === activeProjectId) : null;
+  const activeTitle = activeProject?.title
+    || messages.find(message => message.role === 'user')?.content.slice(0, 30)
+    || '未命名创作';
 
   const setScopedWorkspaceView = useCallback((view: VimaxWorkspaceView) => {
     setWorkspaceView(view);
@@ -166,29 +175,18 @@ export function GenerateWorkspace({
     if (restoredScope !== (storageScope || '')) return;
     saveMessages(messages, storageScope);
     if (messages.length > 0) {
-      const firstUser = messages.find(m => m.role === 'user');
-      const title = firstUser ? firstUser.content.slice(0, 30) : '未命名创作';
+      const currentId = activeProjectId || messages[0]?.id || genId();
+      if (!activeProjectId) {
+        setActiveProjectId(currentId);
+        saveActiveVimaxProjectId(sessionStorage, storageScope, currentId);
+      }
       setHistory(prev => {
-        const currentId = messages[0]?.id || genId();
-        const existingIndex = prev.findIndex(h => h.id === currentId);
-        const entry: ChatHistoryEntry = {
-          id: currentId,
-          title,
-          time: Date.now(),
-          messages,
-        };
-        let next;
-        if (existingIndex >= 0) {
-          next = [...prev];
-          next[existingIndex] = entry;
-        } else {
-          next = [entry, ...prev];
-        }
-        saveChatHistory(next.slice(0, 20), storageScope);
+        const next = upsertVimaxProjectMessages(prev, currentId, messages);
+        saveChatHistory(next, storageScope);
         return next;
       });
     }
-  }, [messages, restoredScope, storageScope]);
+  }, [activeProjectId, messages, restoredScope, storageScope]);
 
   const messagesRef = useRef<ChatMessage[]>(messages);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
@@ -214,8 +212,13 @@ export function GenerateWorkspace({
   useEffect(() => {
     cancelCurrentRun();
     const recoveredMessages = recoverVimaxProjectMessages(loadMessages(storageScope) || []);
+    const recoveredHistory = loadChatHistory(storageScope);
+    const recoveredProjectId = loadActiveVimaxProjectId(sessionStorage, storageScope);
     setMessages(recoveredMessages);
-    setHistory(loadChatHistory(storageScope));
+    setHistory(recoveredHistory);
+    setActiveProjectId(recoveredProjectId && recoveredHistory.some(entry => entry.id === recoveredProjectId)
+      ? recoveredProjectId
+      : recoveredMessages[0]?.id || null);
     setWorkspaceView(currentView => restoreVimaxWorkspaceView(
       sessionStorage,
       restoredScopeRef.current,
@@ -229,19 +232,38 @@ export function GenerateWorkspace({
 
   const startNewChat = useCallback(() => {
     cancelCurrentRun();
+    const projectId = genId();
+    setActiveProjectId(projectId);
+    saveActiveVimaxProjectId(sessionStorage, storageScope, projectId);
+    setHistory(previous => {
+      const next = createVimaxProject(previous, projectId);
+      saveChatHistory(next, storageScope);
+      return next;
+    });
     setMessages([]);
     setInput('');
     setScopedWorkspaceView('project');
-  }, [cancelCurrentRun, setScopedWorkspaceView]);
+  }, [cancelCurrentRun, setScopedWorkspaceView, storageScope]);
 
   const openHistoryProject = useCallback((projectId: string) => {
     const entry = history.find(item => item.id === projectId);
     if (!entry) return;
     cancelCurrentRun();
     setIsLoading(false);
+    setActiveProjectId(projectId);
+    saveActiveVimaxProjectId(sessionStorage, storageScope, projectId);
     setMessages(recoverVimaxProjectMessages(entry.messages || []));
     setScopedWorkspaceView('project');
-  }, [cancelCurrentRun, history, setScopedWorkspaceView]);
+  }, [cancelCurrentRun, history, setScopedWorkspaceView, storageScope]);
+
+  const renameActiveProject = useCallback((title: string) => {
+    if (!activeProjectId) return;
+    setHistory(previous => {
+      const next = renameVimaxProject(previous, activeProjectId, title);
+      saveChatHistory(next, storageScope);
+      return next;
+    });
+  }, [activeProjectId, storageScope]);
 
   const activeMode = CREATION_MODES.find(item => item.id === mode) || CREATION_MODES[0];
 
@@ -407,6 +429,7 @@ export function GenerateWorkspace({
                 title={activeTitle}
                 onBack={() => setScopedWorkspaceView('home')}
                 onNewProject={startNewChat}
+                onRenameProject={renameActiveProject}
               />
               <div className="mx-auto w-full max-w-[1040px] px-6 py-8">
                 {hasMessages ? (

@@ -1,10 +1,15 @@
 import assert from 'node:assert/strict';
 
 import {
+  createVimaxProject,
+  loadActiveVimaxProjectId,
   loadVimaxWorkspaceView,
+  renameVimaxProject,
   restoreVimaxWorkspaceView,
+  saveActiveVimaxProjectId,
   saveVimaxWorkspaceView,
   summarizeVimaxProjects,
+  upsertVimaxProjectMessages,
 } from '../src/lib/skills/vimax-short-drama/vimax-project-catalog';
 import type { ChatHistoryEntry } from '../src/lib/smart-assistant-panel-model';
 
@@ -22,6 +27,35 @@ assert.equal(loadVimaxWorkspaceView(storage, 'guest-b'), 'home');
 assert.equal(restoreVimaxWorkspaceView(storage, '', 'guest-late', 'project'), 'project');
 assert.equal(loadVimaxWorkspaceView(storage, 'guest-late'), 'project');
 assert.equal(restoreVimaxWorkspaceView(storage, 'guest-late', 'guest-b', 'home'), 'home');
+
+saveActiveVimaxProjectId(storage, 'guest-a', 'project-empty');
+assert.equal(loadActiveVimaxProjectId(storage, 'guest-a'), 'project-empty');
+assert.equal(loadActiveVimaxProjectId(storage, 'guest-b'), null);
+
+const emptyProjectHistory = createVimaxProject([], 'project-empty', 1721188700000);
+assert.deepEqual(summarizeVimaxProjects(emptyProjectHistory), [{
+  id: 'project-empty',
+  title: '未命名创作',
+  updatedAt: 1721188700000,
+  messageCount: 0,
+  stageLabel: '创意草稿',
+}]);
+
+const renamedProjectHistory = renameVimaxProject(
+  emptyProjectHistory,
+  'project-empty',
+  '  夏日品牌片  ',
+  1721188750000,
+);
+assert.equal(renamedProjectHistory[0]?.title, '夏日品牌片');
+
+const renamedAfterProgress = upsertVimaxProjectMessages(
+  renamedProjectHistory,
+  'project-empty',
+  [{ id: 'user-1', role: 'user', content: '这段提示词不应覆盖手动项目名', timestamp: 1721188800000 }],
+  1721188800000,
+);
+assert.equal(renamedAfterProgress[0]?.title, '夏日品牌片');
 
 const history: ChatHistoryEntry[] = [{
   id: 'project-1',
@@ -54,5 +88,5 @@ assert.deepEqual(summarizeVimaxProjects(history), [{
 console.log(JSON.stringify({
   ok: true,
   script: 'test-vimax-project-catalog',
-  checks: 7,
+  checks: 12,
 }));

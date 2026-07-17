@@ -19,6 +19,74 @@ export interface VimaxProjectSummary {
 }
 
 const viewKey = (scope?: string) => `vimax-workspace-view:${scope || 'default'}`;
+const activeProjectKey = (scope?: string) => `vimax-active-project:${scope || 'default'}`;
+
+export function loadActiveVimaxProjectId(
+  storage: VimaxWorkspaceViewReader | null,
+  scope: string | undefined,
+) {
+  return storage?.getItem(activeProjectKey(scope)) || null;
+}
+
+export function saveActiveVimaxProjectId(
+  storage: VimaxWorkspaceViewWriter | null,
+  scope: string | undefined,
+  projectId: string,
+) {
+  storage?.setItem(activeProjectKey(scope), projectId);
+}
+
+export function createVimaxProject(
+  history: ChatHistoryEntry[],
+  projectId: string,
+  now = Date.now(),
+): ChatHistoryEntry[] {
+  const existing = history.find(entry => entry.id === projectId);
+  const project = existing || {
+    id: projectId,
+    title: '未命名创作',
+    time: now,
+    messages: [],
+  };
+  return [project, ...history.filter(entry => entry.id !== projectId)].slice(0, 20);
+}
+
+export function renameVimaxProject(
+  history: ChatHistoryEntry[],
+  projectId: string,
+  title: string,
+  now = Date.now(),
+): ChatHistoryEntry[] {
+  const normalizedTitle = title.trim().slice(0, 60);
+  if (!normalizedTitle) return history;
+  return history.map(entry => entry.id === projectId ? {
+    ...entry,
+    title: normalizedTitle,
+    time: now,
+    params: { ...entry.params, vimaxManualTitle: true },
+  } : entry);
+}
+
+export function upsertVimaxProjectMessages(
+  history: ChatHistoryEntry[],
+  projectId: string,
+  messages: ChatMessage[],
+  now = Date.now(),
+): ChatHistoryEntry[] {
+  const existing = history.find(entry => entry.id === projectId);
+  const firstUser = messages.find(message => message.role === 'user');
+  const title = existing?.params?.vimaxManualTitle === true
+    ? existing.title
+    : firstUser?.content.slice(0, 30) || existing?.title || '未命名创作';
+  const project: ChatHistoryEntry = {
+    ...existing,
+    id: projectId,
+    title,
+    time: now,
+    messages,
+  };
+  return [project, ...history.filter(entry => entry.id !== projectId)].slice(0, 20);
+}
 
 export function loadVimaxWorkspaceView(
   storage: VimaxWorkspaceViewReader | null,
