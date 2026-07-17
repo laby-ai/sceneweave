@@ -72,6 +72,8 @@
     "qa:mp4-tracks": "node scripts/check-mp4-tracks.mjs",
     "qa:video-byok": "node scripts/qa-video-byok.mjs",
     "qa:byok-video-status": "tsx scripts/qa-byok-video-status.ts",
+    "qa:scnet-video-provider": "tsx scripts/qa-scnet-video-provider.ts",
+    "ops:scnet-transition-demo": "tsx scripts/run-scnet-transition-demo.ts",
     "qa:ark-video-status-shape": "node scripts/qa-ark-video-status-shape.mjs",
     "qa:video-submit-provider": "tsx scripts/qa-video-submit-provider.ts",
     "qa:video-submit-byok-only": "node scripts/qa-video-submit-byok-only.mjs",

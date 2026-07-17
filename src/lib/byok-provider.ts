@@ -1,4 +1,13 @@
 import { normalizeBYOKApiBase } from '@/lib/byok-url';
+import {
+  buildSCNetVideoSubmitRequest,
+  buildSCNetVideoTaskUrl,
+  getSCNetProviderErrorMessage,
+  isSCNetVideoApiBase,
+  parseSCNetVideoStatus,
+  parseSCNetVideoTaskId,
+  sanitizeSCNetProviderError,
+} from '@/lib/scnet-video-provider';
 
 export type BYOKProviderType = 'openai-compatible' | 'ark-plan';
 
@@ -106,6 +115,17 @@ export function extractBYOKConnection(headers: Headers): BYOKConnection | undefi
 
   if (provider && apiBase && apiKey && (provider === 'openai-compatible' || provider === 'ark-plan')) {
     return { provider, apiBase: normalizeBYOKApiBase(apiBase), apiKey, model, imageModel, videoModel };
+  }
+
+  const scnetKey = (process.env.SCNET_API_KEY || '').trim();
+  const scnetEnabled = (process.env.SCNET_VIDEO_ENABLED || '').trim().toLowerCase() === 'true';
+  if (scnetEnabled && scnetKey) {
+    return {
+      provider: 'ark-plan',
+      apiBase: (process.env.SCNET_API_BASE || 'https://api.scnet.cn/api/llm/v1').trim(),
+      apiKey: scnetKey,
+      videoModel: (process.env.SCNET_VIDEO_MODEL || 'Seedance2.0').trim(),
+    };
   }
 
   // Server-side default ARK fallback: use env-configured ARK key for direct Volcano access.
@@ -326,6 +346,39 @@ export async function submitVideoWithBYOK(
     throw new Error('BYOK 视频调用缺少视频模型');
   }
 
+  if (isSCNetVideoApiBase(connection.apiBase)) {
+    if (params.firstFrameImage || params.lastFrameImage || params.referenceImages?.length) {
+      throw new Error('SCNet 当前接入仅支持文本生成视频，暂不静默忽略首尾帧或参考图');
+    }
+    const request = buildSCNetVideoSubmitRequest({
+      apiBase: connection.apiBase,
+      apiKey: connection.apiKey,
+      model,
+      prompt: params.prompt,
+      duration: params.duration ?? 5,
+      ratio: params.ratio || '16:9',
+      resolution: params.resolution || '720p',
+      watermark: params.watermark ?? false,
+    });
+    const response = await fetch(request.url, {
+      method: 'POST',
+      headers: request.headers,
+      body: JSON.stringify(request.body),
+    });
+    const payload = await parseResponsePayload(response);
+    if (!response.ok) {
+      throw new Error(`SCNet 视频提交失败：${sanitizeSCNetProviderError(getSCNetProviderErrorMessage(payload, response.status), connection.apiKey)}`);
+    }
+    const taskId = parseSCNetVideoTaskId(payload);
+    if (!taskId) throw new Error('SCNet 视频提交未返回任务 ID');
+    return {
+      taskId,
+      model,
+      provider: 'byok',
+      statusUrl: buildSCNetVideoTaskUrl(connection.apiBase, taskId),
+    };
+  }
+
   const taskUrl = buildArkVideoTasksUrl(connection.apiBase);
   const content: Array<{ type: string; text?: string; image_url?: { url: string }; role?: string }> = [];
   content.push({ type: 'text', text: normalizeVideoPromptForArk(params.prompt) });
@@ -381,6 +434,21 @@ export async function getVideoStatusWithBYOK(
 ): Promise<BYOKVideoStatus> {
   if (connection.provider !== 'ark-plan') {
     throw new Error('当前 BYOK 视频查询仅支持 Ark Plan');
+  }
+
+  if (isSCNetVideoApiBase(connection.apiBase)) {
+    const response = await fetch(buildSCNetVideoTaskUrl(connection.apiBase, taskId), {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${connection.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    const payload = await parseResponsePayload(response);
+    if (!response.ok) {
+      throw new Error(`SCNet 视频查询失败：${sanitizeSCNetProviderError(getSCNetProviderErrorMessage(payload, response.status), connection.apiKey)}`);
+    }
+    return parseSCNetVideoStatus(payload);
   }
 
   const taskUrl = `${buildArkVideoTasksUrl(connection.apiBase)}/${encodeURIComponent(taskId)}`;
