@@ -14,6 +14,8 @@ const workspace = read('src/components/smart/smart-assistant-chat-workspace.tsx'
 const generateWorkspace = read('src/components/generate/generate-workspace.tsx');
 const model = read('src/lib/smart-assistant-panel-model.ts');
 const route = read('src/app/api/smart/vimax-agent-step/route.ts');
+const planArtifacts = read('src/lib/skills/vimax-short-drama/vimax-plan-artifacts.ts');
+const agentContract = read('src/lib/skills/vimax-short-drama/vimax-agent-contract.ts');
 // ViMAX 已抽成 Agent 驱动的 skill；编排逻辑应在 skill 内，面板只负责唤起。
 const skill = read('src/lib/skills/vimax-short-drama/use-vimax-short-drama-skill.ts');
 const preferences = read('src/lib/skills/vimax-short-drama/vimax-generation-preferences.ts');
@@ -73,15 +75,15 @@ check('route-does-not-return-free-fake-result', !/usedRealKey:\s*false|incurredC
 check('route-fails-explicitly-before-video-cost', /视频生成阶段需要用户在界面显式确认费用/.test(route));
 check(
   'route-uses-embedded-vimax-production-pipeline',
-  /buildProductionProject/.test(route)
-    && /buildProductionAssemblyPlan/.test(route)
-    && /generateShotsFromUserPrompt/.test(route)
-    && /buildProductionBackedVimaxPlan/.test(route)
-    && /【首尾帧契约】/.test(route)
-    && /【镜头变化】/.test(route),
+  /buildProductionBackedVimaxPlan/.test(route)
+    && /buildProductionProject/.test(planArtifacts)
+    && /buildProductionAssemblyPlan/.test(planArtifacts)
+    && /generateShotsFromUserPrompt/.test(planArtifacts)
+    && /【首尾帧契约】/.test(planArtifacts)
+    && /【镜头变化】/.test(planArtifacts),
   'short-drama skill must not bypass the embedded ViMAX-style production artifacts',
 );
-check('route-honors-requested-vimax-segment-count', /segmentCount\?: number/.test(route) && /targetSegmentCount/.test(route) && /Array\.from\(\{ length: targetSegmentCount \}/.test(route));
+check('route-honors-requested-vimax-segment-count', /segmentCount\?: number/.test(agentContract) && /targetSegmentCount/.test(planArtifacts) && /Array\.from\(\{ length: targetSegmentCount \}/.test(planArtifacts));
 check(
   'route-uses-sequential-last-frame-handoff',
   /previousLastFrameUrl/.test(route)
