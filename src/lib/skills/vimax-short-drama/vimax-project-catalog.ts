@@ -23,9 +23,8 @@ const viewKey = (scope?: string) => `vimax-workspace-view:${scope || 'default'}`
 export function loadVimaxWorkspaceView(
   storage: VimaxWorkspaceViewReader | null,
   scope: string | undefined,
-  hasRecoverableProject: boolean,
 ): VimaxWorkspaceView {
-  if (!hasRecoverableProject || !storage) return 'home';
+  if (!storage) return 'home';
   return storage.getItem(viewKey(scope)) === 'project' ? 'project' : 'home';
 }
 
@@ -35,6 +34,22 @@ export function saveVimaxWorkspaceView(
   view: VimaxWorkspaceView,
 ) {
   storage?.setItem(viewKey(scope), view);
+}
+
+export function restoreVimaxWorkspaceView(
+  storage: (VimaxWorkspaceViewReader & VimaxWorkspaceViewWriter) | null,
+  previousScope: string | null,
+  nextScope: string | undefined,
+  currentView: VimaxWorkspaceView,
+): VimaxWorkspaceView {
+  const persistedView = loadVimaxWorkspaceView(storage, nextScope);
+  const nextScopeKey = nextScope || '';
+  if (persistedView === 'project') return 'project';
+  if (previousScope !== null && previousScope !== nextScopeKey && currentView === 'project') {
+    saveVimaxWorkspaceView(storage, nextScope, 'project');
+    return 'project';
+  }
+  return 'home';
 }
 
 const phaseLabel: Record<NonNullable<ChatMessage['vimaxAgent']>['phase'], string> = {

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 import {
   loadVimaxWorkspaceView,
+  restoreVimaxWorkspaceView,
   saveVimaxWorkspaceView,
   summarizeVimaxProjects,
 } from '../src/lib/skills/vimax-short-drama/vimax-project-catalog';
@@ -13,11 +14,14 @@ const storage = {
   setItem: (key: string, value: string) => { values.set(key, value); },
 };
 
-assert.equal(loadVimaxWorkspaceView(storage, 'guest-a', true), 'home');
+assert.equal(loadVimaxWorkspaceView(storage, 'guest-a'), 'home');
 saveVimaxWorkspaceView(storage, 'guest-a', 'project');
-assert.equal(loadVimaxWorkspaceView(storage, 'guest-a', true), 'project');
-assert.equal(loadVimaxWorkspaceView(storage, 'guest-a', false), 'home');
-assert.equal(loadVimaxWorkspaceView(storage, 'guest-b', true), 'home');
+assert.equal(loadVimaxWorkspaceView(storage, 'guest-a'), 'project');
+assert.equal(loadVimaxWorkspaceView(storage, 'guest-b'), 'home');
+
+assert.equal(restoreVimaxWorkspaceView(storage, '', 'guest-late', 'project'), 'project');
+assert.equal(loadVimaxWorkspaceView(storage, 'guest-late'), 'project');
+assert.equal(restoreVimaxWorkspaceView(storage, 'guest-late', 'guest-b', 'home'), 'home');
 
 const history: ChatHistoryEntry[] = [{
   id: 'project-1',
@@ -50,5 +54,5 @@ assert.deepEqual(summarizeVimaxProjects(history), [{
 console.log(JSON.stringify({
   ok: true,
   script: 'test-vimax-project-catalog',
-  checks: 6,
+  checks: 7,
 }));

@@ -34,7 +34,7 @@ check(
 );
 check(
   'vimax-project-view-is-workspace-scoped-and-recoverable',
-  /loadVimaxWorkspaceView/.test(generateWorkspace)
+  /restoreVimaxWorkspaceView/.test(generateWorkspace)
     && /saveVimaxWorkspaceView/.test(generateWorkspace)
     && /summarizeVimaxProjects/.test(generateWorkspace)
     && /openHistoryProject/.test(generateWorkspace),

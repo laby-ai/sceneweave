@@ -45,7 +45,7 @@ import {
   recoverVimaxProjectMessages,
 } from '@/lib/skills/vimax-short-drama/vimax-project-session';
 import {
-  loadVimaxWorkspaceView,
+  restoreVimaxWorkspaceView,
   saveVimaxWorkspaceView,
   summarizeVimaxProjects,
   type VimaxWorkspaceView,
@@ -133,6 +133,7 @@ export function GenerateWorkspace({
   });
   const [history, setHistory] = useState<ChatHistoryEntry[]>([]);
   const [restoredScope, setRestoredScope] = useState<string | null>(null);
+  const restoredScopeRef = useRef<string | null>(null);
   const [workspaceView, setWorkspaceView] = useState<VimaxWorkspaceView>('home');
   useEffect(() => {
     setSkillSelection({ scope: skillScope, id: loadVimaxSkillPreset(localStorage, skillScope).id });
@@ -215,9 +216,15 @@ export function GenerateWorkspace({
     const recoveredMessages = recoverVimaxProjectMessages(loadMessages(storageScope) || []);
     setMessages(recoveredMessages);
     setHistory(loadChatHistory(storageScope));
-    setWorkspaceView(loadVimaxWorkspaceView(sessionStorage, storageScope, recoveredMessages.length > 0));
+    setWorkspaceView(currentView => restoreVimaxWorkspaceView(
+      sessionStorage,
+      restoredScopeRef.current,
+      storageScope,
+      currentView,
+    ));
     setIsLoading(false);
-    setRestoredScope(storageScope || '');
+    restoredScopeRef.current = storageScope || '';
+    setRestoredScope(restoredScopeRef.current);
   }, [cancelCurrentRun, storageScope]);
 
   const startNewChat = useCallback(() => {
