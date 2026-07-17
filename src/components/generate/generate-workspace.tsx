@@ -27,6 +27,7 @@ import { VimaxProjectHome } from '@/components/generate/vimax-project-home';
 import { clientApiFetch, clientApiRequest } from '@/lib/client-api';
 import { genId, loadChatHistory, loadMessages, saveChatHistory, saveMessages, type ChatHistoryEntry, type ChatMessage } from '@/lib/smart-assistant-panel-model';
 import { VimaxProductionPlanCard } from '@/components/generate/vimax-production-plan-card';
+import { VimaxProjectEditorCard } from '@/components/generate/vimax-project-editor-card';
 import { VimaxSegmentedProductionCard } from '@/components/generate/vimax-segmented-production-card';
 import {
   useVimaxShortDramaSkill,
@@ -772,7 +773,10 @@ function MessageBubble({ message, onQuickOption, onResultIteration, onProduction
         ) : null}
 
         {agent?.taskId && message.generationStatus === 'completed' ? (
-          <VimaxSegmentedProductionCard taskId={agent.taskId} requestHeaders={requestHeaders} />
+          <>
+            <VimaxProjectEditorCard taskId={agent.taskId} requestHeaders={requestHeaders} />
+            <VimaxSegmentedProductionCard taskId={agent.taskId} requestHeaders={requestHeaders} />
+          </>
         ) : null}
 
         {message.generatedImages && message.generatedImages.length > 0 && !(agent?.shots || []).some(shot => shot.referenceUrl) && (
