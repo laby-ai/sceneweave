@@ -50,6 +50,14 @@ assert.match(bar, /返回项目/);
 assert.match(bar, /新建项目/);
 assert.match(bar, /星际短片/);
 assert.match(bar, /重命名项目/);
+assert.doesNotMatch(bar, /Vimax/i);
+
+const workspaceSource = readFileSync(
+  new URL('../src/components/generate/generate-workspace.tsx', import.meta.url),
+  'utf8',
+);
+
+assert.doesNotMatch(workspaceSource, /Vimax 会沿用/);
 
 const embedShellSource = readFileSync(
   new URL('../src/components/creation-agent/vimax-creation-agent-shell.tsx', import.meta.url),
@@ -59,4 +67,4 @@ const embedShellSource = readFileSync(
 assert.doesNotMatch(embedShellSource, /bg-black/);
 assert.match(embedShellSource, /bg-\[#f7f8fa\]/);
 
-console.log(JSON.stringify({ ok: true, script: 'test-vimax-project-layout', checks: 13 }));
+console.log(JSON.stringify({ ok: true, script: 'test-vimax-project-layout', checks: 15 }));

@@ -469,7 +469,7 @@ export function GenerateWorkspace({
                     </span>
                     <h2 className="text-xl font-semibold tracking-[-0.025em] text-[#20232a]">从一句想法开始</h2>
                     <p className="mt-2 max-w-md text-sm leading-6 text-[#858c97]">
-                      Vimax 会沿用成熟的计划、分镜、参考素材和成片链路持续推进。
+                      创作智能体会沿用成熟的计划、分镜、参考素材和成片链路持续推进。
                     </p>
                   </div>
                 )}

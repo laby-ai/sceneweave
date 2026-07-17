@@ -72,7 +72,7 @@ export function VimaxProjectBar({ title, onBack, onNewProject, onRenameProject }
                 </button>
               </div>
             )}
-            <div className="mt-0.5 text-xs text-[#9298a3]">Vimax 对话式创作</div>
+            <div className="mt-0.5 text-xs text-[#9298a3]">对话式创作</div>
           </div>
         </div>
         <button
