@@ -67,6 +67,14 @@ export function renameVimaxProject(
   } : entry);
 }
 
+export function deleteVimaxProject(
+  history: ChatHistoryEntry[],
+  projectId: string,
+): ChatHistoryEntry[] {
+  if (!history.some(entry => entry.id === projectId)) return history;
+  return history.filter(entry => entry.id !== projectId);
+}
+
 export function upsertVimaxProjectMessages(
   history: ChatHistoryEntry[],
   projectId: string,
@@ -128,7 +136,7 @@ const phaseLabel: Record<NonNullable<ChatMessage['vimaxAgent']>['phase'], string
 };
 
 export function summarizeVimaxProjects(history: ChatHistoryEntry[]): VimaxProjectSummary[] {
-  return history.map(entry => {
+  return [...history].sort((left, right) => right.time - left.time).map(entry => {
     const latest = [...(entry.messages || [])].reverse().find(message => message.vimaxAgent)?.vimaxAgent;
     return {
       id: entry.id,

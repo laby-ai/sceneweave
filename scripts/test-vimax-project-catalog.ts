@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 import {
   createVimaxProject,
+  deleteVimaxProject,
   loadActiveVimaxProjectId,
   loadVimaxWorkspaceView,
   renameVimaxProject,
@@ -85,8 +86,23 @@ assert.deepEqual(summarizeVimaxProjects(history), [{
   stageLabel: '参考素材',
 }]);
 
+const multiProjectHistory: ChatHistoryEntry[] = [
+  { id: 'older', title: '较早项目', time: 1721188700000, messages: [] },
+  { id: 'newer', title: '最近项目', time: 1721188900000, messages: [] },
+];
+
+assert.deepEqual(
+  summarizeVimaxProjects(multiProjectHistory).map(project => project.id),
+  ['newer', 'older'],
+);
+assert.deepEqual(
+  deleteVimaxProject(multiProjectHistory, 'newer').map(project => project.id),
+  ['older'],
+);
+assert.equal(deleteVimaxProject(multiProjectHistory, 'missing'), multiProjectHistory);
+
 console.log(JSON.stringify({
   ok: true,
   script: 'test-vimax-project-catalog',
-  checks: 12,
+  checks: 15,
 }));

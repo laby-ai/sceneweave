@@ -1,7 +1,7 @@
 'use client';
 
-import type { ReactNode } from 'react';
-import { ArrowRight, Film, Plus, Sparkles } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { ArrowRight, Film, MoreHorizontal, Plus, Sparkles, Trash2 } from 'lucide-react';
 
 import type { VimaxProjectSummary } from '@/lib/skills/vimax-short-drama/vimax-project-catalog';
 import type { VimaxSkillPreset } from '@/lib/skills/vimax-short-drama/vimax-skill-presets';
@@ -12,6 +12,7 @@ interface VimaxProjectHomeProps {
   selectedSkillId: string;
   composer: ReactNode;
   onOpenProject: (projectId: string) => void;
+  onDeleteProject: (projectId: string) => void;
   onStartProject: () => void;
   onSelectSkill: (skillId: string) => void;
 }
@@ -22,9 +23,18 @@ export function VimaxProjectHome({
   selectedSkillId,
   composer,
   onOpenProject,
+  onDeleteProject,
   onStartProject,
   onSelectSkill,
 }: VimaxProjectHomeProps) {
+  const [managedProjectId, setManagedProjectId] = useState<string | null>(null);
+  const [confirmingProjectId, setConfirmingProjectId] = useState<string | null>(null);
+
+  const closeProjectMenu = () => {
+    setManagedProjectId(null);
+    setConfirmingProjectId(null);
+  };
+
   return (
     <main
       data-testid="vimax-project-home"
@@ -85,24 +95,79 @@ export function VimaxProjectHome({
         {projects.length ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {projects.map(project => (
-              <button
+              <article
                 key={project.id}
-                type="button"
-                onClick={() => onOpenProject(project.id)}
-                className="group min-h-[152px] rounded-2xl border border-[#e5e8ed] bg-white p-5 text-left shadow-[0_8px_28px_rgba(31,41,55,0.045)] transition duration-200 hover:-translate-y-1 hover:border-[#cfd9e8] hover:shadow-[0_16px_34px_rgba(31,41,55,0.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f6bff]/30"
+                className="group relative min-h-[152px] rounded-2xl border border-[#e5e8ed] bg-white shadow-[0_8px_28px_rgba(31,41,55,0.045)] transition duration-200 hover:-translate-y-1 hover:border-[#cfd9e8] hover:shadow-[0_16px_34px_rgba(31,41,55,0.08)]"
               >
-                <div className="flex items-start justify-between gap-4">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#f0f4ff] text-[#2f6bff]">
-                    <Film className="h-5 w-5" />
-                  </span>
-                  <ArrowRight className="h-4 w-4 text-[#b0b6c0] transition group-hover:translate-x-0.5 group-hover:text-[#2f6bff]" />
-                </div>
-                <div className="mt-5 truncate text-base font-semibold text-[#23262d]">{project.title}</div>
-                <div className="mt-2 flex items-center justify-between gap-3 text-xs text-[#8a919d]">
-                  <span>{project.stageLabel}</span>
-                  <span>{project.messageCount} 条进展</span>
-                </div>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeProjectMenu();
+                    onOpenProject(project.id);
+                  }}
+                  className="h-full min-h-[152px] w-full rounded-2xl p-5 pr-14 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f6bff]/30"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#f0f4ff] text-[#2f6bff]">
+                      <Film className="h-5 w-5" />
+                    </span>
+                    <ArrowRight className="h-4 w-4 text-[#b0b6c0] transition group-hover:translate-x-0.5 group-hover:text-[#2f6bff]" />
+                  </div>
+                  <div className="mt-5 truncate text-base font-semibold text-[#23262d]">{project.title}</div>
+                  <div className="mt-2 flex items-center justify-between gap-3 text-xs text-[#8a919d]">
+                    <span>{project.stageLabel}</span>
+                    <span>{project.messageCount} 条进展</span>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  aria-label={`管理项目 ${project.title}`}
+                  aria-expanded={managedProjectId === project.id}
+                  onClick={() => {
+                    setManagedProjectId(current => current === project.id ? null : project.id);
+                    setConfirmingProjectId(null);
+                  }}
+                  className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-xl text-[#8a919d] transition hover:bg-[#f1f3f6] hover:text-[#303640] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f6bff]/30"
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </button>
+                {managedProjectId === project.id ? (
+                  <div className="absolute right-3 top-12 z-10 w-40 rounded-xl border border-[#e1e5eb] bg-white p-1.5 shadow-[0_14px_34px_rgba(31,41,55,0.14)]">
+                    {confirmingProjectId === project.id ? (
+                      <div className="space-y-1">
+                        <p className="px-2 py-1 text-xs text-[#7a818d]">确认删除此项目？</p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onDeleteProject(project.id);
+                            closeProjectMenu();
+                          }}
+                          className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm font-medium text-[#c93636] hover:bg-[#fff2f2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e45f5f]/30"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          确认删除
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmingProjectId(null)}
+                          className="w-full rounded-lg px-2 py-2 text-left text-sm text-[#59606c] hover:bg-[#f5f6f8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f6bff]/25"
+                        >
+                          取消
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmingProjectId(project.id)}
+                        className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-[#c93636] hover:bg-[#fff2f2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e45f5f]/30"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        删除项目
+                      </button>
+                    )}
+                  </div>
+                ) : null}
+              </article>
             ))}
           </div>
         ) : (

@@ -26,6 +26,7 @@ const home = renderToStaticMarkup(createElement(VimaxProjectHome, {
   selectedSkillId: 'short-drama',
   composer: createElement('div', { 'data-testid': 'composer' }, 'composer'),
   onOpenProject: () => undefined,
+  onDeleteProject: () => undefined,
   onStartProject: () => undefined,
   onSelectSkill: () => undefined,
 }));
@@ -35,6 +36,7 @@ assert.match(home, /data-testid="vimax-recent-projects"/);
 assert.match(home, /星际短片/);
 assert.match(home, /短剧一键成片/);
 assert.match(home, /data-testid="composer"/);
+assert.match(home, /aria-label="管理项目 星际短片"/);
 assert.doesNotMatch(home, /vimax-history-sidebar/);
 
 const bar = renderToStaticMarkup(createElement(VimaxProjectBar, {
@@ -57,4 +59,4 @@ const embedShellSource = readFileSync(
 assert.doesNotMatch(embedShellSource, /bg-black/);
 assert.match(embedShellSource, /bg-\[#f7f8fa\]/);
 
-console.log(JSON.stringify({ ok: true, script: 'test-vimax-project-layout', checks: 12 }));
+console.log(JSON.stringify({ ok: true, script: 'test-vimax-project-layout', checks: 13 }));

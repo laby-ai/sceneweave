@@ -46,6 +46,7 @@ import {
 } from '@/lib/skills/vimax-short-drama/vimax-project-session';
 import {
   createVimaxProject,
+  deleteVimaxProject,
   loadActiveVimaxProjectId,
   renameVimaxProject,
   restoreVimaxWorkspaceView,
@@ -265,6 +266,23 @@ export function GenerateWorkspace({
     });
   }, [activeProjectId, storageScope]);
 
+  const deleteProject = useCallback((projectId: string) => {
+    setHistory(previous => {
+      const next = deleteVimaxProject(previous, projectId);
+      saveChatHistory(next, storageScope);
+      return next;
+    });
+    if (projectId !== activeProjectId) return;
+    cancelCurrentRun();
+    setIsLoading(false);
+    setActiveProjectId(null);
+    saveActiveVimaxProjectId(sessionStorage, storageScope, '');
+    setMessages([]);
+    saveMessages([], storageScope);
+    setInput('');
+    setScopedWorkspaceView('home');
+  }, [activeProjectId, cancelCurrentRun, setScopedWorkspaceView, storageScope]);
+
   const activeMode = CREATION_MODES.find(item => item.id === mode) || CREATION_MODES[0];
 
   const openSubjectMenu = useCallback(async () => {
@@ -420,6 +438,7 @@ export function GenerateWorkspace({
               selectedSkillId={selectedSkill.id}
               composer={renderDock()}
               onOpenProject={openHistoryProject}
+              onDeleteProject={deleteProject}
               onStartProject={startNewChat}
               onSelectSkill={selectSkillPreset}
             />
