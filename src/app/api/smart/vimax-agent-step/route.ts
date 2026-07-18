@@ -49,7 +49,8 @@ function getArkConfig() {
   // UI alias doubao-seedance-1.5-pro maps to the callable Ark video model id below.
   const videoModel = process.env.ARK_VIDEO_MODEL || 'doubao-seedance-1-5-pro-251215';
 
-  return { apiKey, apiBase, textModel, imageApiKey, imageApiBase, imageModel, videoModel };
+  const selectorModel = process.env.HUIYING_VIMAX_SELECTOR_MODEL || process.env.ARK_VISION_MODEL;
+  return { apiKey, apiBase, textModel, selectorModel, imageApiKey, imageApiBase, imageModel, videoModel };
 }
 
 function buildPlanSystemPrompt(preset: VimaxSkillPreset) {
@@ -681,6 +682,9 @@ export async function POST(request: NextRequest) {
           imageApiKey: config.imageApiKey || '',
           imageApiBase: config.imageApiBase,
           imageModel: config.imageModel,
+          selectorApiKey: config.apiKey || '',
+          selectorApiBase: config.apiBase,
+          selectorModel: config.selectorModel,
         },
       });
       const task = getTaskForOwner(canonical.taskId, owner);

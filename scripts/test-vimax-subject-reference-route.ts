@@ -9,8 +9,10 @@ import { VIMAX_PLAN_MODEL } from '../src/lib/skills/vimax-short-drama/vimax-gene
 
 const taskFile = path.join(tmpdir(), `sceneweave-vimax-subject-registry-${randomUUID()}.json`);
 process.env.HUIYING_TASKS_FILE = taskFile;
+process.env.ARK_API_KEY = 'fixture-selector-key';
 process.env.ARK_IMAGE_API_KEY = 'fixture-image-key';
 process.env.ARK_IMAGE_MODEL = 'fixture-image';
+process.env.HUIYING_VIMAX_SELECTOR_MODEL = 'fixture-vlm';
 
 async function main() {
   const [
@@ -110,11 +112,21 @@ async function main() {
     productionPlan,
   });
 
-  let providerCalls = 0;
+  let imageCalls = 0;
+  let selectorCalls = 0;
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () => {
-    providerCalls += 1;
-    return new Response(JSON.stringify({ data: [{ url: `https://fixture.invalid/generated-${providerCalls}.png` }] }), {
+  globalThis.fetch = (async input => {
+    if (String(input).includes('/chat/completions')) {
+      selectorCalls += 1;
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: JSON.stringify({
+          best_image_index: 1,
+          reason: '候选2保持了人物服饰、动作方向和车站空间关系。',
+        }) } }],
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    imageCalls += 1;
+    return new Response(JSON.stringify({ data: [{ url: `https://fixture.invalid/generated-${imageCalls}.png` }] }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -143,7 +155,17 @@ async function main() {
     assert.equal(subjectCount, 1);
     assert.deepEqual(payload.subjectRegistry?.subjects?.map(subject => subject.label), ['林夏']);
     assert.equal(payload.assets?.length, 5);
-    assert.equal(providerCalls, 5);
+    assert.equal(imageCalls, 7);
+    assert.equal(selectorCalls, 1);
+
+    const selectedFirstShot = (payload.assets as Array<{
+      kind?: string;
+      shotIndex?: number;
+      candidateUrls?: string[];
+      selectedCandidateIndex?: number;
+    }>).find(asset => asset.kind === 'shot' && asset.shotIndex === 1);
+    assert.equal(selectedFirstShot?.candidateUrls?.length, 3);
+    assert.equal(selectedFirstShot?.selectedCandidateIndex, 1);
 
     const persisted = getTaskForOwner(taskId, owner)?.result;
     assert.equal(
@@ -151,13 +173,19 @@ async function main() {
       'sceneweave-subject-reference-registry-v1',
     );
     assert.equal((persisted?.vimaxReferenceAssets as unknown[] | undefined)?.length, 5);
+    assert.equal(
+      (persisted?.vimaxReferenceAssets as Array<{ selectedCandidateIndex?: number }> | undefined)
+        ?.find(asset => asset.selectedCandidateIndex !== undefined)?.selectedCandidateIndex,
+      1,
+    );
     assert.equal(getTaskForOwner(taskId, { tenantId: owner.tenantId, memberId: 'guest-other' }), undefined);
 
     console.log(JSON.stringify({
       ok: true,
-      path: 'canonical project -> three-view registry -> shot view selection -> task persistence',
+      path: 'canonical project -> three-view registry -> first-frame candidates -> VLM selection -> task persistence',
       providerCalls: 0,
-      interceptedImageCalls: providerCalls,
+      interceptedImageCalls: imageCalls,
+      interceptedSelectorCalls: selectorCalls,
       assets: payload.assets?.length,
       subjects: payload.subjectRegistry?.subjects?.map(subject => subject.label),
     }));

@@ -3,6 +3,11 @@ import {
   buildVimaxContinuityPrompt,
   type VimaxContinuityContract,
 } from '@/lib/skills/vimax-short-drama/vimax-continuity-contract';
+import {
+  isVimaxImageSelectorReady,
+  selectVimaxBestImageCandidate,
+  type VimaxImageSelectorConfig,
+} from '@/lib/skills/vimax-short-drama/vimax-first-frame-selector';
 import type { VimaxSkillPreset } from '@/lib/skills/vimax-short-drama/vimax-skill-presets';
 
 interface ReferenceTarget {
@@ -13,6 +18,12 @@ interface ReferenceTarget {
   subjectId?: string;
   subjectView?: VimaxSubjectView;
   selectedSubjectViews?: VimaxSelectedSubjectView[];
+}
+
+interface VimaxReferenceAssetConfig extends VimaxImageSelectorConfig {
+  imageApiBase: string;
+  imageApiKey: string;
+  imageModel: string;
 }
 
 export type VimaxSubjectView = 'front' | 'side' | 'back';
@@ -46,7 +57,7 @@ export interface VimaxSelectedSubjectView {
 
 async function generateOneImage(
   target: ReferenceTarget,
-  config: { imageApiBase: string; imageApiKey: string; imageModel: string },
+  config: VimaxReferenceAssetConfig,
   referenceImages: string[] = [],
 ) {
   const controller = new AbortController();
@@ -83,6 +94,50 @@ async function generateOneImage(
   return { ...target, url, status: 'generated' as const };
 }
 
+async function generateImageCandidates(
+  target: ReferenceTarget,
+  config: VimaxReferenceAssetConfig,
+  referenceImages: string[],
+  count: number,
+) {
+  const candidates: Awaited<ReturnType<typeof generateOneImage>>[] = [];
+  for (let index = 0; index < count; index += 1) {
+    candidates.push(await generateOneImage(target, config, referenceImages));
+  }
+  return candidates;
+}
+
+async function generateReferenceTarget(input: {
+  target: ReferenceTarget;
+  config: VimaxReferenceAssetConfig;
+  firstShotIndex?: number;
+}) {
+  const referenceImages = input.target.selectedSubjectViews?.map(item => item.url) || [];
+  const selectorReady = isVimaxImageSelectorReady(input.config);
+  const candidateCount = selectorReady
+    && input.target.kind === 'shot'
+    && input.target.shotIndex === input.firstShotIndex ? 3 : 1;
+  const candidates = await generateImageCandidates(
+    input.target,
+    input.config,
+    referenceImages,
+    candidateCount,
+  );
+  const candidateUrls = candidates.map(candidate => candidate.url);
+  const selection = await selectVimaxBestImageCandidate({
+    targetDescription: input.target.prompt,
+    referenceImages,
+    candidateUrls,
+    config: input.config,
+  });
+  return {
+    ...candidates[selection.index],
+    candidateUrls,
+    selectedCandidateIndex: selection.index,
+    selectionReason: selection.reason,
+  };
+}
+
 function subjectPortraitPrompt(input: {
   label: string;
   description: string;
@@ -111,7 +166,7 @@ async function generateSubjectReferenceRegistry(input: {
   plan: VimaxAgentPlan;
   preset: VimaxSkillPreset;
   continuity: VimaxContinuityContract;
-  config: { imageApiBase: string; imageApiKey: string; imageModel: string };
+  config: VimaxReferenceAssetConfig;
 }): Promise<VimaxSubjectReferenceRegistry> {
   const allCharacterAssets = input.plan.assets.filter(asset => asset.kind === 'character');
   const placeholderLabels = new Set(['主角', '短剧主角', '角色', '核心角色']);
@@ -209,7 +264,7 @@ export async function callVimaxReferenceImages(input: {
   plan: VimaxAgentPlan;
   preset: VimaxSkillPreset;
   continuity: VimaxContinuityContract;
-  config: { imageApiBase: string; imageApiKey: string; imageModel: string };
+  config: VimaxReferenceAssetConfig;
 }) {
   if (!input.config.imageApiKey) throw new Error('缺少图像模型 API Key，无法进入参考素材阶段。');
   const subjectRegistry = await generateSubjectReferenceRegistry(input);
@@ -252,14 +307,14 @@ export async function callVimaxReferenceImages(input: {
   }
   if (targets.length === 0) throw new Error('当前计划没有可用于生成参考素材的提示词。');
 
-  const settled = await Promise.allSettled(targets.map(target => generateOneImage(
+  const settled = await Promise.allSettled(targets.map(target => generateReferenceTarget({
     target,
-    input.config,
-    target.selectedSubjectViews?.map(item => item.url) || [],
-  )));
-  const generatedTargets = settled
-    .filter((result): result is PromiseFulfilledResult<ReferenceTarget & { url: string; status: 'generated' }> => result.status === 'fulfilled')
-    .map(result => result.value);
+    config: input.config,
+    firstShotIndex: input.plan.shots[0]?.index,
+  })));
+  const generatedTargets = settled.flatMap(result => (
+    result.status === 'fulfilled' ? [result.value] : []
+  ));
   if (generatedTargets.length === 0) {
     const firstError = settled.find((result): result is PromiseRejectedResult => result.status === 'rejected');
     throw new Error(firstError?.reason instanceof Error ? firstError.reason.message : '参考图全部生成失败。');

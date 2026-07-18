@@ -17,6 +17,9 @@ export interface VimaxAgentReferenceAsset {
     viewId: string;
     url: string;
   }>;
+  candidateUrls?: string[];
+  selectedCandidateIndex?: number;
+  selectionReason?: string;
 }
 
 export interface VimaxAgentPlan {
