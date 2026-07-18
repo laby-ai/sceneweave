@@ -33,7 +33,12 @@ async function main() {
   const basePlan: VimaxAgentPlan = {
     title: '雨夜录音笔',
     summary: '记者在车站追查录音笔。',
-    assets: [],
+    assets: [{
+      kind: 'reference',
+      label: '记者定妆',
+      prompt: '蓝色风衣、短发、红色录音笔',
+      referenceUrl: 'https://fixture.invalid/reporter-look.png',
+    }],
     shots: [
       { index: 1, title: '发现', duration: 5, camera: '中景', prompt: '记者走向长椅。' },
       { index: 2, title: '拾取', duration: 5, camera: '近景', prompt: '记者拾起红色录音笔。' },
@@ -75,6 +80,7 @@ async function main() {
   const initial = resolveCanonicalVimaxStageInput({ taskId, owner });
   assert.equal(initial.taskId, taskId);
   assert.equal(initial.plan.shots.length, 3);
+  assert.equal(initial.plan.assets.find(asset => asset.label === '记者定妆')?.referenceUrl, 'https://fixture.invalid/reporter-look.png');
   assert.doesNotMatch(initial.plan.shots[0]?.prompt || '', /客户端伪造/);
   assert.throws(
     () => resolveCanonicalVimaxStageInput({ taskId, owner: otherOwner }),

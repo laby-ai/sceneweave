@@ -35,6 +35,7 @@ export function persistVimaxPlanTask(input: PersistVimaxPlanTaskInput) {
     productionProject: input.productionProject,
     assemblyPlan: input.assemblyPlan,
     productionPlan: input.productionPlan,
+    vimaxPlan: input.plan,
     creationPrompt: input.prompt,
   });
 

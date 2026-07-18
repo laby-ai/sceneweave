@@ -50,12 +50,18 @@ export function buildVimaxAgentPlanFromProductionArtifacts(input: {
       label: asset.name,
       prompt: asset.summary,
     }));
+  const canonicalAssets = new Map<string, VimaxAgentPlan['assets'][number]>();
+  for (const asset of productionAssets) canonicalAssets.set(`${asset.kind}:${asset.label}`, asset);
+  for (const asset of basePlan.assets || []) {
+    const key = `${asset.kind}:${asset.label}`;
+    canonicalAssets.set(key, { ...canonicalAssets.get(key), ...asset });
+  }
   const baseShots = basePlan.shots || [];
 
   return {
     title: basePlan.title || productionProject.title,
     summary: productionProject.narrativeSummary || basePlan.summary || '',
-    assets: productionAssets.length ? productionAssets : basePlan.assets || [],
+    assets: [...canonicalAssets.values()],
     shots: segments.map((segment, index) => {
       const mappedIndex = Math.min(
         productionProject.storyboard.shots.length - 1,

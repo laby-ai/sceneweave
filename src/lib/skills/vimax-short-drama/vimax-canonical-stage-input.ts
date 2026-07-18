@@ -34,6 +34,16 @@ function readPlanSummary(content: unknown): Partial<VimaxAgentPlan> {
   }
 }
 
+function readPersistedPlan(value: unknown): Partial<VimaxAgentPlan> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const plan = value as Partial<VimaxAgentPlan>;
+  return {
+    ...plan,
+    assets: Array.isArray(plan.assets) ? plan.assets : undefined,
+    shots: Array.isArray(plan.shots) ? plan.shots : undefined,
+  };
+}
+
 function assertCurrentArtifacts(project: ProductionProject, assemblyPlan: ProductionAssemblyPlan) {
   const currentRevision = computeProductionArtifactRevision(project);
   const stale = assemblyPlan.segments.some(segment => (
@@ -69,6 +79,10 @@ export function resolveCanonicalVimaxStageInput(input: {
     throw new Error('当前项目缺少完整制作合约，请重新生成制作计划。');
   }
   assertCurrentArtifacts(productionProject, assemblyPlan);
+  const basePlan = {
+    ...readPlanSummary(task.result?.content),
+    ...readPersistedPlan(task.result?.vimaxPlan),
+  };
 
   return {
     taskId,
@@ -78,7 +92,7 @@ export function resolveCanonicalVimaxStageInput(input: {
     plan: buildVimaxAgentPlanFromProductionArtifacts({
       productionProject,
       assemblyPlan,
-      basePlan: readPlanSummary(task.result?.content),
+      basePlan,
     }),
   };
 }
