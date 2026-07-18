@@ -416,7 +416,17 @@ async function generateOneSeedreamImage(target: ReferenceTarget, imageApiBase: s
 // 参考图按「每个分镜一张首帧」生成，让用户可以把每张图归位到对应 Clip 下；
 // 角色/场景描述被融进对应镜头的画面 prompt，保持一致性。并行生成、放开数量，
 // 不再只取前两张。任意一张失败不影响其它，但全部失败时显式报错（不伪造结果）。
-async function callSeedreamReferenceImages(plan: VimaxAgentPlan) {
+function appendPresetVisualDirection(prompt: string, preset: VimaxSkillPreset) {
+  return [
+    prompt,
+    `创作类型：${preset.name}。`,
+    `创作目标：${preset.description}。`,
+    `视觉风格：${preset.style}。`,
+    '保持主体与场景连续，不要字幕，不要水印。',
+  ].join(' ').trim();
+}
+
+async function callSeedreamReferenceImages(plan: VimaxAgentPlan, preset: VimaxSkillPreset) {
   const { imageApiKey, imageApiBase, imageModel } = getArkConfig();
   if (!imageApiKey) {
     throw new Error('缺少图像模型 API Key，无法进入 Seedream 参考素材阶段。');
@@ -436,7 +446,10 @@ async function callSeedreamReferenceImages(plan: VimaxAgentPlan) {
         kind: 'shot',
         label: `Clip ${shot.index} · ${shot.title}`,
         shotIndex: shot.index,
-        prompt: characterHint ? `${base}。角色与场景设定参考：${characterHint}` : base,
+        prompt: appendPresetVisualDirection(
+          characterHint ? `${base}。角色与场景设定参考：${characterHint}` : base,
+          preset,
+        ),
       });
     }
   } else {
@@ -445,7 +458,10 @@ async function callSeedreamReferenceImages(plan: VimaxAgentPlan) {
       targets.push({
         kind: (asset.kind === 'script' || asset.kind === 'shot') ? 'reference' : asset.kind,
         label: asset.label,
-        prompt: asset.prompt || `${asset.label}, cinematic reference image, clean composition`,
+        prompt: appendPresetVisualDirection(
+          asset.prompt || `${asset.label}, cinematic reference image, clean composition`,
+          preset,
+        ),
       });
     }
   }
@@ -500,6 +516,7 @@ function referenceForShot(assets: VimaxAgentReferenceAsset[], shot: VimaxAgentPl
 function buildSeedancePrompt(
   plan: VimaxAgentPlan,
   shot: VimaxAgentPlan['shots'][number],
+  preset: VimaxSkillPreset,
   opts: { handoffFromPrevious?: boolean } = {},
 ) {
   return [
@@ -508,7 +525,8 @@ function buildSeedancePrompt(
     opts.handoffFromPrevious
       ? '本段第一帧已绑定上一段尾帧；先严格承接上一段末尾的人物姿态、空间方向、光线和道具位置，再推进本段剧情。'
       : '',
-    '保持同一部短剧的角色、场景、雨夜氛围和电影感光影，镜头之间连续，不要字幕，不要水印。',
+    `创作类型：${preset.name}。创作目标：${preset.description}。视觉风格：${preset.style}。`,
+    '保持同一作品的主体、场景、光线和道具连续，镜头之间自然衔接，不要字幕，不要水印。',
   ].filter(Boolean).join(' ').trim();
 }
 
@@ -517,6 +535,7 @@ async function submitSeedanceShotTask(
   shot: VimaxAgentPlan['shots'][number],
   index: number,
   assets: VimaxAgentReferenceAsset[],
+  preset: VimaxSkillPreset,
   opts: { ratio?: string; resolution?: string; previousLastFrameUrl?: string },
 ) {
   const { imageApiKey, imageApiBase, videoModel } = getArkConfig();
@@ -524,7 +543,7 @@ async function submitSeedanceShotTask(
     throw new Error('缺少视频模型 API Key，无法进入 Seedance 视频生成阶段。');
   }
 
-  const promptText = buildSeedancePrompt(plan, shot, { handoffFromPrevious: Boolean(opts.previousLastFrameUrl) });
+  const promptText = buildSeedancePrompt(plan, shot, preset, { handoffFromPrevious: Boolean(opts.previousLastFrameUrl) });
   if (!promptText) {
     throw new Error(`缺少可用于视频生成的镜头提示词：Clip ${shot.index}`);
   }
@@ -627,6 +646,7 @@ async function pollSeedanceShotTask(task: { taskId: string; shotIndex: number; s
 async function callSeedanceVideo(
   plan: VimaxAgentPlan,
   assets: VimaxAgentReferenceAsset[],
+  preset: VimaxSkillPreset,
   opts: { ratio?: string; resolution?: string },
 ) {
   const { videoModel } = getArkConfig();
@@ -640,7 +660,7 @@ async function callSeedanceVideo(
   const segments: SeedanceShotSegment[] = [];
   let previousLastFrameUrl: string | undefined;
   for (let index = 0; index < shots.length; index += 1) {
-    const task = await submitSeedanceShotTask(plan, shots[index], index, assets, {
+    const task = await submitSeedanceShotTask(plan, shots[index], index, assets, preset, {
       ...opts,
       previousLastFrameUrl,
     });
@@ -668,7 +688,7 @@ async function callSeedanceVideo(
     segments,
     segmentCount: segments.length,
     merge,
-    shotTitle: segments.length > 1 ? '完整短剧' : segments[0]?.shotTitle,
+    shotTitle: segments.length > 1 ? '完整成片' : segments[0]?.shotTitle,
   };
 }
 
@@ -730,12 +750,13 @@ export async function POST(request: NextRequest) {
         throw new Error('缺少上一阶段真实 AgentPlan 结果，不能直接生成参考素材。');
       }
       const config = getArkConfig();
-      assertVimaxProductionPlanForPhase(body.productionPlan, 'reference_assets', {
+      const productionPlan = assertVimaxProductionPlanForPhase(body.productionPlan, 'reference_assets', {
         plan: config.textModel,
         referenceAssets: config.imageModel,
         video: config.videoModel,
       });
-      const result = await callSeedreamReferenceImages(body.plan);
+      const preset = resolveVimaxSkillPresetForRuntime(productionPlan.workflow.presetId);
+      const result = await callSeedreamReferenceImages(body.plan, preset);
       return NextResponse.json({
         success: true,
         phase,
@@ -762,13 +783,14 @@ export async function POST(request: NextRequest) {
         throw new Error('缺少分镜规划，无法生成视频。');
       }
       const config = getArkConfig();
-      assertVimaxProductionPlanForPhase(body.productionPlan, 'video', {
+      const productionPlan = assertVimaxProductionPlanForPhase(body.productionPlan, 'video', {
         plan: config.textModel,
         referenceAssets: config.imageModel,
         video: config.videoModel,
       });
+      const preset = resolveVimaxSkillPresetForRuntime(productionPlan.workflow.presetId);
       const assets = Array.isArray(body.assets) ? body.assets : (body.plan.assets as VimaxAgentReferenceAsset[] | undefined) || [];
-      const result = await callSeedanceVideo(body.plan, assets, { ratio: body.ratio, resolution: body.resolution });
+      const result = await callSeedanceVideo(body.plan, assets, preset, { ratio: body.ratio, resolution: body.resolution });
       return NextResponse.json({
         success: true,
         phase,
