@@ -7,6 +7,7 @@ import type { VimaxAgentPlan, VimaxAgentReferenceAsset, VimaxAgentStepBody } fro
 import { VIMAX_PLAN_MODEL } from '@/lib/skills/vimax-short-drama/vimax-generation-preferences';
 import { buildProductionBackedVimaxPlan } from '@/lib/skills/vimax-short-drama/vimax-plan-artifacts';
 import { persistVimaxPlanTask } from '@/lib/skills/vimax-short-drama/vimax-plan-task';
+import { resolveCanonicalVimaxStageInput } from '@/lib/skills/vimax-short-drama/vimax-canonical-stage-input';
 import { assertVimaxProductionPlanForPhase, buildVimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 import { resolveVimaxSkillRuntimeBinding } from '@/lib/skills/vimax-short-drama/vimax-skill-runtime-binding';
 import {
@@ -768,17 +769,15 @@ export async function POST(request: NextRequest) {
     }
 
     if (phase === 'reference_assets') {
-      if (!body.plan) {
-        throw new Error('缺少上一阶段真实 AgentPlan 结果，不能直接生成参考素材。');
-      }
+      const canonical = resolveCanonicalVimaxStageInput({ taskId: body.taskId || '', owner });
       const config = getArkConfig();
-      const productionPlan = assertVimaxProductionPlanForPhase(body.productionPlan, 'reference_assets', {
+      const productionPlan = assertVimaxProductionPlanForPhase(canonical.productionPlan, 'reference_assets', {
         plan: config.textModel,
         referenceAssets: config.imageModel,
         video: config.videoModel,
       });
       const preset = resolveVimaxSkillPresetForRuntime(productionPlan.workflow.presetId);
-      const result = await callSeedreamReferenceImages(body.plan, preset);
+      const result = await callSeedreamReferenceImages(canonical.plan, preset);
       return NextResponse.json({
         success: true,
         phase,
@@ -801,22 +800,21 @@ export async function POST(request: NextRequest) {
           { status: 409 },
         );
       }
-      if (!body.plan) {
-        throw new Error('缺少分镜规划，无法生成视频。');
-      }
+      const canonical = resolveCanonicalVimaxStageInput({ taskId: body.taskId || '', owner });
       const config = getArkConfig();
       const videoConnection = extractBYOKConnection(request.headers);
       const videoModel = videoConnection?.videoModel || config.videoModel;
-      const productionPlan = assertVimaxProductionPlanForPhase(body.productionPlan, 'video', {
+      const productionPlan = assertVimaxProductionPlanForPhase(canonical.productionPlan, 'video', {
         plan: config.textModel,
         referenceAssets: config.imageModel,
         video: videoModel,
       });
       const preset = resolveVimaxSkillPresetForRuntime(productionPlan.workflow.presetId);
-      const assets = Array.isArray(body.assets) ? body.assets : (body.plan.assets as VimaxAgentReferenceAsset[] | undefined) || [];
+      const assets = Array.isArray(body.assets) ? body.assets : [];
+      const generationPreferences = productionPlan.preferences;
       const result = videoConnection?.provider === 'happyhorse-dashscope'
-        ? await callHappyHorseVimaxVideo(body.plan, preset, videoConnection, { ratio: body.ratio, resolution: body.resolution })
-        : await callSeedanceVideo(body.plan, assets, preset, { ratio: body.ratio, resolution: body.resolution });
+        ? await callHappyHorseVimaxVideo(canonical.plan, preset, videoConnection, generationPreferences)
+        : await callSeedanceVideo(canonical.plan, assets, preset, generationPreferences);
       return NextResponse.json({
         success: true,
         phase,

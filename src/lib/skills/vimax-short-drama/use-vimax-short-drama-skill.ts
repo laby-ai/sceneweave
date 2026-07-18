@@ -397,6 +397,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...requestHeaders },
         body: JSON.stringify({
+          taskId: plan.taskId,
           phase: 'reference_assets',
           productionPlan: plan.productionPlan,
           plan: {
@@ -550,6 +551,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...requestHeaders },
         body: JSON.stringify({
+          taskId: agent.taskId,
           phase: 'video',
           confirm: true,
           productionPlan: agent.productionPlan,

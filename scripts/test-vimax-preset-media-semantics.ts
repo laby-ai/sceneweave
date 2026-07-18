@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -11,6 +11,7 @@ import {
   type VimaxProductionPlan,
 } from '../src/lib/skills/vimax-short-drama/vimax-production-plan';
 import { resolveVimaxSkillRuntimeBinding } from '../src/lib/skills/vimax-short-drama/vimax-skill-runtime-binding';
+import { resolveVimaxSkillPresetForRuntime } from '../src/lib/skills/vimax-short-drama/vimax-skill-presets';
 
 const taskFile = path.join(tmpdir(), `sceneweave-vimax-media-semantics-${randomUUID()}.json`);
 process.env.HUIYING_TASKS_FILE = taskFile;
@@ -84,6 +85,9 @@ function buildReadyPlan(presetId: string): VimaxProductionPlan {
 }
 
 async function main() {
+  const { createTask } = await import('../src/lib/task-manager');
+  const { persistVimaxPlanTask } = await import('../src/lib/skills/vimax-short-drama/vimax-plan-task');
+  const { buildProductionBackedVimaxPlan } = await import('../src/lib/skills/vimax-short-drama/vimax-plan-artifacts');
   const [{ NextRequest }, route] = await Promise.all([
     import('next/server'),
     import('../src/app/api/smart/vimax-agent-step/route'),
@@ -101,11 +105,36 @@ async function main() {
     nextAction: '生成参考素材',
   };
   const commercePlan = buildReadyPlan('commerce-video');
+  const workspace = 'guest-creation-preset-media-semantics';
+  const owner = {
+    tenantId: 'paper-host-guest',
+    memberId: `guest-${createHash('sha256').update(workspace).digest('hex').slice(0, 32)}`,
+  };
+  const persistCanonicalPlan = (productionPlan: VimaxProductionPlan, skillId: string) => {
+    const preset = resolveVimaxSkillPresetForRuntime(skillId);
+    const taskId = createTask('storyboard', { prompt: plan.summary, workflow: 'vimax-agent', skillId }, owner);
+    const built = buildProductionBackedVimaxPlan(plan.summary, plan, {
+      phase: 'plan', skillId, duration: 5, segmentDuration: 5, segmentCount: 1,
+      ratio: productionPlan.preferences.ratio, resolution: productionPlan.preferences.resolution,
+      sceneType: preset.sceneType, style: preset.style,
+    }, taskId);
+    persistVimaxPlanTask({
+      taskId,
+      prompt: plan.summary,
+      plan: built.plan,
+      productionProject: built.productionProject,
+      assemblyPlan: built.assemblyPlan,
+      productionPlan,
+    });
+    return taskId;
+  };
+  const commerceTaskId = persistCanonicalPlan(commercePlan, 'commerce-video');
 
   const referenceResponse = await route.POST(new NextRequest('http://localhost/api/smart/vimax-agent-step', {
     method: 'POST',
     headers,
     body: JSON.stringify({
+      taskId: commerceTaskId,
       phase: 'reference_assets',
       skillId: 'short-drama',
       sceneType: 'drama',
@@ -124,6 +153,7 @@ async function main() {
     method: 'POST',
     headers,
     body: JSON.stringify({
+      taskId: commerceTaskId,
       phase: 'video',
       confirm: true,
       skillId: 'short-drama',
@@ -141,10 +171,12 @@ async function main() {
   assert.doesNotMatch(videoPrompts[0], /雨夜|同一部短剧/);
 
   const callsBeforeStoryboard = imagePrompts.length + videoPrompts.length;
+  const storyboardTaskId = persistCanonicalPlan(buildReadyPlan('storyboard-director'), 'storyboard-director');
   const storyboardResponse = await route.POST(new NextRequest('http://localhost/api/smart/vimax-agent-step', {
     method: 'POST',
     headers,
     body: JSON.stringify({
+      taskId: storyboardTaskId,
       phase: 'video',
       confirm: true,
       skillId: 'commerce-video',

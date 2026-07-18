@@ -33,6 +33,7 @@ export interface VimaxAgentPlan {
 }
 
 export interface VimaxAgentStepBody {
+  taskId?: string;
   phase?: VimaxAgentPhase;
   prompt?: string;
   plan?: VimaxAgentPlan;

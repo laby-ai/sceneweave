@@ -1,5 +1,7 @@
 import { buildProductionAssemblyPlan } from '@/lib/production-assembly-plan';
+import type { ProductionAssemblyPlan, ProductionSegmentPlan } from '@/lib/production-assembly-plan';
 import { buildProductionProject } from '@/lib/production-project';
+import type { ProductionProject } from '@/lib/production-project';
 import { generateShotsFromUserPrompt } from '@/lib/storyboard-generator';
 import type { VimaxAgentPlan, VimaxAgentStepBody } from '@/lib/skills/vimax-short-drama/vimax-agent-contract';
 
@@ -25,6 +27,60 @@ function inferSegmentSpec(prompt: string, duration: number, body: VimaxAgentStep
   const segmentDuration = Math.max(3, Math.min(15, explicitDuration || promptSegmentDuration || (duration <= 30 ? 5 : 10)));
   const segmentCount = Math.max(1, Math.min(12, explicitCount || promptCount || Math.ceil(duration / segmentDuration)));
   return { segmentDuration, segmentCount };
+}
+
+export function buildVimaxAgentPlanFromProductionArtifacts(input: {
+  productionProject: ProductionProject;
+  assemblyPlan: ProductionAssemblyPlan;
+  segments?: ProductionSegmentPlan[];
+  basePlan?: Partial<VimaxAgentPlan>;
+  totalDuration?: number;
+}): VimaxAgentPlan {
+  const { productionProject, assemblyPlan, basePlan = {} } = input;
+  const segments = input.segments || assemblyPlan.segments;
+  const totalDuration = input.totalDuration || segments.reduce((sum, segment) => sum + segment.duration, 0);
+  const segmentCount = Math.max(1, segments.length);
+  const baseDuration = Math.floor(totalDuration / segmentCount);
+  const durationRemainder = totalDuration - baseDuration * segmentCount;
+  const productionAssets = productionProject.assets
+    .filter(asset => ['script', 'character', 'scene', 'prop', 'storyboard'].includes(asset.kind))
+    .slice(0, 8)
+    .map(asset => ({
+      kind: asset.kind === 'storyboard' ? 'shot' as const : asset.kind as VimaxAgentPlan['assets'][number]['kind'],
+      label: asset.name,
+      prompt: asset.summary,
+    }));
+  const baseShots = basePlan.shots || [];
+
+  return {
+    title: basePlan.title || productionProject.title,
+    summary: productionProject.narrativeSummary || basePlan.summary || '',
+    assets: productionAssets.length ? productionAssets : basePlan.assets || [],
+    shots: segments.map((segment, index) => {
+      const mappedIndex = Math.min(
+        productionProject.storyboard.shots.length - 1,
+        Math.floor(index * productionProject.storyboard.shots.length / segmentCount),
+      );
+      const projectShot = productionProject.storyboard.shots[index]
+        || productionProject.storyboard.shots[Math.max(0, mappedIndex)];
+      const sourceShot = baseShots[index]
+        || baseShots[Math.max(0, Math.min(baseShots.length - 1, mappedIndex))];
+      return {
+        index: index + 1,
+        title: sourceShot?.title || `${projectShot?.storyBeat || '镜头'} ${index + 1}`,
+        duration: basePlan.shots ? baseDuration + (index < durationRemainder ? 1 : 0) : segment.duration,
+        camera: projectShot?.shotTypeLabel || sourceShot?.camera || '分段镜头',
+        prompt: [
+          segment.prompt,
+          `【首尾帧契约】首帧=${segment.shotFrameContract.firstFrame.description}；尾帧=${segment.shotFrameContract.lastFrame.description}`,
+          `【镜头变化】${segment.shotFrameContract.variationType}: ${segment.shotFrameContract.variationReason}`,
+          `【画面运动】${segment.shotFrameContract.motionDescription}`,
+          segment.expectedInputs.boundaryBridgePrompt ? `【BoundaryBridge】${segment.expectedInputs.boundaryBridgePrompt}` : '',
+        ].filter(Boolean).join('\n'),
+      };
+    }),
+    nextAction: assemblyPlan.nextAction || basePlan.nextAction || '确认分镜后进入参考图和真实视频生成。',
+  };
 }
 
 export function buildProductionBackedVimaxPlan(
@@ -64,40 +120,12 @@ export function buildProductionBackedVimaxPlan(
       : Math.min(assemblyPlan.segments.length - 1, Math.floor(index * assemblyPlan.segments.length / targetSegmentCount));
     return assemblyPlan.segments[Math.max(0, sourceIndex)];
   }).filter(Boolean);
-  const segmentCount = normalizedSegments.length || 1;
-  const baseDuration = Math.floor(duration / segmentCount);
-  const durationRemainder = duration - baseDuration * segmentCount;
-  const productionAssets = productionProject.assets
-    .filter(asset => ['script', 'character', 'scene', 'prop', 'storyboard'].includes(asset.kind))
-    .slice(0, 8)
-    .map(asset => ({
-      kind: asset.kind === 'storyboard' ? 'shot' as const : asset.kind as VimaxAgentPlan['assets'][number]['kind'],
-      label: asset.name,
-      prompt: asset.summary,
-    }));
-  const plan: VimaxAgentPlan = {
-    title: basePlan.title || productionProject.title,
-    summary: productionProject.narrativeSummary || basePlan.summary,
-    assets: productionAssets.length ? productionAssets : basePlan.assets,
-    shots: normalizedSegments.map((segment, index) => {
-      const mappedIndex = Math.min(productionProject.storyboard.shots.length - 1, Math.floor(index * productionProject.storyboard.shots.length / segmentCount));
-      const projectShot = productionProject.storyboard.shots[index] || productionProject.storyboard.shots[Math.max(0, mappedIndex)];
-      const sourceShot = basePlan.shots[index] || basePlan.shots[Math.max(0, Math.min(basePlan.shots.length - 1, mappedIndex))];
-      return {
-        index: index + 1,
-        title: sourceShot?.title || `${projectShot?.storyBeat || '镜头'} ${index + 1}`,
-        duration: baseDuration + (index < durationRemainder ? 1 : 0),
-        camera: projectShot?.shotTypeLabel || sourceShot?.camera || '分段镜头',
-        prompt: [
-          segment.prompt,
-          `【首尾帧契约】首帧=${segment.shotFrameContract.firstFrame.description}；尾帧=${segment.shotFrameContract.lastFrame.description}`,
-          `【镜头变化】${segment.shotFrameContract.variationType}: ${segment.shotFrameContract.variationReason}`,
-          `【画面运动】${segment.shotFrameContract.motionDescription}`,
-          segment.expectedInputs.boundaryBridgePrompt ? `【BoundaryBridge】${segment.expectedInputs.boundaryBridgePrompt}` : '',
-        ].filter(Boolean).join('\n'),
-      };
-    }),
-    nextAction: assemblyPlan.nextAction || '确认分镜后进入参考图和真实视频生成。',
-  };
+  const plan = buildVimaxAgentPlanFromProductionArtifacts({
+    productionProject,
+    assemblyPlan,
+    segments: normalizedSegments,
+    basePlan,
+    totalDuration: duration,
+  });
   return { plan, productionProject, assemblyPlan };
 }
