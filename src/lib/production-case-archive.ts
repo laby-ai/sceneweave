@@ -1,9 +1,11 @@
 import { buildProductionAssemblyPlan } from './production-assembly-plan';
+import { computeProductionArtifactRevision } from './production-artifact-stale';
 import { applySegmentAssetWriteback } from './production-segment-assets';
 import { buildProductionProject } from './production-project';
 import { generateShotsFromUserPrompt } from './storyboard-generator';
 import type { BackgroundTask, TaskResult } from './task-manager';
 import type { ProductionAsset, ProductionGraphEdge, ProductionProject } from './production-project';
+import { recordVimaxSuccessfulRender } from './skills/vimax-short-drama/vimax-render-delivery-lock';
 
 interface ArchiveVideoTaskParams {
   task: BackgroundTask;
@@ -105,7 +107,11 @@ function addEdgeOnce(edges: ProductionGraphEdge[], edge: ProductionGraphEdge) {
   return [...edges, edge];
 }
 
-function buildFinalVideoAsset(task: BackgroundTask, productionProject: ProductionProject): ProductionAsset {
+function buildFinalVideoAsset(
+  task: BackgroundTask,
+  productionProject: ProductionProject,
+  artifactVersion: string,
+): ProductionAsset {
   const videoSegmentIds = productionProject.assets
     .filter(asset => asset.kind === 'videoSegment')
     .map(asset => asset.id);
@@ -127,12 +133,17 @@ function buildFinalVideoAsset(task: BackgroundTask, productionProject: Productio
       prompt: task.config.prompt,
       resolution: task.config.resolution,
       ratio: task.config.ratio,
+      artifactVersion,
     },
   };
 }
 
-function applyFinalVideoAssetWriteback(task: BackgroundTask, productionProject: ProductionProject): ProductionProject {
-  const finalVideoAsset = buildFinalVideoAsset(task, productionProject);
+function applyFinalVideoAssetWriteback(
+  task: BackgroundTask,
+  productionProject: ProductionProject,
+  artifactVersion: string,
+): ProductionProject {
+  const finalVideoAsset = buildFinalVideoAsset(task, productionProject, artifactVersion);
   const deliverableAssetId = productionProject.semanticPlan.assetLinks.deliverableAssetId;
   const videoSegmentIds = productionProject.assets
     .filter(asset => asset.kind === 'videoSegment')
@@ -241,7 +252,16 @@ export function archiveCompletedVideoTaskAsProductionProject(params: ArchiveVide
     assemblyPlan = writeback.assemblyPlan;
   }
 
-  productionProject = applyFinalVideoAssetWriteback(task, productionProject);
+  const artifactVersion = computeProductionArtifactRevision(productionProject);
+  const productionPlan = task.result.productionPlan
+    ? recordVimaxSuccessfulRender(task.result.productionPlan, {
+        productionProject,
+        assemblyPlan,
+        videoUrl: task.result.videoUrl,
+        completedAt: new Date(task.completedAt || Date.now()).toISOString(),
+      })
+    : undefined;
+  productionProject = applyFinalVideoAssetWriteback(task, productionProject, artifactVersion);
 
   const segmentAssetCount = productionProject.assets.filter(asset => asset.kind === 'videoSegment').length;
   const finalVideoAssetCount = productionProject.assets.filter(asset => asset.kind === 'finalVideo').length;
@@ -249,6 +269,7 @@ export function archiveCompletedVideoTaskAsProductionProject(params: ArchiveVide
     ...task.result,
     productionProject,
     assemblyPlan,
+    ...(productionPlan ? { productionPlan } : {}),
     archivedProductionCase: {
       version: 'yh-archived-production-case-v1',
       sourceTaskId: task.id,

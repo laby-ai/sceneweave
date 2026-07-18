@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { buildProductionCutDraftJson } from '@/lib/production-export-package';
-import { assertVimaxProductionDraftDelivery } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
+import {
+  assertVimaxProductionDraftDelivery,
+} from '@/lib/skills/vimax-short-drama/vimax-production-plan';
+import { assertVimaxProductionFinalDelivery } from '@/lib/skills/vimax-short-drama/vimax-render-delivery-lock';
 import { getTaskForOwner } from '@/lib/task-manager';
 import { resolvePaperHostCreationOwnerFromRequest } from '@/lib/task-access';
 
@@ -58,12 +61,29 @@ export async function GET(request: NextRequest) {
     }
 
     const productionProject = task.result?.productionProject as {
-      assets?: Array<{ kind?: string; metadata?: { videoUrl?: string } }>;
+      assets?: Array<{ kind?: string; metadata?: { videoUrl?: string; artifactVersion?: string } }>;
     } | undefined;
-    const hasSuccessfulFinalVideo = productionProject?.assets?.some(asset => (
+    const finalVideo = productionProject?.assets?.find(asset => (
       asset.kind === 'finalVideo' && typeof asset.metadata?.videoUrl === 'string' && asset.metadata.videoUrl.length > 0
-    )) === true;
-    if (task.result?.productionPlan && !hasSuccessfulFinalVideo) {
+    ));
+    if (task.result?.productionPlan && finalVideo) {
+      try {
+        const plan = assertVimaxProductionFinalDelivery(task.result.productionPlan, {
+          productionProject: task.result.productionProject,
+          videoUrl: finalVideo.metadata?.videoUrl || '',
+        });
+        if (finalVideo.metadata?.artifactVersion !== plan.render.lastSuccessfulResult?.artifactVersion) {
+          throw new Error('成片资产版本与最后一次成功交付不一致。');
+        }
+      } catch (error) {
+        return NextResponse.json({
+          success: false,
+          error: error instanceof Error ? error.message : '当前成片尚未通过交付检查。',
+          usedRealKey: false,
+          incurredCost: false,
+        }, { status: 409 });
+      }
+    } else if (task.result?.productionPlan) {
       try {
         assertVimaxProductionDraftDelivery(task.result.productionPlan);
       } catch (error) {

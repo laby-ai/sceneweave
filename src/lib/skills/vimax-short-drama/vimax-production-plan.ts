@@ -84,7 +84,17 @@ export interface VimaxProductionPlan {
     runtime: typeof VIMAX_RENDER_RUNTIME;
     locked: true;
     allowSilentFallback: false;
-    status: 'not-started' | 'draft-ready';
+    status: 'not-started' | 'draft-ready' | 'completed';
+    checkpointDecision?: {
+      status: 'approved';
+      artifactVersion: string;
+      approvedAt: string;
+    };
+    lastSuccessfulResult?: {
+      artifactVersion: string;
+      videoUrl: string;
+      completedAt: string;
+    };
   };
 }
 
@@ -254,10 +264,29 @@ export function parseVimaxProductionPlan(value: unknown): VimaxProductionPlan | 
     && ['provider-confirmation-required', 'draft-only-confirmed', 'confirmed'].includes(String(value.estimatedCost.status))
     && value.estimatedCost.requiresConfirmation === true
     && typeof value.estimatedCost.reason === 'string';
+  const checkpointDecision = value.render.checkpointDecision;
+  const lastSuccessfulResult = value.render.lastSuccessfulResult;
+  const validCheckpointDecision = checkpointDecision === undefined || (
+    isRecord(checkpointDecision)
+    && checkpointDecision.status === 'approved'
+    && typeof checkpointDecision.artifactVersion === 'string'
+    && checkpointDecision.artifactVersion.length > 0
+    && typeof checkpointDecision.approvedAt === 'string'
+  );
+  const validLastSuccessfulResult = lastSuccessfulResult === undefined || (
+    isRecord(lastSuccessfulResult)
+    && typeof lastSuccessfulResult.artifactVersion === 'string'
+    && lastSuccessfulResult.artifactVersion.length > 0
+    && typeof lastSuccessfulResult.videoUrl === 'string'
+    && lastSuccessfulResult.videoUrl.length > 0
+    && typeof lastSuccessfulResult.completedAt === 'string'
+  );
   const validRender = value.render.runtime === VIMAX_RENDER_RUNTIME
     && value.render.locked === true
     && value.render.allowSilentFallback === false
-    && ['not-started', 'draft-ready'].includes(String(value.render.status));
+    && ['not-started', 'draft-ready', 'completed'].includes(String(value.render.status))
+    && validCheckpointDecision
+    && validLastSuccessfulResult;
 
   return validRoutes && validMaterials && validCheckpoints && validCost && validRender
     ? { ...value, workflow, governance, continuity } as unknown as VimaxProductionPlan

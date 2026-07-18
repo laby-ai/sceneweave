@@ -8,6 +8,7 @@ import {
   prepareVimaxProductionDraft,
   resumeVimaxProduction,
 } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
+import { approveVimaxProductionRender } from '@/lib/skills/vimax-short-drama/vimax-render-delivery-lock';
 
 function publicTask(task: NonNullable<ReturnType<typeof getTaskForOwner>>) {
   const { abortController: _abortController, owner: _owner, idempotencyHash: _idempotencyHash, ...taskInfo } = task;
@@ -134,6 +135,37 @@ export async function POST(
         productionPlan,
         message: '制作计划已确认，可继续准备参考素材。',
       });
+    }
+
+    if (action === 'approve-production-render') {
+      const task = getTaskForOwner(taskId, owner);
+      if (!task) {
+        return NextResponse.json(
+          { success: false, error: '任务不存在', task: null },
+          { status: 404 },
+        );
+      }
+      try {
+        const productionPlan = approveVimaxProductionRender(task.result?.productionPlan, {
+          productionProject: task.result?.productionProject,
+          assemblyPlan: task.result?.assemblyPlan,
+        });
+        updateTask(taskId, { result: { ...task.result, productionPlan } });
+        return NextResponse.json({
+          success: true,
+          usedRealKey: false,
+          incurredCost: false,
+          productionPlan,
+          message: '已确认当前版本的成片合成。',
+        });
+      } catch (error) {
+        return NextResponse.json({
+          success: false,
+          usedRealKey: false,
+          incurredCost: false,
+          error: error instanceof Error ? error.message : '成片合成确认失败',
+        }, { status: 409 });
+      }
     }
 
     if ([
