@@ -146,18 +146,68 @@ async function main() {
   const archivedPlan = productionPlanModule.parseVimaxProductionPlan(archived?.result?.productionPlan);
   assert.equal(finalAsset?.metadata?.artifactVersion, archivedPlan?.render.lastSuccessfulResult?.artifactVersion);
 
+  const archivedProject = archived?.result?.productionProject as {
+    assets: Array<{
+      id: string;
+      kind: string;
+      metadata?: Record<string, unknown>;
+    }>;
+  };
+  const currentFinalAsset = archivedProject.assets.find(asset => asset.kind === 'finalVideo');
+  assert.ok(currentFinalAsset);
+  updateTask(taskId, {
+    result: {
+      ...archived?.result,
+      productionProject: {
+        ...archivedProject,
+        assets: [
+          {
+            ...currentFinalAsset,
+            id: 'final-video-legacy',
+            metadata: {
+              ...currentFinalAsset.metadata,
+              videoUrl: '/generated/videos/final-legacy.mp4',
+              artifactVersion: 'legacy-artifact-version',
+            },
+          },
+          ...archivedProject.assets,
+        ],
+      },
+    },
+  });
+
   const exportResponse = await exportRoute.GET(new NextRequest(
     `http://localhost/api/production/export?taskId=${taskId}`,
     { headers },
   ));
   assert.equal(exportResponse.status, 200);
-  assert.equal((await exportResponse.json()).usedRealKey, false);
+  const exportBody = await exportResponse.json() as {
+    usedRealKey?: boolean;
+    exportPackage?: {
+      assets?: {
+        finalVideos?: Array<{ videoUrl?: string; artifactVersion?: string }>;
+        all?: Array<{ id?: string }>;
+      };
+    };
+  };
+  assert.equal(exportBody.usedRealKey, false);
+  assert.deepEqual(
+    exportBody.exportPackage?.assets?.finalVideos?.map(asset => asset.videoUrl),
+    ['/generated/videos/final-current.mp4'],
+    'delivery must include only the last successful final video',
+  );
+  assert.equal(
+    exportBody.exportPackage?.assets?.all?.some(asset => asset.id === 'final-video-legacy'),
+    false,
+    'delivery must omit stale final-video assets from the batch package',
+  );
 
+  const delivered = getTaskFresh(taskId);
   updateTask(taskId, {
     result: {
-      ...archived?.result,
+      ...delivered?.result,
       productionProject: {
-        ...(archived?.result?.productionProject as object),
+        ...(delivered?.result?.productionProject as object),
         prompt: `${prompt} 改为清晨。`,
       },
     },

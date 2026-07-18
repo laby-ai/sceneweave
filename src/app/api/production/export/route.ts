@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   buildProductionCutDraftJson,
   ProductionCutDraftVersionError,
+  resolveLastSuccessfulFinalVideoAsset,
 } from '@/lib/production-export-package';
 import {
   assertVimaxProductionDraftDelivery,
@@ -63,19 +64,18 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const productionProject = task.result?.productionProject as {
-      assets?: Array<{ kind?: string; metadata?: { videoUrl?: string; artifactVersion?: string } }>;
-    } | undefined;
-    const finalVideo = productionProject?.assets?.find(asset => (
-      asset.kind === 'finalVideo' && typeof asset.metadata?.videoUrl === 'string' && asset.metadata.videoUrl.length > 0
-    ));
+    const finalVideo = resolveLastSuccessfulFinalVideoAsset(task);
     if (task.result?.productionPlan && finalVideo) {
       try {
+        const videoUrl = typeof finalVideo.metadata?.videoUrl === 'string' ? finalVideo.metadata.videoUrl : '';
+        const artifactVersion = typeof finalVideo.metadata?.artifactVersion === 'string'
+          ? finalVideo.metadata.artifactVersion
+          : '';
         const plan = assertVimaxProductionFinalDelivery(task.result.productionPlan, {
           productionProject: task.result.productionProject,
-          videoUrl: finalVideo.metadata?.videoUrl || '',
+          videoUrl,
         });
-        if (finalVideo.metadata?.artifactVersion !== plan.render.lastSuccessfulResult?.artifactVersion) {
+        if (artifactVersion !== plan.render.lastSuccessfulResult?.artifactVersion) {
           throw new Error('成片资产版本与最后一次成功交付不一致。');
         }
       } catch (error) {

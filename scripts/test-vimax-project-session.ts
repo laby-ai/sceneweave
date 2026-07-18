@@ -6,9 +6,28 @@ import {
   type ChatMessage,
 } from '../src/lib/smart-assistant-panel-model';
 import {
+  buildVimaxProjectTaskCursorKey,
   createVimaxRunCoordinator,
   recoverVimaxProjectMessages,
 } from '../src/lib/skills/vimax-short-drama/vimax-project-session';
+
+const projectACursor = buildVimaxProjectTaskCursorKey({
+  workspaceScope: 'guest-a',
+  projectId: 'project-a',
+  taskId: 'shared-child-task',
+});
+const projectBCursor = buildVimaxProjectTaskCursorKey({
+  workspaceScope: 'guest-a',
+  projectId: 'project-b',
+  taskId: 'shared-child-task',
+});
+const otherGuestCursor = buildVimaxProjectTaskCursorKey({
+  workspaceScope: 'guest-b',
+  projectId: 'project-a',
+  taskId: 'shared-child-task',
+});
+assert.notEqual(projectACursor, projectBCursor, 'switching projects must isolate the incremental cursor');
+assert.notEqual(projectACursor, otherGuestCursor, 'guest workspaces must isolate the incremental cursor');
 
 let runSequence = 0;
 const coordinator = createVimaxRunCoordinator(() => `run-${++runSequence}`);
@@ -89,5 +108,5 @@ assert.deepEqual(recoverVimaxProjectMessages(completed), completed, 'completed p
 console.log(JSON.stringify({
   ok: true,
   script: 'test-vimax-project-session',
-  checks: 13,
+  checks: 15,
 }));

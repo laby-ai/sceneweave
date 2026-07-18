@@ -2,6 +2,7 @@ import type { ProductionAssemblyPlan } from './production-assembly-plan';
 import type { ProductionProject } from './production-project';
 import { describeStorySegmentCue } from './production-story-segment-contract';
 import type { BackgroundTask } from './task-manager';
+import { parseVimaxProductionPlan } from './skills/vimax-short-drama/vimax-production-plan';
 
 type ExportAsset = {
   id: string;
@@ -134,6 +135,21 @@ function segmentForAsset(
   );
 }
 
+export function resolveLastSuccessfulFinalVideoAsset(task: BackgroundTask) {
+  const result = isRecord(task.result) ? task.result : {};
+  const productionProject = result.productionProject as ProductionProject | undefined;
+  const finalVideos = productionProject?.assets.filter(asset => (
+    asset.kind === 'finalVideo' && asString(isRecord(asset.metadata) ? asset.metadata.videoUrl : undefined)
+  )) || [];
+  const lastSuccessfulResult = parseVimaxProductionPlan(result.productionPlan)?.render.lastSuccessfulResult;
+  if (!lastSuccessfulResult) return finalVideos[0];
+  return finalVideos.find(asset => {
+    const metadata = isRecord(asset.metadata) ? asset.metadata : {};
+    return asString(metadata.videoUrl) === lastSuccessfulResult.videoUrl
+      && asString(metadata.artifactVersion) === lastSuccessfulResult.artifactVersion;
+  });
+}
+
 export function buildProductionCutDraftJson(task: BackgroundTask) {
   const result = isRecord(task.result) ? task.result : {};
   const productionProject = result.productionProject as ProductionProject | undefined;
@@ -142,7 +158,11 @@ export function buildProductionCutDraftJson(task: BackgroundTask) {
   }
 
   const assemblyPlan = result.assemblyPlan as ProductionAssemblyPlan | undefined;
-  const assets = productionProject.assets.map(asset => exportAsset(asset, segmentForAsset(asset, assemblyPlan)));
+  const selectedFinalVideo = resolveLastSuccessfulFinalVideoAsset(task);
+  const sourceAssets = productionProject.assets.filter(asset => (
+    asset.kind !== 'finalVideo' || asset.id === selectedFinalVideo?.id
+  ));
+  const assets = sourceAssets.map(asset => exportAsset(asset, segmentForAsset(asset, assemblyPlan)));
   const finalVideos = assets.filter(asset => asset.kind === 'finalVideo' && asset.videoUrl);
   const videoSegments = assets
     .filter(asset => asset.kind === 'videoSegment' && asset.videoUrl)

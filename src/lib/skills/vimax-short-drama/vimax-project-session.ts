@@ -24,6 +24,20 @@ export interface VimaxRunCoordinator {
   cancel(): VimaxRunToken | null;
 }
 
+export function buildVimaxProjectTaskCursorKey(input: {
+  workspaceScope?: string;
+  projectId: string;
+  taskId: string;
+}) {
+  const workspace = input.workspaceScope?.trim() || 'member';
+  return [
+    'sceneweave:creation-task-cursor',
+    workspace,
+    input.projectId,
+    input.taskId,
+  ].map(part => encodeURIComponent(part)).join(':');
+}
+
 const createRequestId = () => (
   globalThis.crypto?.randomUUID
     ? `vimax-${globalThis.crypto.randomUUID()}`

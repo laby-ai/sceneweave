@@ -12,6 +12,7 @@ import {
   type VimaxSegmentedProductionView,
 } from '@/lib/skills/vimax-short-drama/vimax-segmented-production';
 import { streamCreationTask } from '@/lib/creation-agent/creation-task-stream';
+import { buildVimaxProjectTaskCursorKey } from '@/lib/skills/vimax-short-drama/vimax-project-session';
 
 interface TaskResponse {
   success: boolean;
@@ -38,20 +39,23 @@ const SEGMENT_STATUS: Record<string, string> = {
   planned: '已规划',
 };
 
-const taskCursorKey = (taskId: string, headers?: Record<string, string>) => {
-  const workspace = headers?.['x-paper-host-guest-workspace'] || 'member';
-  return `sceneweave:creation-task-cursor:${workspace}:${taskId}`;
-};
-
-const loadTaskCursor = (taskId: string, headers?: Record<string, string>) => {
+const loadTaskCursor = (projectId: string, taskId: string, headers?: Record<string, string>) => {
   if (typeof window === 'undefined') return 0;
-  const value = Number(window.sessionStorage.getItem(taskCursorKey(taskId, headers)) || 0);
+  const value = Number(window.sessionStorage.getItem(buildVimaxProjectTaskCursorKey({
+    workspaceScope: headers?.['x-paper-host-guest-workspace'],
+    projectId,
+    taskId,
+  })) || 0);
   return Number.isSafeInteger(value) && value > 0 ? value : 0;
 };
 
-const saveTaskCursor = (taskId: string, seq: number, headers?: Record<string, string>) => {
+const saveTaskCursor = (projectId: string, taskId: string, seq: number, headers?: Record<string, string>) => {
   if (typeof window === 'undefined') return;
-  window.sessionStorage.setItem(taskCursorKey(taskId, headers), String(seq));
+  window.sessionStorage.setItem(buildVimaxProjectTaskCursorKey({
+    workspaceScope: headers?.['x-paper-host-guest-workspace'],
+    projectId,
+    taskId,
+  }), String(seq));
 };
 
 export function VimaxSegmentedProductionCard({
@@ -110,9 +114,9 @@ export function VimaxSegmentedProductionCard({
         taskId: childTaskId,
         requestId: `creation-segment-${childTaskId}`,
         headers: requestHeaders || {},
-        afterSeq: loadTaskCursor(childTaskId, requestHeaders),
+        afterSeq: loadTaskCursor(taskId, childTaskId, requestHeaders),
         signal: controller.signal,
-        onSeq: seq => saveTaskCursor(childTaskId, seq, requestHeaders),
+        onSeq: seq => saveTaskCursor(taskId, childTaskId, seq, requestHeaders),
         onEvent: event => setView(current => current
           ? applyVimaxSegmentTaskSnapshot(current, childTaskId, {
             status: event.status,
@@ -126,7 +130,7 @@ export function VimaxSegmentedProductionCard({
       return controller;
     });
     return () => controllers.forEach(controller => controller.abort());
-  }, [requestHeaders, streamTargetKey]);
+  }, [requestHeaders, streamTargetKey, taskId]);
 
   const runAction = useCallback(async (action: VimaxSegmentedProductionAction, key: string) => {
     setBusyKey(key);
