@@ -27,6 +27,7 @@ export async function PATCH(
         summary: body.summary,
         status: body.status,
         metadata: body.metadata,
+        relatedShotIds: body.relatedShotIds,
       },
     });
 

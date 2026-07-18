@@ -25,6 +25,7 @@ export interface VimaxContinuityShot {
   lightingPalette: string;
   audioCue: string;
   narrativeCause: string;
+  assetAnchors?: string[];
 }
 
 export interface VimaxContinuityContract {
@@ -58,8 +59,13 @@ function compact(value: unknown, fallback: string) {
   return text || fallback;
 }
 
-function assetSummary(project: ProductionProject, kind: string, fallback: string) {
-  const assets = project.assets.filter(asset => asset.kind === kind);
+function isGlobalAsset(asset: ProductionProject['assets'][number], allShotIds: string[]) {
+  const relatedShotIds = asset.relatedShotIds || [];
+  return relatedShotIds.length === 0 || allShotIds.every(shotId => relatedShotIds.includes(shotId));
+}
+
+function assetSummary(project: ProductionProject, kind: string, fallback: string, allShotIds: string[]) {
+  const assets = project.assets.filter(asset => asset.kind === kind && isGlobalAsset(asset, allShotIds));
   if (assets.length === 0) return fallback;
   return assets.map(asset => `${asset.name}：${asset.summary}`).join('；');
 }
@@ -101,6 +107,7 @@ export function resolveVimaxProviderHandoffMode(input: ProviderHandoffInput): Vi
 
 export function buildVimaxContinuityContract(input: BuildContinuityContractInput): VimaxContinuityContract {
   const { productionProject: project, assemblyPlan } = input;
+  const allShotIds = project.storyboard.shots.map(shot => shot.id);
   const lightingPalette = inferLighting(project);
   const shots = assemblyPlan.segments.map((segment, index) => {
     const frame = segment.shotFrameContract;
@@ -127,10 +134,13 @@ export function buildVimaxContinuityContract(input: BuildContinuityContractInput
       lightingPalette,
       audioCue: compact(segment.audioState?.audioCue || story.audioContract.audioCue, frame.audioDescription),
       narrativeCause: compact(story.videoDesc.visualCausality, projectShot?.dramaticPurpose || '推进当前剧情节点。'),
+      assetAnchors: project.assets
+        .filter(asset => !isGlobalAsset(asset, allShotIds) && asset.relatedShotIds?.includes(segment.shotId))
+        .map(asset => `${asset.name}：${asset.summary}`),
     };
   });
 
-  const characterAsset = assetSummary(project, 'character', project.storyBible.protagonist);
+  const characterAsset = assetSummary(project, 'character', project.storyBible.protagonist, allShotIds);
   const characterBible = project.semanticPlan.characterBibles[0];
   const wardrobe = [characterAsset, characterBible?.appearance]
     .filter(value => typeof value === 'string' && value.trim())
@@ -146,9 +156,9 @@ export function buildVimaxContinuityContract(input: BuildContinuityContractInput
       ...project.storyBible.continuityRules.filter(rule => rule.includes('主角') || rule.includes('身份') || rule.includes('外观')),
     ].join('；'),
     wardrobe: compact(wardrobe, '服饰、发型与可见身份锚点必须跨镜保持。'),
-    scene: assetSummary(project, 'scene', project.storyBible.relationship),
+    scene: assetSummary(project, 'scene', project.storyBible.relationship, allShotIds),
     props: project.assets
-      .filter(asset => asset.kind === 'prop')
+      .filter(asset => asset.kind === 'prop' && isGlobalAsset(asset, allShotIds))
       .map(asset => `${asset.name}：${asset.summary}`),
     shots,
   };
@@ -168,6 +178,7 @@ export function buildVimaxContinuityPrompt(contract: VimaxContinuityContract, sh
     `【服饰锚点】${contract.wardrobe}`,
     `【场景锚点】${contract.scene}`,
     `【道具状态】${contract.props.join('；') || '无独立道具；保持已建立的关键线索状态。'}`,
+    `【本镜资产】${shot.assetAnchors?.join('；') || '沿用全局角色、场景和道具状态。'}`,
     `【动作衔接】起点=${shot.actionStart}；终点=${shot.actionEnd}`,
     `【空间与构图】方向=${shot.screenDirection}；景别=${shot.framing}；光色=${shot.lightingPalette}`,
     `【声音切点】${shot.audioCue}`,
@@ -219,6 +230,8 @@ export function parseVimaxContinuityContract(value: unknown): VimaxContinuityCon
   const validShots = value.shots.every(shot => isRecord(shot)
     && typeof shot.shotId === 'string'
     && (shot.previousShotId === null || typeof shot.previousShotId === 'string')
+    && (shot.assetAnchors === undefined
+      || (Array.isArray(shot.assetAnchors) && shot.assetAnchors.every(anchor => typeof anchor === 'string')))
     && ['dependency', 'actionStart', 'actionEnd', 'screenDirection', 'framing', 'lightingPalette', 'audioCue', 'narrativeCause']
       .every(key => typeof shot[key] === 'string' && String(shot[key]).trim().length > 0));
 

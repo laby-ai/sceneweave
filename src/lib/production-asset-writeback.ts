@@ -14,6 +14,7 @@ export interface ProductionAssetPatchInput {
   summary?: unknown;
   status?: unknown;
   metadata?: unknown;
+  relatedShotIds?: unknown;
 }
 
 export interface ProductionAssetWritebackResult {
@@ -58,6 +59,18 @@ function asMetadata(value: unknown) {
     throw new Error('metadata 必须是对象');
   }
   return value as Record<string, unknown>;
+}
+
+function asRelatedShotIds(value: unknown, productionProject: ProductionProject) {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || !value.every(shotId => typeof shotId === 'string' && shotId.trim())) {
+    throw new Error('relatedShotIds 必须是非空镜头 ID 数组');
+  }
+  const allowedShotIds = new Set(productionProject.storyboard.shots.map(shot => shot.id));
+  const shotIds = [...new Set(value.map(shotId => shotId.trim()))];
+  const unknownShotId = shotIds.find(shotId => !allowedShotIds.has(shotId));
+  if (unknownShotId) throw new Error(`镜头 ${unknownShotId} 不存在`);
+  return shotIds;
 }
 
 function getProductionProject(task: BackgroundTask) {
@@ -125,6 +138,13 @@ export function patchProductionAssetFromCanvas(params: {
       ...(currentAsset.metadata || {}),
       updatedFromCanvasAt: new Date().toISOString(),
     };
+  }
+
+  const relatedShotIds = asRelatedShotIds(params.patch.relatedShotIds, productionProject);
+  if (relatedShotIds !== undefined
+    && JSON.stringify(relatedShotIds) !== JSON.stringify(currentAsset.relatedShotIds || [])) {
+    nextAsset.relatedShotIds = relatedShotIds;
+    changedFields.push('relatedShotIds');
   }
 
   if (changedFields.length === 0) {
