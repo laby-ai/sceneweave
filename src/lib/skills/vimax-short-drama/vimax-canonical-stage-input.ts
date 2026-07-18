@@ -88,7 +88,8 @@ export function resolveCanonicalVimaxStageInput(input: {
     productionProject,
     assemblyPlan,
   });
-  if (productionPlan.continuity?.artifactRevision !== persistedProductionPlan.continuity?.artifactRevision) {
+  if (productionPlan.continuity?.artifactRevision !== persistedProductionPlan.continuity?.artifactRevision
+    || (!persistedProductionPlan.continuity?.cameraTree && Boolean(productionPlan.continuity?.cameraTree))) {
     updateTask(task.id, {
       result: {
         ...(task.result || {}),

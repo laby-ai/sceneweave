@@ -1,6 +1,12 @@
 import { computeProductionArtifactRevision } from '@/lib/production-artifact-stale';
 import type { ProductionAssemblyPlan } from '@/lib/production-assembly-plan';
 import type { ProductionProject } from '@/lib/production-project';
+import {
+  buildVimaxCameraTree,
+  describeVimaxCameraTreeShot,
+  parseVimaxCameraTree,
+  type VimaxCameraTree,
+} from '@/lib/skills/vimax-short-drama/vimax-camera-tree';
 
 export type VimaxProviderHandoffMode = 'frame-handoff' | 'text-anchors';
 
@@ -36,6 +42,7 @@ export interface VimaxContinuityContract {
   wardrobe: string;
   scene: string;
   props: string[];
+  cameraTree?: VimaxCameraTree;
   productionDirection?: {
     artStyle: string;
     directorManual: string;
@@ -164,6 +171,8 @@ export function buildVimaxContinuityContract(input: BuildContinuityContractInput
     .filter(value => typeof value === 'string' && value.trim())
     .join('；');
 
+  const cameraTree = buildVimaxCameraTree(shots);
+
   return {
     version: 'sceneweave-continuity-contract-v1',
     artifactRevision: computeProductionArtifactRevision(project),
@@ -178,6 +187,7 @@ export function buildVimaxContinuityContract(input: BuildContinuityContractInput
     props: project.assets
       .filter(asset => asset.kind === 'prop' && isApprovedAssetVersion(asset) && isGlobalAsset(asset, allShotIds))
       .map(asset => `${asset.name}：${asset.summary}`),
+    cameraTree,
     productionDirection: {
       artStyle: compact(project.creativeDirection?.artStyle, project.style || '保持全片视觉风格一致。'),
       directorManual: compact(
@@ -221,6 +231,7 @@ export function buildVimaxContinuityPrompt(contract: VimaxContinuityContract, sh
     `【本镜资产】${shot.assetAnchors?.join('；') || '沿用全局角色、场景和道具状态。'}`,
     `【动作衔接】起点=${shot.actionStart}；终点=${shot.actionEnd}`,
     `【空间与构图】方向=${shot.screenDirection}；景别=${shot.framing}；光色=${shot.lightingPalette}`,
+    `【镜头树】${describeVimaxCameraTreeShot(contract.cameraTree, shot.shotId)}`,
     `【声音切点】${shot.audioCue}`,
     `【叙事因果】${shot.narrativeCause}；${shot.dependency}`,
   ].join('\n');
@@ -273,6 +284,9 @@ export function parseVimaxContinuityContract(value: unknown): VimaxContinuityCon
       || !['frame-handoff', 'text-anchors'].includes(String(value.productionDirection.mode))))
     || !Array.isArray(value.shots)) return undefined;
 
+  const cameraTree = value.cameraTree === undefined ? undefined : parseVimaxCameraTree(value.cameraTree);
+  if (value.cameraTree !== undefined && !cameraTree) return undefined;
+
   const validShots = value.shots.every(shot => isRecord(shot)
     && typeof shot.shotId === 'string'
     && (shot.previousShotId === null || typeof shot.previousShotId === 'string')
@@ -281,5 +295,5 @@ export function parseVimaxContinuityContract(value: unknown): VimaxContinuityCon
     && ['dependency', 'actionStart', 'actionEnd', 'screenDirection', 'framing', 'lightingPalette', 'audioCue', 'narrativeCause']
       .every(key => typeof shot[key] === 'string' && String(shot[key]).trim().length > 0));
 
-  return validShots ? value as unknown as VimaxContinuityContract : undefined;
+  return validShots ? { ...value, cameraTree } as unknown as VimaxContinuityContract : undefined;
 }

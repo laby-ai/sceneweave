@@ -58,11 +58,25 @@ assert.ok(textContract.scene.length > 0);
 assert.ok(textContract.props.length > 0);
 assert.ok(textContract.shots.every(shot => shot.actionStart && shot.actionEnd));
 assert.ok(textContract.shots.every(shot => shot.framing && shot.lightingPalette && shot.audioCue));
+const cameraTree = textContract.cameraTree;
+assert.ok(cameraTree);
+assert.equal(cameraTree.version, 'sceneweave-camera-tree-v1');
+assert.equal(cameraTree.nodes.length, 3);
+assert.equal(cameraTree.nodes.filter(node => node.parentCameraId === null).length, 1);
+assert.equal(cameraTree.nodes[0]?.parentCameraId, null);
+assert.ok(cameraTree.nodes.slice(1).every((node, index) => {
+  const parentIndex = cameraTree.nodes.findIndex(parent => parent.cameraId === node.parentCameraId);
+  return parentIndex >= 0 && parentIndex <= index;
+}));
+assert.ok(cameraTree.nodes.slice(1).every(node => node.transition.prompt.length > 0));
 
 const secondTextPrompt = buildVimaxContinuityPrompt(textContract, 1);
 assert.match(secondTextPrompt, /【供应商交接】仅文本锚点/);
 assert.match(secondTextPrompt, /【动作衔接】/);
 assert.match(secondTextPrompt, /【空间与构图】/);
+assert.match(secondTextPrompt, /【镜头树】/);
+assert.match(secondTextPrompt, /父镜=/);
+assert.match(secondTextPrompt, /转场=/);
 assert.match(secondTextPrompt, /【叙事因果】/);
 assert.doesNotMatch(secondTextPrompt, /已绑定上一段尾帧/);
 

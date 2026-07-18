@@ -114,8 +114,9 @@ async function main() {
 
   let imageCalls = 0;
   let selectorCalls = 0;
+  const imagePrompts: string[] = [];
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async input => {
+  globalThis.fetch = (async (input, init) => {
     if (String(input).includes('/chat/completions')) {
       selectorCalls += 1;
       return new Response(JSON.stringify({
@@ -126,6 +127,8 @@ async function main() {
       }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     imageCalls += 1;
+    const body = JSON.parse(String(init?.body || '{}')) as { prompt?: string };
+    imagePrompts.push(body.prompt || '');
     return new Response(JSON.stringify({ data: [{ url: `https://fixture.invalid/generated-${imageCalls}.png` }] }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
@@ -157,6 +160,13 @@ async function main() {
     assert.equal(payload.assets?.length, 5);
     assert.equal(imageCalls, 7);
     assert.equal(selectorCalls, 1);
+    const secondShotPrompt = imagePrompts.find(candidate => (
+      candidate.includes('【镜头树】') && candidate.includes('父镜=') && !candidate.includes('父镜=无')
+    ));
+    assert.ok(secondShotPrompt);
+    assert.match(secondShotPrompt, /【镜头树】/);
+    assert.match(secondShotPrompt, /父镜=/);
+    assert.match(secondShotPrompt, /转场=/);
 
     const selectedFirstShot = (payload.assets as Array<{
       kind?: string;
@@ -173,6 +183,11 @@ async function main() {
       'sceneweave-subject-reference-registry-v1',
     );
     assert.equal((persisted?.vimaxReferenceAssets as unknown[] | undefined)?.length, 5);
+    assert.equal(
+      (persisted?.productionPlan as { continuity?: { cameraTree?: { nodes?: unknown[] } } } | undefined)
+        ?.continuity?.cameraTree?.nodes?.length,
+      2,
+    );
     assert.equal(
       (persisted?.vimaxReferenceAssets as Array<{ selectedCandidateIndex?: number }> | undefined)
         ?.find(asset => asset.selectedCandidateIndex !== undefined)?.selectedCandidateIndex,
