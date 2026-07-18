@@ -26,7 +26,7 @@ export function VimaxProjectEditorCard({ taskId, requestHeaders }: {
   const [project, setProject] = useState<ProductionProject | null>(null);
   const [selectedAssetId, setSelectedAssetId] = useState('');
   const [selectedShotId, setSelectedShotId] = useState('');
-  const [assetDraft, setAssetDraft] = useState({ name: '', summary: '' });
+  const [assetDraft, setAssetDraft] = useState({ name: '', summary: '', relatedShotIds: [] as string[] });
   const [shotDraft, setShotDraft] = useState({ prompt: '', duration: 1 });
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState<'asset' | 'shot' | ''>('');
@@ -72,9 +72,15 @@ export function VimaxProjectEditorCard({ taskId, requestHeaders }: {
   }, [loadProject]);
 
   useEffect(() => {
-    if (!selectedAsset) return;
-    setAssetDraft({ name: selectedAsset.name, summary: selectedAsset.summary });
-  }, [selectedAsset]);
+    if (!selectedAsset || !view) return;
+    setAssetDraft({
+      name: selectedAsset.name,
+      summary: selectedAsset.summary,
+      relatedShotIds: selectedAsset.relatedShotIds?.length
+        ? selectedAsset.relatedShotIds
+        : view.shots.map(shot => shot.id),
+    });
+  }, [selectedAsset, view]);
 
   useEffect(() => {
     if (!selectedShot) return;
@@ -158,7 +164,28 @@ export function VimaxProjectEditorCard({ taskId, requestHeaders }: {
           </select>
           <input value={assetDraft.name} onChange={event => setAssetDraft(current => ({ ...current, name: event.target.value }))} aria-label="素材名称" className="mt-2 w-full rounded-lg border border-[#dfe5ed] px-2.5 py-2 text-xs" />
           <textarea value={assetDraft.summary} onChange={event => setAssetDraft(current => ({ ...current, summary: event.target.value }))} aria-label="素材说明" rows={3} className="mt-2 w-full resize-y rounded-lg border border-[#dfe5ed] px-2.5 py-2 text-xs leading-relaxed" />
-          <button type="button" disabled={!selectedAsset || Boolean(pending)} onClick={() => void saveAsset()} className="mt-2 rounded-lg bg-[#2f6bff] px-3 py-1.5 text-[11px] font-medium text-white disabled:opacity-50">{pending === 'asset' ? '正在保存…' : '保存素材'}</button>
+          <fieldset className="mt-2 rounded-lg border border-[#e2e7ee] bg-[#f8fafc] px-2.5 py-2">
+            <legend className="px-1 text-[11px] font-medium text-[#4d5663]">适用镜头</legend>
+            <p className="mb-1.5 text-[10px] text-[#7c8592]">全选表示贯穿全片；只选部分镜头可记录服饰、道具或场景状态变化。</p>
+            <div className="flex flex-wrap gap-2">
+              {view.shots.map(shot => (
+                <label key={shot.id} className="flex items-center gap-1 rounded-md bg-white px-2 py-1 text-[11px] text-[#4d5663]">
+                  <input
+                    type="checkbox"
+                    checked={assetDraft.relatedShotIds.includes(shot.id)}
+                    onChange={event => setAssetDraft(current => ({
+                      ...current,
+                      relatedShotIds: event.target.checked
+                        ? [...current.relatedShotIds, shot.id]
+                        : current.relatedShotIds.filter(shotId => shotId !== shot.id),
+                    }))}
+                  />
+                  镜头 {shot.index}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <button type="button" disabled={!selectedAsset || Boolean(pending) || assetDraft.relatedShotIds.length === 0} onClick={() => void saveAsset()} className="mt-2 rounded-lg bg-[#2f6bff] px-3 py-1.5 text-[11px] font-medium text-white disabled:opacity-50">{pending === 'asset' ? '正在保存…' : '保存素材'}</button>
         </div>
 
         <div className="rounded-lg border border-[#e2e7ee] bg-white p-3">

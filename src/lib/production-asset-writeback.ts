@@ -63,7 +63,8 @@ function asMetadata(value: unknown) {
 
 function asRelatedShotIds(value: unknown, productionProject: ProductionProject) {
   if (value === undefined) return undefined;
-  if (!Array.isArray(value) || !value.every(shotId => typeof shotId === 'string' && shotId.trim())) {
+  if (!Array.isArray(value) || value.length === 0
+    || !value.every(shotId => typeof shotId === 'string' && shotId.trim())) {
     throw new Error('relatedShotIds 必须是非空镜头 ID 数组');
   }
   const allowedShotIds = new Set(productionProject.storyboard.shots.map(shot => shot.id));

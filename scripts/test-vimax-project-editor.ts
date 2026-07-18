@@ -66,6 +66,8 @@ assert.equal(storyboardUpdated.assets[0]?.summary, '成功保存的新摘要');
 const cardSource = readFileSync(new URL('../src/components/generate/vimax-project-editor-card.tsx', import.meta.url), 'utf8');
 assert.match(cardSource, /素材与分镜/);
 assert.match(cardSource, /保存素材/);
+assert.match(cardSource, /适用镜头/);
+assert.match(cardSource, /relatedShotIds/);
 assert.match(cardSource, /保存分镜/);
 assert.match(cardSource, /api\/production\/projects\/\$\{encodeURIComponent\(taskId\)\}\/assets/);
 assert.match(cardSource, /api\/production\/projects\/\$\{encodeURIComponent\(taskId\)\}\/storyboard/);
