@@ -21,7 +21,7 @@ interface DemoShot {
 }
 
 interface DemoState {
-  shots: Array<{ taskId?: string }>;
+  shots: Array<{ taskId?: string; videoUrl?: string }>;
 }
 
 const shots: DemoShot[] = [
@@ -43,7 +43,19 @@ const shots: DemoShot[] = [
       'The first frame is a cyan-white flash that completely fills the frame.',
       'The flash fades to reveal the same translucent cobalt-blue glass sphere in the same clean pale-silver reflective studio.',
       'The sphere unfolds into flowing turquoise silk ribbons while the camera continues the same slow clockwise arc at the same lens height.',
+      'During the final 0.7 seconds the ribbons sweep smoothly from left to right and fill the frame.',
       'Keep the background minimal and the movement smooth.',
+      'No people, no text, no logos, no watermark.',
+    ].join(' '),
+  },
+  {
+    model: 'Seedance2.0',
+    fileName: '03-seedance2-5s.mp4',
+    prompt: [
+      'The first frame is filled by the same turquoise silk ribbons sweeping smoothly from left to right.',
+      'Continue that exact motion in the same clean pale-silver reflective studio and at the same lens height.',
+      'The ribbons curl inward and weave back into the same translucent cobalt-blue glass sphere while the camera completes the same slow clockwise arc.',
+      'End on a stable centered hero frame of the sphere floating above the reflective stage, with soft cyan light and no flash.',
       'No people, no text, no logos, no watermark.',
     ].join(' '),
   },
@@ -126,6 +138,7 @@ async function main() {
     model: string;
     taskId: string;
     outputPath: string;
+    sourceUrl?: string;
     bytes: number;
     polls: number;
     resumed: boolean;
@@ -139,6 +152,7 @@ async function main() {
         model: shot.model,
         taskId: '',
         outputPath,
+        sourceUrl: state.shots[index]?.videoUrl,
         bytes: existing.size,
         polls: 0,
         resumed: true,
@@ -171,22 +185,49 @@ async function main() {
       },
       { maxAttempts: 180, intervalMs: 5000 },
     );
+    state.shots[index] = { taskId, videoUrl: result.videoUrl };
+    await saveState(statePath, state);
     const bytes = await download(result.videoUrl, outputPath);
     generated.push({
       model: shot.model,
       taskId,
       outputPath,
+      sourceUrl: result.videoUrl,
       bytes,
       polls,
       resumed: false,
     });
   }
 
-  const mergedOutputPath = path.join(outputDirectory, 'scnet-seedance2-transition-10s.mp4');
+  const mergedOutputPath = path.join(outputDirectory, 'scnet-seedance2-transition-15s.mp4');
   const mergedBytes = await mergeLocalSegments(
     generated.map(item => item.outputPath),
     mergedOutputPath,
   );
+  const manifestPath = path.join(outputDirectory, 'scnet-transition-manifest.json');
+  await fs.writeFile(manifestPath, `${JSON.stringify({
+    route: 'src/lib/byok-provider.ts',
+    provider: 'SCNet',
+    model: 'Seedance2.0',
+    ratio: '16:9',
+    resolution: '720p',
+    durationSeconds: 15,
+    segmentDurationSeconds: 5,
+    continuity: {
+      subject: 'translucent cobalt-blue glass sphere',
+      setting: 'clean pale-silver reflective studio',
+      camera: 'slow clockwise arc at stable lens height',
+      cut1: 'cyan-white full-frame flash',
+      cut2: 'turquoise ribbons sweeping left to right',
+    },
+    shots: shots.map((shot, index) => ({
+      index: index + 1,
+      prompt: shot.prompt,
+      taskId: generated[index].taskId,
+      outputPath: generated[index].outputPath,
+    })),
+    mergedOutputPath,
+  }, null, 2)}\n`, 'utf8');
 
   console.log(JSON.stringify({
     ok: true,
@@ -205,6 +246,7 @@ async function main() {
       bytes: mergedBytes,
       segmentCount: generated.length,
     },
+    manifestPath,
   }, null, 2));
 }
 

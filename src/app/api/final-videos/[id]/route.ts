@@ -2,8 +2,8 @@ import { createReadStream } from 'node:fs';
 import { Readable } from 'node:stream';
 import { NextRequest, NextResponse } from 'next/server';
 
-import { resolveAccountSessionFromRequest } from '@/lib/account/account-session';
 import { getFinalVideoStoreRoot, readMemberFinalVideo } from '@/lib/final-videos/member-final-video-store';
+import { resolvePaperHostCreationOwnerFromRequest } from '@/lib/task-access';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -23,16 +23,13 @@ function parseRange(value: string | null, size: number): { start: number; end: n
 }
 
 export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const session = await resolveAccountSessionFromRequest(request);
-  if (!session?.tenant_id || !session.member?.id) {
+  const access = await resolvePaperHostCreationOwnerFromRequest(request);
+  if (!access) {
     return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
   }
   try {
     const { id } = await context.params;
-    const video = await readMemberFinalVideo(getFinalVideoStoreRoot(), {
-      tenantId: session.tenant_id,
-      memberId: session.member.id,
-    }, id);
+    const video = await readMemberFinalVideo(getFinalVideoStoreRoot(), access.owner, id);
     const rangeHeader = request.headers.get('range');
     const range = parseRange(rangeHeader, video.bytes);
     if (rangeHeader && !range) {

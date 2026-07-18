@@ -8,7 +8,7 @@ import {
 import {
   getFilmComposeDurabilityReadiness,
 } from '@/lib/film-compose-readiness';
-import { resolveAccountSessionFromRequest } from '@/lib/account/account-session';
+import { resolvePaperHostCreationOwnerFromRequest } from '@/lib/task-access';
 import {
   getFinalVideoStoreReadiness,
   getFinalVideoStoreRoot,
@@ -112,8 +112,8 @@ export async function POST(request: NextRequest) {
     let localFinalOwner: FinalVideoOwner | null = null;
     const durability = getFilmComposeDurabilityReadiness();
     if (requireDurableOutput && !durability.ready) {
-      const session = await resolveAccountSessionFromRequest(request);
-      if (!session?.tenant_id || !session.member?.id) {
+      const access = await resolvePaperHostCreationOwnerFromRequest(request);
+      if (!access) {
         return new Response(JSON.stringify({ error: 'not_authenticated' }), {
           status: 401,
           headers: { 'Content-Type': 'application/json' },
@@ -132,7 +132,7 @@ export async function POST(request: NextRequest) {
           headers: { 'Content-Type': 'application/json' },
         });
       }
-      localFinalOwner = { tenantId: session.tenant_id, memberId: session.member.id };
+      localFinalOwner = access.owner;
     }
 
     if (localFinalOwner) {

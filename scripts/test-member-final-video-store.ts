@@ -33,7 +33,7 @@ async function main() {
   await assert.rejects(() => saveMemberFinalVideo(root, ownerA, Buffer.alloc(2048), { segmentCount: 2 }), /final_video_invalid/);
 
   const route = await readFile(new URL('../src/app/api/final-videos/[id]/route.ts', import.meta.url), 'utf8');
-  assert.match(route, /resolveAccountSessionFromRequest/);
+  assert.match(route, /resolvePaperHostCreationOwnerFromRequest/);
   assert.match(route, /status:\s*401/);
   assert.match(route, /status:\s*404/);
   assert.match(route, /Accept-Ranges/);
@@ -45,6 +45,7 @@ async function main() {
   const health = await readFile(new URL('../src/app/api/health/route.ts', import.meta.url), 'utf8');
   assert.match(health, /finalVideoStore/);
   const compose = await readFile(new URL('../src/app/api/film/compose/route.ts', import.meta.url), 'utf8');
+  assert.match(compose, /resolvePaperHostCreationOwnerFromRequest/);
   assert.match(compose, /saveMemberFinalVideo/);
   assert.match(compose, /mergeMemberFinalVideos/);
   assert.match(compose, /shared-local/);
