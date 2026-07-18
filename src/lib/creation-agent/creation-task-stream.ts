@@ -69,13 +69,22 @@ interface StreamCreationTaskInput {
   taskId: string;
   requestId: string;
   headers: Record<string, string>;
+  afterSeq?: number;
   signal?: AbortSignal;
   onEvent: (event: CreationEvent) => void;
+  onSeq?: (seq: number) => void;
 }
 
 export async function streamCreationTask(input: StreamCreationTaskInput): Promise<void> {
-  const response = await fetch(`/api/tasks/${encodeURIComponent(input.taskId)}/events`, {
-    headers: input.headers,
+  const afterSeq = Number.isSafeInteger(input.afterSeq) && Number(input.afterSeq) > 0
+    ? Number(input.afterSeq)
+    : 0;
+  const query = afterSeq > 0 ? `?afterSeq=${afterSeq}` : '';
+  const response = await fetch(`/api/tasks/${encodeURIComponent(input.taskId)}/events${query}`, {
+    headers: {
+      ...input.headers,
+      ...(afterSeq > 0 ? { 'Last-Event-ID': String(afterSeq) } : {}),
+    },
     signal: input.signal,
   });
   if (!response.ok || !response.body) throw new Error(`task_stream_${response.status}`);
@@ -91,6 +100,8 @@ export async function streamCreationTask(input: StreamCreationTaskInput): Promis
     for (const block of blocks) {
       const eventName = block.match(/^event:\s*(.+)$/m)?.[1]?.trim() || '';
       const dataText = block.match(/^data:\s*(.+)$/m)?.[1]?.trim() || '';
+      const seq = Number(block.match(/^id:\s*(\d+)$/m)?.[1]);
+      if (Number.isSafeInteger(seq) && seq > afterSeq) input.onSeq?.(seq);
       const event = parseCreationTaskSseMessage(eventName, dataText, input.requestId);
       if (event) input.onEvent(event);
     }

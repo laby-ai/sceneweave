@@ -16,11 +16,13 @@ async function main() {
   const root = await mkdtemp(path.join(tmpdir(), 'sceneweave-paper-task-events-'));
   process.env.HUIYING_TASKS_FILE = path.join(root, 'tasks.json');
 
-  const [{ NextRequest }, dryRun, taskEvents, taskById] = await Promise.all([
+  const [{ NextRequest }, dryRun, taskEvents, taskById, taskAccess, taskManager] = await Promise.all([
     import('next/server'),
     import('../src/app/api/production/dry-run/route'),
     import('../src/app/api/tasks/[taskId]/events/route'),
     import('../src/app/api/tasks/[taskId]/route'),
+    import('../src/lib/task-access'),
+    import('../src/lib/task-manager'),
   ]);
 
   try {
@@ -69,6 +71,53 @@ async function main() {
       { params: Promise.resolve({ taskId }) },
     );
     assert.equal(isolatedTask.status, 404, 'another guest must not restore the task');
+
+    const ownerRequest = new NextRequest('http://localhost/api/tasks', { headers: guestHeaders(guestA) });
+    const access = await taskAccess.resolvePaperHostCreationOwnerFromRequest(ownerRequest);
+    assert.ok(access, 'guest owner should resolve for incremental task events');
+    const runningTaskId = taskManager.createTask('video', { prompt: '增量事件游标验证' }, access.owner);
+    taskManager.startTask(runningTaskId);
+    taskManager.updateTaskProgress(runningTaskId, 20, '准备素材');
+
+    const firstStream = await taskEvents.GET(
+      new NextRequest(`http://localhost/api/tasks/${runningTaskId}/events?afterSeq=0`, {
+        headers: guestHeaders(guestA),
+      }),
+      { params: Promise.resolve({ taskId: runningTaskId }) },
+    );
+    const firstReader = firstStream.body?.getReader();
+    assert.ok(firstReader, 'incremental event stream should expose a reader');
+    let firstBurst = '';
+    while (!firstBurst.includes('event: task')) {
+      const chunk = await firstReader.read();
+      assert.equal(chunk.done, false, 'running task stream should remain open');
+      firstBurst += new TextDecoder().decode(chunk.value);
+    }
+    await firstReader.cancel();
+    const firstSeq = Number(firstBurst.match(/^id:\s*(\d+)$/m)?.[1]);
+    assert.ok(Number.isSafeInteger(firstSeq) && firstSeq > 0, 'task events must expose a monotonic numeric id');
+    assert.match(firstBurst, new RegExp(`"seq":${firstSeq}`), 'task payload should expose the same sequence');
+
+    taskManager.updateTaskProgress(runningTaskId, 45, '生成分镜');
+    const resumedStream = await taskEvents.GET(
+      new NextRequest(`http://localhost/api/tasks/${runningTaskId}/events?afterSeq=${firstSeq}`, {
+        headers: guestHeaders(guestA),
+      }),
+      { params: Promise.resolve({ taskId: runningTaskId }) },
+    );
+    const resumedReader = resumedStream.body?.getReader();
+    assert.ok(resumedReader, 'resumed event stream should expose a reader');
+    let resumedBurst = '';
+    while (!resumedBurst.includes('event: task')) {
+      const chunk = await resumedReader.read();
+      assert.equal(chunk.done, false, 'resumed running task stream should remain open');
+      resumedBurst += new TextDecoder().decode(chunk.value);
+    }
+    await resumedReader.cancel();
+    const resumedSeq = Number(resumedBurst.match(/^id:\s*(\d+)$/m)?.[1]);
+    assert.ok(resumedSeq > firstSeq, 'resumed stream must advance beyond afterSeq');
+    assert.match(resumedBurst, /"stage":"生成分镜"/, 'resumed stream should deliver the new stage');
+    assert.doesNotMatch(resumedBurst, /"stage":"准备素材"/, 'resumed stream must not replay the prior stage');
   } finally {
     await rm(root, { recursive: true, force: true });
   }

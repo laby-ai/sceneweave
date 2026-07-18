@@ -38,6 +38,22 @@ const SEGMENT_STATUS: Record<string, string> = {
   planned: '已规划',
 };
 
+const taskCursorKey = (taskId: string, headers?: Record<string, string>) => {
+  const workspace = headers?.['x-paper-host-guest-workspace'] || 'member';
+  return `sceneweave:creation-task-cursor:${workspace}:${taskId}`;
+};
+
+const loadTaskCursor = (taskId: string, headers?: Record<string, string>) => {
+  if (typeof window === 'undefined') return 0;
+  const value = Number(window.sessionStorage.getItem(taskCursorKey(taskId, headers)) || 0);
+  return Number.isSafeInteger(value) && value > 0 ? value : 0;
+};
+
+const saveTaskCursor = (taskId: string, seq: number, headers?: Record<string, string>) => {
+  if (typeof window === 'undefined') return;
+  window.sessionStorage.setItem(taskCursorKey(taskId, headers), String(seq));
+};
+
 export function VimaxSegmentedProductionCard({
   taskId,
   requestHeaders,
@@ -94,7 +110,9 @@ export function VimaxSegmentedProductionCard({
         taskId: childTaskId,
         requestId: `creation-segment-${childTaskId}`,
         headers: requestHeaders || {},
+        afterSeq: loadTaskCursor(childTaskId, requestHeaders),
         signal: controller.signal,
+        onSeq: seq => saveTaskCursor(childTaskId, seq, requestHeaders),
         onEvent: event => setView(current => current
           ? applyVimaxSegmentTaskSnapshot(current, childTaskId, {
             status: event.status,

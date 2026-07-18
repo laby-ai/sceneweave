@@ -170,6 +170,9 @@ async function main() {
   const cardSource = readFileSync(new URL('../src/components/generate/vimax-segmented-production-card.tsx', import.meta.url), 'utf8');
   const viewSource = readFileSync(new URL('../src/lib/skills/vimax-short-drama/vimax-segmented-production.ts', import.meta.url), 'utf8');
   assert.match(cardSource, /streamCreationTask/);
+  assert.match(cardSource, /afterSeq:\s*loadTaskCursor/);
+  assert.match(cardSource, /onSeq:\s*seq\s*=>\s*saveTaskCursor/);
+  assert.match(cardSource, /x-paper-host-guest-workspace/);
   assert.match(cardSource, /action\.method \|\| 'POST'/);
   assert.match(viewSource, /method:\s*'DELETE'/);
   assert.match(cardSource, /正在同步任务阶段/);
