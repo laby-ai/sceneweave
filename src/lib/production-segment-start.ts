@@ -174,6 +174,13 @@ async function runSegmentProviderJob(params: {
       generateAudio,
     });
     providerTaskId = submitResult.taskId;
+    const submittedTask = getTaskFresh(childTaskId);
+    updateTask(childTaskId, {
+      result: {
+        ...(submittedTask?.result || {}),
+        providerTaskId: submitResult.taskId,
+      },
+    });
     updateTaskProgress(childTaskId, 18, '片段已提交到 Ark，等待生成...', `供应商任务 ${submitResult.taskId}`);
     updateParentSegment(parentTaskId, segmentIndex, {
       status: 'running',

@@ -264,6 +264,12 @@ export async function recoverProductionSegmentProviderTask(
     );
   }
 
+  updateTask(input.childTaskId, {
+    status: 'running',
+    stage: '供应商任务已完成，正在恢复写回',
+    error: undefined,
+    completedAt: undefined,
+  });
   completeTask(input.childTaskId, {
     ...(childTask.result || {}),
     videoUrl: providerStatus.videoUrl,

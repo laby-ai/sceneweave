@@ -258,6 +258,41 @@ function loadTasksFromFile(): Map<string, BackgroundTask> {
   }
 }
 
+function taskHasSubmittedProviderJob(task: BackgroundTask) {
+  if (typeof task.result?.providerTaskId === 'string' && task.result.providerTaskId.trim()) return true;
+  return Array.isArray(task.result?.segments)
+    && task.result.segments.some(segment => typeof segment.providerTaskId === 'string' && segment.providerTaskId.trim());
+}
+
+function recoverInterruptedTask(task: BackgroundTask, timestamp: number): BackgroundTask {
+  const isAssemblySegment = task.config.workflow === 'production-assembly-segment';
+  const hasProviderJob = isAssemblySegment && taskHasSubmittedProviderJob(task);
+  if (isAssemblySegment && !hasProviderJob) {
+    return {
+      ...task,
+      status: 'pending',
+      progress: 0,
+      stage: '服务恢复，片段已回到队列',
+      message: '该片段尚未提交供应商，可从当前项目继续执行，不会重复扣费。',
+      error: undefined,
+      startedAt: undefined,
+      completedAt: undefined,
+      lastUpdatedAt: timestamp,
+      abortController: undefined,
+    };
+  }
+
+  return {
+    ...task,
+    status: 'failed',
+    stage: hasProviderJob ? '服务恢复，供应商任务待续查' : '服务重启，任务已安全停止',
+    error: hasProviderJob ? 'task_interrupted_with_provider_job' : 'task_interrupted_by_restart',
+    completedAt: timestamp,
+    lastUpdatedAt: timestamp,
+    abortController: undefined,
+  };
+}
+
 /**
  * 保存所有任务到文件
  */
@@ -304,15 +339,7 @@ function getTaskStore(): Map<string, BackgroundTask> {
       let recovered = false;
       for (const [taskId, task] of taskCache) {
         if (task.status === 'pending' || task.status === 'running') {
-          taskCache.set(taskId, {
-            ...task,
-            status: 'failed',
-            stage: '服务重启，任务已安全停止',
-            error: 'task_interrupted_by_restart',
-            completedAt: timestamp,
-            lastUpdatedAt: timestamp,
-            abortController: undefined,
-          });
+          taskCache.set(taskId, recoverInterruptedTask(task, timestamp));
           recovered = true;
         }
       }
