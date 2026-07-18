@@ -14,6 +14,7 @@ const workspace = read('src/components/smart/smart-assistant-chat-workspace.tsx'
 const generateWorkspace = read('src/components/generate/generate-workspace.tsx');
 const model = read('src/lib/smart-assistant-panel-model.ts');
 const route = read('src/app/api/smart/vimax-agent-step/route.ts');
+const referenceAssets = read('src/lib/skills/vimax-short-drama/vimax-reference-assets.ts');
 const planArtifacts = read('src/lib/skills/vimax-short-drama/vimax-plan-artifacts.ts');
 const agentContract = read('src/lib/skills/vimax-short-drama/vimax-agent-contract.ts');
 // ViMAX 已抽成 Agent 驱动的 skill；编排逻辑应在 skill 内，面板只负责唤起。
@@ -70,7 +71,12 @@ check(
 );
 check('workspace-renders-stage-card', /msg\.vimaxAgent/.test(workspace) && /真实 AgentPlan/.test(workspace) && /Seedream 参考素材/.test(workspace));
 check('route-calls-real-ark-text-model', /chat\/completions/.test(route) && /ARK_API_KEY/.test(route) && /usedRealKey:\s*true/.test(route));
-check('route-calls-real-seedream-image-model', /images\/generations/.test(route) && /doubao-seedream-5\.0-lite/.test(route));
+check(
+  'route-calls-real-seedream-image-model',
+  /callVimaxReferenceImages/.test(route)
+    && /images\/generations/.test(referenceAssets)
+    && /doubao-seedream-5\.0-lite/.test(route),
+);
 check('route-does-not-return-free-fake-result', !/usedRealKey:\s*false|incurredCost:\s*false|dry-run|不产生费用/.test(route));
 check('route-fails-explicitly-before-video-cost', /视频生成阶段需要用户在界面显式确认费用/.test(route));
 check(
