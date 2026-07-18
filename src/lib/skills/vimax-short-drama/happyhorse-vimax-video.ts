@@ -7,6 +7,10 @@ import {
 } from '@/lib/byok-provider';
 import type { VimaxAgentPlan } from '@/lib/skills/vimax-short-drama/vimax-agent-contract';
 import type { VimaxSkillPreset } from '@/lib/skills/vimax-short-drama/vimax-skill-presets';
+import {
+  buildVimaxContinuityPrompt,
+  type VimaxContinuityContract,
+} from '@/lib/skills/vimax-short-drama/vimax-continuity-contract';
 
 interface HappyHorseVimaxSegment {
   shotIndex: number;
@@ -35,12 +39,15 @@ function buildPrompt(
   plan: VimaxAgentPlan,
   shot: VimaxAgentPlan['shots'][number],
   preset: VimaxSkillPreset,
+  continuity: VimaxContinuityContract,
+  shotIndex: number,
   previous?: VimaxAgentPlan['shots'][number],
 ): string {
   return [
     shot.prompt || `${shot.title}，${plan.summary || plan.title}`,
     shot.camera ? `运镜：${shot.camera}` : '',
     previous ? `承接上一镜“${previous.title}”的结束动作、人物朝向、服饰、场景和光线，从同一时刻继续。` : '',
+    buildVimaxContinuityPrompt(continuity, shotIndex),
     `创作类型：${preset.name}。创作目标：${preset.description}。视觉风格：${preset.style}。`,
     '保持同一作品的主体、场景、光线和道具连续，镜头之间自然衔接，不要字幕，不要水印。',
   ].filter(Boolean).join(' ').trim();
@@ -57,6 +64,7 @@ export async function callHappyHorseVimaxVideo(
   preset: VimaxSkillPreset,
   connection: BYOKConnection,
   options: { ratio?: string; resolution?: string },
+  continuity: VimaxContinuityContract,
 ) {
   const model = connection.videoModel || connection.model;
   if (!model) throw new Error('快乐马连接缺少视频模型。');
@@ -72,7 +80,7 @@ export async function callHappyHorseVimaxVideo(
     const duration = clampDuration(shot.duration);
     const task = await submitVideoWithBYOK(connection, {
       model,
-      prompt: buildPrompt(plan, shot, preset, shots[index - 1]),
+      prompt: buildPrompt(plan, shot, preset, continuity, index, shots[index - 1]),
       duration,
       ratio: options.ratio || '16:9',
       resolution: options.resolution || '720P',

@@ -3,6 +3,14 @@ import {
   resolveVimaxSkillRuntimeBinding,
   type VimaxSkillRuntimeBinding,
 } from '@/lib/skills/vimax-short-drama/vimax-skill-runtime-binding';
+import {
+  buildVimaxContinuityContract,
+  parseVimaxContinuityContract,
+  resolveVimaxProviderHandoffMode,
+  type VimaxContinuityContract,
+} from '@/lib/skills/vimax-short-drama/vimax-continuity-contract';
+import type { ProductionAssemblyPlan } from '@/lib/production-assembly-plan';
+import type { ProductionProject } from '@/lib/production-project';
 
 export type VimaxProductionPhase = 'plan' | 'reference_assets' | 'video';
 export type VimaxProductionCheckpoint = VimaxProductionPhase | 'render';
@@ -38,6 +46,7 @@ export interface VimaxProductionPlan {
     ratio: string;
     resolution: string;
   };
+  continuity?: VimaxContinuityContract;
   providerRoutes: Array<{
     stage: VimaxProductionPhase;
     provider: 'ark-plan-v3' | 'ark-image-v3' | 'ark-video-v3';
@@ -94,6 +103,7 @@ interface VimaxProductionPlanInput {
   assets: Array<{ kind: string; label: string; prompt?: string }>;
   shots: Array<{ index: number; title: string; duration: number; camera: string; prompt: string }>;
   workflow?: VimaxSkillRuntimeBinding;
+  continuity?: VimaxContinuityContract;
 }
 
 interface ExpectedProductionModels {
@@ -133,6 +143,7 @@ export function buildVimaxProductionPlan(input: VimaxProductionPlanInput): Vimax
     workflow: input.workflow || resolveVimaxSkillRuntimeBinding(),
     title: input.title,
     preferences: { ratio: input.ratio, resolution: input.resolution },
+    continuity: input.continuity,
     providerRoutes,
     materials: [
       ...input.assets.map((asset, index) => ({
@@ -194,6 +205,10 @@ export function parseVimaxProductionPlan(value: unknown): VimaxProductionPlan | 
     ? resolveVimaxSkillRuntimeBinding()
     : parseVimaxSkillRuntimeBinding(value.workflow);
   if (!workflow) return undefined;
+  const continuity = value.continuity === undefined
+    ? undefined
+    : parseVimaxContinuityContract(value.continuity);
+  if (value.continuity !== undefined && !continuity) return undefined;
   const governance = value.governance === undefined
     ? { status: 'plan-approved' as const, decisionLog: [] }
     : value.governance;
@@ -245,8 +260,31 @@ export function parseVimaxProductionPlan(value: unknown): VimaxProductionPlan | 
     && ['not-started', 'draft-ready'].includes(String(value.render.status));
 
   return validRoutes && validMaterials && validCheckpoints && validCost && validRender
-    ? { ...value, workflow, governance } as unknown as VimaxProductionPlan
+    ? { ...value, workflow, governance, continuity } as unknown as VimaxProductionPlan
     : undefined;
+}
+
+export function refreshVimaxProductionPlanContinuity(input: {
+  productionPlan: unknown;
+  productionProject: ProductionProject;
+  assemblyPlan: ProductionAssemblyPlan;
+}): VimaxProductionPlan {
+  const plan = parseVimaxProductionPlan(input.productionPlan);
+  if (!plan) throw new Error('制作计划已失效，请重新规划。');
+  const videoRoute = plan.providerRoutes.find(route => route.stage === 'video');
+  const providerHandoff = plan.continuity?.providerHandoff
+    || resolveVimaxProviderHandoffMode({
+      provider: videoRoute?.provider || 'ark-video-v3',
+      model: videoRoute?.model || VIMAX_VIDEO_MODEL_ID,
+    });
+  return {
+    ...plan,
+    continuity: buildVimaxContinuityContract({
+      productionProject: input.productionProject,
+      assemblyPlan: input.assemblyPlan,
+      providerHandoff,
+    }),
+  };
 }
 
 export function approveVimaxProductionPlan(value: unknown): VimaxProductionPlan {

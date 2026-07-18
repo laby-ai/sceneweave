@@ -80,6 +80,7 @@ async function main() {
   const initial = resolveCanonicalVimaxStageInput({ taskId, owner });
   assert.equal(initial.taskId, taskId);
   assert.equal(initial.plan.shots.length, 3);
+  assert.ok(initial.productionPlan.continuity?.artifactRevision);
   assert.equal(initial.plan.assets.find(asset => asset.label === '记者定妆')?.referenceUrl, 'https://fixture.invalid/reporter-look.png');
   assert.doesNotMatch(initial.plan.shots[0]?.prompt || '', /客户端伪造/);
   assert.throws(
@@ -138,6 +139,17 @@ async function main() {
   assert.match(rebuilt.plan.shots[0]?.prompt || '', /蓝色风衣/);
   assert.match(rebuilt.plan.shots[0]?.prompt || '', /画面左侧/);
   assert.notEqual(rebuilt.assemblyPlan.segments[0]?.artifactReadiness?.stale, true);
+  assert.notEqual(
+    rebuilt.productionPlan.continuity?.artifactRevision,
+    initial.productionPlan.continuity?.artifactRevision,
+    'storyboard PATCH followed by contract rebuild must refresh the persisted continuity snapshot',
+  );
+  const persistedAfterRebuild = getTaskFresh(taskId)?.result?.productionPlan as typeof rebuilt.productionPlan;
+  assert.equal(
+    persistedAfterRebuild.continuity?.artifactRevision,
+    rebuilt.productionPlan.continuity?.artifactRevision,
+    'canonical refresh must survive a later page or task reload',
+  );
 
   rmSync(taskFile, { force: true });
   console.log(JSON.stringify({

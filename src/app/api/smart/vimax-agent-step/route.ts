@@ -19,6 +19,12 @@ import {
   type BYOKConnection,
 } from '@/lib/byok-provider';
 import { callHappyHorseVimaxVideo } from '@/lib/skills/vimax-short-drama/happyhorse-vimax-video';
+import {
+  buildVimaxContinuityContract,
+  buildVimaxFrameProviderPrompt,
+  resolveVimaxProviderHandoffMode,
+  type VimaxContinuityContract,
+} from '@/lib/skills/vimax-short-drama/vimax-continuity-contract';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -259,13 +265,22 @@ function buildVimaxPlanEnvelope(
   const { plan, productionProject, assemblyPlan } = buildProductionBackedVimaxPlan(prompt, basePlan, body, taskId);
   const config = getArkConfig();
   const workflow = resolveVimaxSkillRuntimeBinding({ skillId: body.skillId });
+  const videoModel = videoConnection?.videoModel || config.videoModel;
+  const continuity = buildVimaxContinuityContract({
+    productionProject,
+    assemblyPlan,
+    providerHandoff: resolveVimaxProviderHandoffMode({
+      provider: videoConnection?.provider || 'ark-video-v3',
+      model: videoModel,
+    }),
+  });
   const productionPlan = buildVimaxProductionPlan({
     title: plan.title,
     ratio: body.ratio || '16:9',
     resolution: body.resolution || '720p',
     planModel: model,
     imageModel: config.imageModel,
-    videoModel: videoConnection?.videoModel || config.videoModel,
+    videoModel,
     providerReadiness: {
       plan: Boolean(config.apiKey),
       referenceAssets: Boolean(config.imageApiKey),
@@ -274,6 +289,7 @@ function buildVimaxPlanEnvelope(
     assets: plan.assets,
     shots: plan.shots,
     workflow,
+    continuity,
   });
   return { plan, productionPlan, productionProject, assemblyPlan };
 }
@@ -522,29 +538,13 @@ function referenceForShot(assets: VimaxAgentReferenceAsset[], shot: VimaxAgentPl
     || validAssets[0];
 }
 
-function buildSeedancePrompt(
-  plan: VimaxAgentPlan,
-  shot: VimaxAgentPlan['shots'][number],
-  preset: VimaxSkillPreset,
-  opts: { handoffFromPrevious?: boolean } = {},
-) {
-  return [
-    shot.prompt || `${shot.title}，${plan.summary || plan.title}`,
-    shot.camera ? `运镜：${shot.camera}` : '',
-    opts.handoffFromPrevious
-      ? '本段第一帧已绑定上一段尾帧；先严格承接上一段末尾的人物姿态、空间方向、光线和道具位置，再推进本段剧情。'
-      : '',
-    `创作类型：${preset.name}。创作目标：${preset.description}。视觉风格：${preset.style}。`,
-    '保持同一作品的主体、场景、光线和道具连续，镜头之间自然衔接，不要字幕，不要水印。',
-  ].filter(Boolean).join(' ').trim();
-}
-
 async function submitSeedanceShotTask(
   plan: VimaxAgentPlan,
   shot: VimaxAgentPlan['shots'][number],
   index: number,
   assets: VimaxAgentReferenceAsset[],
   preset: VimaxSkillPreset,
+  continuity: VimaxContinuityContract,
   opts: { ratio?: string; resolution?: string; previousLastFrameUrl?: string },
 ) {
   const { imageApiKey, imageApiBase, videoModel } = getArkConfig();
@@ -552,7 +552,16 @@ async function submitSeedanceShotTask(
     throw new Error('缺少视频模型 API Key，无法进入 Seedance 视频生成阶段。');
   }
 
-  const promptText = buildSeedancePrompt(plan, shot, preset, { handoffFromPrevious: Boolean(opts.previousLastFrameUrl) });
+  const promptText = buildVimaxFrameProviderPrompt({
+    basePrompt: shot.prompt || `${shot.title}，${plan.summary || plan.title}`,
+    camera: shot.camera,
+    presetName: preset.name,
+    presetDescription: preset.description,
+    presetStyle: preset.style,
+    continuity,
+    shotIndex: index,
+    handoffFromPrevious: Boolean(opts.previousLastFrameUrl),
+  });
   if (!promptText) {
     throw new Error(`缺少可用于视频生成的镜头提示词：Clip ${shot.index}`);
   }
@@ -656,6 +665,7 @@ async function callSeedanceVideo(
   plan: VimaxAgentPlan,
   assets: VimaxAgentReferenceAsset[],
   preset: VimaxSkillPreset,
+  continuity: VimaxContinuityContract,
   opts: { ratio?: string; resolution?: string },
 ) {
   const { videoModel } = getArkConfig();
@@ -669,7 +679,7 @@ async function callSeedanceVideo(
   const segments: SeedanceShotSegment[] = [];
   let previousLastFrameUrl: string | undefined;
   for (let index = 0; index < shots.length; index += 1) {
-    const task = await submitSeedanceShotTask(plan, shots[index], index, assets, preset, {
+    const task = await submitSeedanceShotTask(plan, shots[index], index, assets, preset, continuity, {
       ...opts,
       previousLastFrameUrl,
     });
@@ -812,9 +822,12 @@ export async function POST(request: NextRequest) {
       const preset = resolveVimaxSkillPresetForRuntime(productionPlan.workflow.presetId);
       const assets = Array.isArray(body.assets) ? body.assets : [];
       const generationPreferences = productionPlan.preferences;
+      if (!productionPlan.continuity) {
+        throw new Error('制作计划缺少连续性契约，请返回计划阶段重新确认。');
+      }
       const result = videoConnection?.provider === 'happyhorse-dashscope'
-        ? await callHappyHorseVimaxVideo(canonical.plan, preset, videoConnection, generationPreferences)
-        : await callSeedanceVideo(canonical.plan, assets, preset, generationPreferences);
+        ? await callHappyHorseVimaxVideo(canonical.plan, preset, videoConnection, generationPreferences, productionPlan.continuity)
+        : await callSeedanceVideo(canonical.plan, assets, preset, productionPlan.continuity, generationPreferences);
       return NextResponse.json({
         success: true,
         phase,

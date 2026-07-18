@@ -11,6 +11,11 @@ import {
 } from '../src/lib/skills/vimax-short-drama/vimax-production-plan';
 import { resolveVimaxSkillRuntimeBinding } from '../src/lib/skills/vimax-short-drama/vimax-skill-runtime-binding';
 import type { VimaxAgentPlan } from '../src/lib/skills/vimax-short-drama/vimax-agent-contract';
+import {
+  buildVimaxContinuityContract,
+  resolveVimaxProviderHandoffMode,
+  type VimaxContinuityContract,
+} from '../src/lib/skills/vimax-short-drama/vimax-continuity-contract';
 
 const taskFile = path.join(tmpdir(), `sceneweave-happyhorse-route-${randomUUID()}.json`);
 process.env.HUIYING_TASKS_FILE = taskFile;
@@ -38,7 +43,7 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   throw new Error(`Unexpected network call: ${url}`);
 }) as typeof fetch;
 
-function readyProductionPlan() {
+function readyProductionPlan(continuity: VimaxContinuityContract) {
   const base = buildVimaxProductionPlan({
     title: '快乐马短剧夹具',
     ratio: '16:9',
@@ -50,6 +55,7 @@ function readyProductionPlan() {
     assets: [{ kind: 'character', label: '女记者', prompt: '米色风衣，红色录音笔' }],
     shots: [{ index: 1, title: '走出车站', duration: 5, camera: '向右跟拍', prompt: '女记者走出车站' }],
     workflow: resolveVimaxSkillRuntimeBinding({ skillId: 'short-drama' }),
+    continuity,
   });
   const approved = approveVimaxProductionPlan(base);
   return {
@@ -79,12 +85,19 @@ async function main() {
     shots: [{ index: 1, title: '走出车站', duration: 5, camera: '向右跟拍', prompt: '女记者走出车站' }],
     nextAction: '生成视频',
   };
-  const productionPlan = readyProductionPlan();
   const taskId = createTask('storyboard', { prompt: plan.summary, workflow: 'vimax-agent' }, owner);
   const built = buildProductionBackedVimaxPlan(plan.summary, plan, {
     phase: 'plan', skillId: 'short-drama', duration: 5, segmentDuration: 5, segmentCount: 1,
     ratio: '16:9', resolution: '720p', sceneType: 'drama', style: '电影感短剧',
   }, taskId);
+  const productionPlan = readyProductionPlan(buildVimaxContinuityContract({
+    productionProject: built.productionProject,
+    assemblyPlan: built.assemblyPlan,
+    providerHandoff: resolveVimaxProviderHandoffMode({
+      provider: 'happyhorse-dashscope',
+      model: 'happyhorse-1.1-t2v',
+    }),
+  }));
   persistVimaxPlanTask({
     taskId,
     prompt: plan.summary,
@@ -127,6 +140,8 @@ async function main() {
   assert.equal(submitBody.parameters.duration, 5);
   assert.match(submitBody.input.prompt, /女记者/);
   assert.match(submitBody.input.prompt, /红色录音笔/);
+  assert.match(submitBody.input.prompt, /【供应商交接】仅文本锚点/);
+  assert.doesNotMatch(submitBody.input.prompt, /已绑定上一段尾帧/);
   assert.doesNotMatch(submitBody.input.prompt, /客户端伪造/);
   assert.ok(calls.every(call => !call.url.includes('contents/generations/tasks')), 'must not fall back to Ark video route');
 

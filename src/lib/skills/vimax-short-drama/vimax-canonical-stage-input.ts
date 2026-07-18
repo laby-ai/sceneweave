@@ -1,10 +1,14 @@
 import type { ProductionAssemblyPlan } from '@/lib/production-assembly-plan';
 import { computeProductionArtifactRevision } from '@/lib/production-artifact-stale';
 import type { ProductionProject } from '@/lib/production-project';
-import { getTaskForOwner, type TaskOwner } from '@/lib/task-manager';
+import { getTaskForOwner, updateTask, type TaskOwner } from '@/lib/task-manager';
 import type { VimaxAgentPlan } from '@/lib/skills/vimax-short-drama/vimax-agent-contract';
 import { buildVimaxAgentPlanFromProductionArtifacts } from '@/lib/skills/vimax-short-drama/vimax-plan-artifacts';
-import { parseVimaxProductionPlan, type VimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
+import {
+  parseVimaxProductionPlan,
+  refreshVimaxProductionPlanContinuity,
+  type VimaxProductionPlan,
+} from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 
 function isProductionProject(value: unknown): value is ProductionProject {
   if (!value || typeof value !== 'object') return false;
@@ -74,11 +78,24 @@ export function resolveCanonicalVimaxStageInput(input: {
 
   const productionProject = task.result?.productionProject;
   const assemblyPlan = task.result?.assemblyPlan;
-  const productionPlan = parseVimaxProductionPlan(task.result?.productionPlan);
-  if (!isProductionProject(productionProject) || !isAssemblyPlan(assemblyPlan) || !productionPlan) {
+  const persistedProductionPlan = parseVimaxProductionPlan(task.result?.productionPlan);
+  if (!isProductionProject(productionProject) || !isAssemblyPlan(assemblyPlan) || !persistedProductionPlan) {
     throw new Error('当前项目缺少完整制作合约，请重新生成制作计划。');
   }
   assertCurrentArtifacts(productionProject, assemblyPlan);
+  const productionPlan = refreshVimaxProductionPlanContinuity({
+    productionPlan: persistedProductionPlan,
+    productionProject,
+    assemblyPlan,
+  });
+  if (productionPlan.continuity?.artifactRevision !== persistedProductionPlan.continuity?.artifactRevision) {
+    updateTask(task.id, {
+      result: {
+        ...(task.result || {}),
+        productionPlan,
+      },
+    });
+  }
   const basePlan = {
     ...readPlanSummary(task.result?.content),
     ...readPersistedPlan(task.result?.vimaxPlan),
