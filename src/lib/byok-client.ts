@@ -1,4 +1,4 @@
-type StoredApiProvider = 'openai-compatible' | 'ark-plan';
+type StoredApiProvider = 'openai-compatible' | 'ark-plan' | 'happyhorse-dashscope';
 
 interface StoredApiConnection {
   provider?: StoredApiProvider;
@@ -15,22 +15,69 @@ interface ProviderErrorPayload {
 }
 
 const BYOK_STORAGE_KEY = 'dreambox-api-connection';
+const HAPPYHORSE_SESSION_STORAGE_KEY = 'dreambox-happyhorse-connection';
 
-export function getBYOKRequestHeaders(): HeadersInit {
+function isStoredProvider(value: unknown): value is StoredApiProvider {
+  return value === 'openai-compatible' || value === 'ark-plan' || value === 'happyhorse-dashscope';
+}
+
+function scopedHappyHorseStorageKey(storageScope = ''): string {
+  return `${HAPPYHORSE_SESSION_STORAGE_KEY}:${storageScope || 'default'}`;
+}
+
+function loadConnection(storageScope = ''): StoredApiConnection | undefined {
+  const sessionRaw = window.sessionStorage.getItem(scopedHappyHorseStorageKey(storageScope));
+  const raw = sessionRaw || window.localStorage.getItem(BYOK_STORAGE_KEY);
+  if (!raw) return undefined;
+  const config = JSON.parse(raw) as StoredApiConnection;
+  if (!isStoredProvider(config.provider) || !config.apiBase || !config.apiKey) return undefined;
+  return config;
+}
+
+export function saveHappyHorseSessionConnection(
+  storageScope: string,
+  config: { apiBase: string; apiKey: string; videoModel?: string },
+): void {
+  if (typeof window === 'undefined') return;
+  window.sessionStorage.setItem(scopedHappyHorseStorageKey(storageScope), JSON.stringify({
+    provider: 'happyhorse-dashscope',
+    apiBase: config.apiBase.trim(),
+    apiKey: config.apiKey.trim(),
+    videoModel: config.videoModel?.trim() || 'happyhorse-1.1-t2v',
+  } satisfies StoredApiConnection));
+}
+
+export function clearHappyHorseSessionConnection(storageScope: string): void {
+  if (typeof window === 'undefined') return;
+  window.sessionStorage.removeItem(scopedHappyHorseStorageKey(storageScope));
+}
+
+export function getHappyHorseSessionConnectionSummary(storageScope: string): {
+  configured: boolean;
+  apiBase: string;
+  videoModel: string;
+} {
+  if (typeof window === 'undefined') return { configured: false, apiBase: '', videoModel: 'happyhorse-1.1-t2v' };
+  try {
+    const raw = window.sessionStorage.getItem(scopedHappyHorseStorageKey(storageScope));
+    if (!raw) return { configured: false, apiBase: '', videoModel: 'happyhorse-1.1-t2v' };
+    const config = JSON.parse(raw) as StoredApiConnection;
+    return {
+      configured: config.provider === 'happyhorse-dashscope' && Boolean(config.apiBase) && Boolean(config.apiKey),
+      apiBase: config.apiBase || '',
+      videoModel: config.videoModel || 'happyhorse-1.1-t2v',
+    };
+  } catch {
+    return { configured: false, apiBase: '', videoModel: 'happyhorse-1.1-t2v' };
+  }
+}
+
+export function getBYOKRequestHeaders(storageScope = ''): Record<string, string> {
   if (typeof window === 'undefined') return {};
 
   try {
-    const raw = window.localStorage.getItem(BYOK_STORAGE_KEY);
-    if (!raw) return {};
-
-    const config = JSON.parse(raw) as StoredApiConnection;
-    if (
-      (config.provider !== 'openai-compatible' && config.provider !== 'ark-plan') ||
-      !config.apiBase ||
-      !config.apiKey
-    ) {
-      return {};
-    }
+    const config = loadConnection(storageScope);
+    if (!config?.provider || !config.apiBase || !config.apiKey) return {};
 
     const headers: Record<string, string> = {
       'x-yh-provider': config.provider,
@@ -54,19 +101,11 @@ export function getBYOKRequestHeaders(): HeadersInit {
   }
 }
 
-export function hasBYOKConnectionConfigured(): boolean {
+export function hasBYOKConnectionConfigured(storageScope = ''): boolean {
   if (typeof window === 'undefined') return false;
 
   try {
-    const raw = window.localStorage.getItem(BYOK_STORAGE_KEY);
-    if (!raw) return false;
-
-    const config = JSON.parse(raw) as StoredApiConnection;
-    return (
-      (config.provider === 'openai-compatible' || config.provider === 'ark-plan') &&
-      Boolean(config.apiBase) &&
-      Boolean(config.apiKey)
-    );
+    return Boolean(loadConnection(storageScope));
   } catch {
     return false;
   }

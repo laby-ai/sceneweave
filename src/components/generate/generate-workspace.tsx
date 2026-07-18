@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowUp,
   AtSign,
@@ -29,6 +29,8 @@ import { genId, loadChatHistory, loadMessages, saveChatHistory, saveMessages, ty
 import { VimaxProductionPlanCard } from '@/components/generate/vimax-production-plan-card';
 import { VimaxProjectEditorCard } from '@/components/generate/vimax-project-editor-card';
 import { VimaxSegmentedProductionCard } from '@/components/generate/vimax-segmented-production-card';
+import { HappyHorseConnectionControl } from '@/components/generate/happyhorse-connection-control';
+import { getBYOKRequestHeaders } from '@/lib/byok-client';
 import {
   useVimaxShortDramaSkill,
   VIMAX_REFERENCE_CONFIRM_REGEX,
@@ -139,6 +141,7 @@ export function GenerateWorkspace({
   const [subjectOpeningId, setSubjectOpeningId] = useState<string | null>(null);
   const [selectedRatio, setSelectedRatio] = useState('16:9');
   const [selectedQuality, setSelectedQuality] = useState('高清');
+  const [byokHeaders, setByokHeaders] = useState<Record<string, string>>({});
   const skillScope = storageScope || '';
   const [skillSelection, setSkillSelection] = useState(() => {
     const preset = typeof window === 'undefined' ? resolveVimaxSkillPreset() : loadVimaxSkillPreset(localStorage, skillScope);
@@ -152,7 +155,8 @@ export function GenerateWorkspace({
   useEffect(() => {
     setSkillSelection({ scope: skillScope, id: loadVimaxSkillPreset(localStorage, skillScope).id });
     setSkillSearch('');
-  }, [skillScope]);
+    setByokHeaders(getBYOKRequestHeaders(storageScope));
+  }, [skillScope, storageScope]);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const selectedSkill = resolveVimaxSkillPreset(skillSelection.scope === skillScope ? skillSelection.id : undefined);
@@ -162,6 +166,11 @@ export function GenerateWorkspace({
   const activeTitle = activeProject?.title
     || messages.find(message => message.role === 'user')?.content.slice(0, 30)
     || '未命名创作';
+  const effectiveRequestHeaders = useMemo(() => ({
+    ...(requestHeaders || {}),
+    ...byokHeaders,
+  }), [byokHeaders, requestHeaders]);
+  const selectedVideoModel = effectiveRequestHeaders['x-yh-video-model'] || 'doubao-seedance-1.5-pro';
 
   const setScopedWorkspaceView = useCallback((view: VimaxWorkspaceView) => {
     setWorkspaceView(view);
@@ -223,7 +232,7 @@ export function GenerateWorkspace({
     setInputValue: setInput,
     setCurrentStep: () => {},
     runCoordinator,
-    requestHeaders,
+    requestHeaders: effectiveRequestHeaders,
     onAuthenticationRequired,
   });
 
@@ -353,7 +362,7 @@ export function GenerateWorkspace({
     const requestSkill = resolveVimaxSkillPreset(overrideSkillId || selectedSkill.id);
 
     if (mode === 'agent') {
-      // 点击“确认开始生成 / 重做视频” -> 真实调用 Seedance 生成完整短剧
+      // 点击“确认开始生成 / 重做视频” -> 真实调用当前视频供应商生成完整短剧
       if (/确认开始生成|重做视频/.test(text)) {
         setMessages(prev => [...prev, { id: genId(), role: 'user', content: text, timestamp: Date.now() }]);
         setInput('');
@@ -367,13 +376,13 @@ export function GenerateWorkspace({
         setMessages(prev => [...prev, {
           id: genId(),
           role: 'assistant',
-          content: '视频生成会真实调用 doubao-seedance-1.5-pro（按真实费用计费）。确认后会按 6 个分镜分别生成约 5 秒片段，并自动合成为约 30 秒完整短剧，预计 4-10 分钟。',
+          content: `视频生成会真实调用 ${selectedVideoModel}（按真实费用计费）。确认后会按分镜逐段生成，并自动合成为完整短剧，预计 4-10 分钟。`,
           timestamp: Date.now(),
           vimaxAgent: {
             phase: 'video_cost_confirm',
             title: '视频生成费用确认',
-            summary: '将基于已确认的参考图和分镜脚本，调用 Seedance 生成 6 段并合成为 30 秒完整短剧。',
-            model: 'doubao-seedance-1.5-pro',
+            summary: '将基于已确认的参考图和分镜脚本，调用当前视频模型逐段生成并合成为完整短剧。',
+            model: selectedVideoModel,
             costState: 'not-yet',
             nextAction: '点击“确认开始生成”后开始真实调用视频模型。',
           },
@@ -418,7 +427,7 @@ export function GenerateWorkspace({
       timestamp: Date.now(),
     }]);
     setInput('');
-  }, [input, isLoading, mode, activeMode, onNavigate, handlePlanStep, handleReferenceAssetsStep, handleVideoStep, selectedRatio, selectedQuality, selectedSkill, setScopedWorkspaceView]);
+  }, [input, isLoading, mode, activeMode, onNavigate, handlePlanStep, handleReferenceAssetsStep, handleVideoStep, selectedRatio, selectedQuality, selectedSkill, selectedVideoModel, setScopedWorkspaceView]);
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
@@ -497,7 +506,7 @@ export function GenerateWorkspace({
                             ? { ...candidate, vimaxAgent: { ...candidate.vimaxAgent, productionPlan } }
                             : candidate
                         )))}
-                        requestHeaders={requestHeaders}
+                        requestHeaders={effectiveRequestHeaders}
                         hideQuickOptions={latestCompletedVideoIndex > index}
                       />
                     ))}
@@ -583,6 +592,11 @@ export function GenerateWorkspace({
             )}
           </div>
 
+          <HappyHorseConnectionControl
+            storageScope={storageScope}
+            onConnectionChange={() => setByokHeaders(getBYOKRequestHeaders(storageScope))}
+          />
+
           <div className="relative">
             <button
               type="button"
@@ -599,7 +613,7 @@ export function GenerateWorkspace({
                 <p className="px-1 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-[#9299a4]">参考图像模型</p>
                 <div className="rounded-lg bg-[#edf3ff] px-2.5 py-1.5 text-sm text-[#2f6bff]">doubao-seedream-5.0-lite</div>
                 <p className="px-1 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-[#9299a4]">视频模型</p>
-                <div className="rounded-lg bg-[#f5f7fa] px-2.5 py-1.5 text-sm text-[#555d68]">doubao-seedance-1.5-pro</div>
+                <div className="break-all rounded-lg bg-[#f5f7fa] px-2.5 py-1.5 text-sm text-[#555d68]">{selectedVideoModel}</div>
                 <p className="px-1 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-[#9299a4]">画面比例</p>
                 <div className="flex gap-1.5">
                   {["16:9", "9:16", "1:1", "4:3", "3:4"].map(r => (
@@ -815,7 +829,7 @@ function MessageBubble({ message, onQuickOption, onResultIteration, onProduction
               className="aspect-video w-full rounded-xl border border-[#e1e5eb] bg-black"
             />
             {message.generatedVideo.duration ? (
-              <p className="mt-1 text-xs text-[#858c97]">时长约 {message.generatedVideo.duration} 秒 · 真实 Seedance 成片</p>
+              <p className="mt-1 text-xs text-[#858c97]">时长约 {message.generatedVideo.duration} 秒 · 真实视频模型成片</p>
             ) : null}
           </div>
         )}

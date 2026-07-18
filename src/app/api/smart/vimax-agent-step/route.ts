@@ -13,6 +13,11 @@ import {
   resolveVimaxSkillPresetForRuntime,
   type VimaxSkillPreset,
 } from '@/lib/skills/vimax-short-drama/vimax-skill-presets';
+import {
+  extractBYOKConnection,
+  type BYOKConnection,
+} from '@/lib/byok-provider';
+import { callHappyHorseVimaxVideo } from '@/lib/skills/vimax-short-drama/happyhorse-vimax-video';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -248,6 +253,7 @@ function buildVimaxPlanEnvelope(
   basePlan: VimaxAgentPlan,
   body: VimaxAgentStepBody,
   taskId: string,
+  videoConnection?: BYOKConnection,
 ) {
   const { plan, productionProject, assemblyPlan } = buildProductionBackedVimaxPlan(prompt, basePlan, body, taskId);
   const config = getArkConfig();
@@ -258,11 +264,11 @@ function buildVimaxPlanEnvelope(
     resolution: body.resolution || '720p',
     planModel: model,
     imageModel: config.imageModel,
-    videoModel: config.videoModel,
+    videoModel: videoConnection?.videoModel || config.videoModel,
     providerReadiness: {
       plan: Boolean(config.apiKey),
       referenceAssets: Boolean(config.imageApiKey),
-      video: Boolean(config.imageApiKey),
+      video: Boolean(videoConnection?.videoModel && videoConnection.apiKey) || Boolean(config.imageApiKey),
     },
     assets: plan.assets,
     shots: plan.shots,
@@ -277,6 +283,7 @@ function createPersistedPlanEnvelope(
   model: string,
   basePlan: VimaxAgentPlan,
   body: VimaxAgentStepBody,
+  videoConnection?: BYOKConnection,
 ) {
   const taskId = createTask('storyboard', {
     prompt,
@@ -294,6 +301,7 @@ function createPersistedPlanEnvelope(
     basePlan,
     body,
     taskId,
+    videoConnection,
   );
   persistVimaxPlanTask({
     taskId,
@@ -721,7 +729,14 @@ export async function POST(request: NextRequest) {
               const result = await callArkTextStream(prompt, preset, body.model, (delta) => {
                 send('plan.delta', { delta });
               });
-              const envelope = createPersistedPlanEnvelope(owner, prompt, result.model, result.plan, trustedBody);
+              const envelope = createPersistedPlanEnvelope(
+                owner,
+                prompt,
+                result.model,
+                result.plan,
+                trustedBody,
+                extractBYOKConnection(request.headers),
+              );
               send('plan.complete', { success: true, phase: 'plan', model: result.model, ...envelope });
             } catch (error) {
               send('plan.error', { error: error instanceof Error ? error.message : 'unknown' });
@@ -734,7 +749,14 @@ export async function POST(request: NextRequest) {
       }
 
       const result = await callArkText(prompt, preset, body.model);
-      const envelope = createPersistedPlanEnvelope(owner, prompt, result.model, result.plan, trustedBody);
+      const envelope = createPersistedPlanEnvelope(
+        owner,
+        prompt,
+        result.model,
+        result.plan,
+        trustedBody,
+        extractBYOKConnection(request.headers),
+      );
       return NextResponse.json({
         success: true,
         phase,
@@ -783,14 +805,18 @@ export async function POST(request: NextRequest) {
         throw new Error('缺少分镜规划，无法生成视频。');
       }
       const config = getArkConfig();
+      const videoConnection = extractBYOKConnection(request.headers);
+      const videoModel = videoConnection?.videoModel || config.videoModel;
       const productionPlan = assertVimaxProductionPlanForPhase(body.productionPlan, 'video', {
         plan: config.textModel,
         referenceAssets: config.imageModel,
-        video: config.videoModel,
+        video: videoModel,
       });
       const preset = resolveVimaxSkillPresetForRuntime(productionPlan.workflow.presetId);
       const assets = Array.isArray(body.assets) ? body.assets : (body.plan.assets as VimaxAgentReferenceAsset[] | undefined) || [];
-      const result = await callSeedanceVideo(body.plan, assets, preset, { ratio: body.ratio, resolution: body.resolution });
+      const result = videoConnection?.provider === 'happyhorse-dashscope'
+        ? await callHappyHorseVimaxVideo(body.plan, preset, videoConnection, { ratio: body.ratio, resolution: body.resolution })
+        : await callSeedanceVideo(body.plan, assets, preset, { ratio: body.ratio, resolution: body.resolution });
       return NextResponse.json({
         success: true,
         phase,

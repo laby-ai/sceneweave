@@ -531,7 +531,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
     setMessages(prev => [...prev, {
       id: progressMsgId,
       role: 'assistant',
-      content: '正在调用 Seedance 生成 30 秒完整短剧，预计 4-10 分钟…',
+      content: '正在调用当前视频模型逐段生成完整短剧，预计 4-10 分钟…',
       timestamp: Date.now(),
       generationStatus: 'generating',
       generationProgress: 30,
@@ -541,7 +541,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         ...agent,
         phase: 'video',
         costState: 'incurred',
-        nextAction: '等待 Seedance 返回成片。',
+        nextAction: '等待视频模型返回成片。',
       },
     } as ChatMessage]);
 
@@ -590,13 +590,13 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         throw new Error(reason);
       }
       if (!response.ok || !data.success || !data.videoUrl) {
-        throw new Error(data.error || 'Seedance 视频生成失败');
+        throw new Error(data.error || '视频模型生成失败');
       }
 
       const generatedSegments = Array.isArray(data.segments) ? data.segments : [];
       updateRunMessages(run, prev => prev.map(message => message.id === progressMsgId ? {
         ...message,
-        content: `已生成完整短剧「${agent.title || data.shotTitle || '短剧成片'}」（${data.duration || ''}秒，${data.segmentCount || generatedSegments.length || 1} 段真实 Seedance 片段已合成）。`,
+        content: `已生成完整短剧「${agent.title || data.shotTitle || '短剧成片'}」（${data.duration || ''}秒，${data.segmentCount || generatedSegments.length || 1} 段真实视频片段已合成）。`,
         generationStatus: 'completed',
         generationProgress: 100,
         generatedVideo: {
@@ -609,7 +609,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         vimaxAgent: {
           ...agent,
           phase: 'video',
-          model: data.model || 'doubao-seedance-1.5-pro',
+          model: data.model || requestHeaders?.['x-yh-video-model'] || 'doubao-seedance-1.5-pro',
           costState: 'incurred',
           nextAction: '完整短剧已生成，可下载、复用或调整分镜后重做。',
           shots: (agent.shots || []).map((shot, index) => {
@@ -632,7 +632,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
           ...agent,
           phase: 'video',
           costState: 'blocked',
-          nextAction: '修正 Seedance 配置或参考素材后重试。',
+          nextAction: '修正视频模型配置或参考素材后重试。',
         },
       } : message));
     } finally {

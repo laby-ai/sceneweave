@@ -8,8 +8,15 @@ import {
   parseSCNetVideoTaskId,
   sanitizeSCNetProviderError,
 } from '@/lib/scnet-video-provider';
+import {
+  buildHappyHorseVideoSubmitRequest,
+  buildHappyHorseVideoTaskUrl,
+  getHappyHorseProviderErrorMessage,
+  parseHappyHorseVideoStatus,
+  parseHappyHorseVideoTaskId,
+} from '@/lib/happyhorse-video-provider';
 
-export type BYOKProviderType = 'openai-compatible' | 'ark-plan';
+export type BYOKProviderType = 'openai-compatible' | 'ark-plan' | 'happyhorse-dashscope';
 
 export interface BYOKConnection {
   provider: BYOKProviderType;
@@ -51,6 +58,7 @@ export interface BYOKVideoParams {
   firstFrameImage?: string;
   lastFrameImage?: string;
   referenceImages?: string[];
+  seed?: number;
 }
 
 export interface BYOKVideoTask {
@@ -113,7 +121,10 @@ export function extractBYOKConnection(headers: Headers): BYOKConnection | undefi
   const imageModel = headers.get('x-yh-image-model')?.trim() || undefined;
   const videoModel = headers.get('x-yh-video-model')?.trim() || undefined;
 
-  if (provider && apiBase && apiKey && (provider === 'openai-compatible' || provider === 'ark-plan')) {
+  if (
+    provider && apiBase && apiKey &&
+    (provider === 'openai-compatible' || provider === 'ark-plan' || provider === 'happyhorse-dashscope')
+  ) {
     return { provider, apiBase: normalizeBYOKApiBase(apiBase), apiKey, model, imageModel, videoModel };
   }
 
@@ -337,13 +348,47 @@ export async function submitVideoWithBYOK(
   connection: BYOKConnection,
   params: BYOKVideoParams
 ): Promise<BYOKVideoTask> {
-  if (connection.provider !== 'ark-plan') {
-    throw new Error('当前 BYOK 视频生成仅支持 Ark Plan，请在设置页选择 Ark Plan 并填写视频模型');
-  }
-
   const model = params.model || connection.videoModel || connection.model;
   if (!model) {
     throw new Error('BYOK 视频调用缺少视频模型');
+  }
+
+  if (connection.provider === 'happyhorse-dashscope') {
+    if (params.firstFrameImage || params.lastFrameImage || params.referenceImages?.length) {
+      throw new Error('快乐马 1.1 当前文本生成视频契约不支持首尾帧或参考图，已停止而非静默忽略');
+    }
+    const request = buildHappyHorseVideoSubmitRequest({
+      apiBase: connection.apiBase,
+      apiKey: connection.apiKey,
+      model,
+      prompt: params.prompt,
+      duration: params.duration,
+      ratio: params.ratio,
+      resolution: params.resolution,
+      watermark: params.watermark,
+      seed: params.seed,
+    });
+    const response = await fetch(request.url, {
+      method: 'POST',
+      headers: request.headers,
+      body: JSON.stringify(request.body),
+    });
+    const payload = await parseResponsePayload(response);
+    if (!response.ok) {
+      throw new Error(`快乐马视频提交失败：${getHappyHorseProviderErrorMessage(payload, response.status)}`);
+    }
+    const taskId = parseHappyHorseVideoTaskId(payload);
+    if (!taskId) throw new Error('快乐马视频提交未返回任务 ID');
+    return {
+      taskId,
+      model,
+      provider: 'byok',
+      statusUrl: buildHappyHorseVideoTaskUrl(connection.apiBase, taskId),
+    };
+  }
+
+  if (connection.provider !== 'ark-plan') {
+    throw new Error('当前 BYOK 视频生成仅支持 Ark Plan 或快乐马工作空间');
   }
 
   if (isSCNetVideoApiBase(connection.apiBase)) {
@@ -432,8 +477,26 @@ export async function getVideoStatusWithBYOK(
   connection: BYOKConnection,
   taskId: string
 ): Promise<BYOKVideoStatus> {
+  if (connection.provider === 'happyhorse-dashscope') {
+    const response = await fetch(buildHappyHorseVideoTaskUrl(connection.apiBase, taskId), {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${connection.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    const payload = await parseResponsePayload(response);
+    if (!response.ok) {
+      throw new Error(`快乐马视频查询失败：${getHappyHorseProviderErrorMessage(payload, response.status)}`);
+    }
+    const status = parseHappyHorseVideoStatus(payload);
+    return status.status === 'failed'
+      ? { ...status, error: getHappyHorseProviderErrorMessage(payload, response.status) }
+      : status;
+  }
+
   if (connection.provider !== 'ark-plan') {
-    throw new Error('当前 BYOK 视频查询仅支持 Ark Plan');
+    throw new Error('当前 BYOK 视频查询仅支持 Ark Plan 或快乐马工作空间');
   }
 
   if (isSCNetVideoApiBase(connection.apiBase)) {
