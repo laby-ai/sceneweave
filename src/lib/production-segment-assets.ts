@@ -315,6 +315,7 @@ function buildVideoSegmentAsset(segment: ProductionSegmentPlan): ProductionAsset
       duration: segment.duration,
       completedAt: segment.completedAt,
       prompt: segment.prompt,
+      artifactVersion: segment.artifactReadiness?.sourceRevision,
     },
   };
 }

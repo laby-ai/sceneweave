@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { buildProductionCutDraftJson } from '@/lib/production-export-package';
+import {
+  buildProductionCutDraftJson,
+  ProductionCutDraftVersionError,
+} from '@/lib/production-export-package';
 import {
   assertVimaxProductionDraftDelivery,
 } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
@@ -112,6 +115,17 @@ export async function GET(request: NextRequest) {
       },
     );
   } catch (error) {
+    if (error instanceof ProductionCutDraftVersionError) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: error.message,
+          usedRealKey: false,
+          incurredCost: false,
+        },
+        { status: 409 },
+      );
+    }
     console.error('[ProductionExport] cut draft export failed:', error);
     return NextResponse.json(
       {

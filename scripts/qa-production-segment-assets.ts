@@ -505,6 +505,53 @@ assert(cutDraftSecondAssemblySegment?.expectedInputs.firstFrameUrl === 'https://
 assert(cutDraftSecondAssemblySegment?.audioContinuityPrompt, 'cut draft second segment audio continuity prompt missing');
 assert(cutDraftSecondAssemblySegment?.storyContinuityPrompt, 'cut draft second segment story continuity prompt missing');
 
+const staleCutDraftPlan: ProductionAssemblyPlan = {
+  ...success.assemblyPlan,
+  status: 'planned',
+  segments: success.assemblyPlan.segments.map(segment => segment.index === 0
+    ? {
+        ...segment,
+        status: 'queued',
+        artifactReadiness: {
+          version: 'yh-artifact-readiness-v1',
+          sourceRevision: 'rev-after-storyboard-edit',
+          stale: true,
+          staleReason: 'storyboard-shot-writeback',
+          staleFromSegmentIndex: 0,
+          checkedAt: '2026-06-17T00:00:02.000Z',
+          blockers: ['artifact-stale-after-project-writeback'],
+        },
+        expectedOutputs: {
+          ...segment.expectedOutputs,
+          videoUrl: null,
+          lastFrameUrl: null,
+          providerTaskId: null,
+        },
+      }
+    : segment),
+};
+
+let staleCutDraftRejected = false;
+try {
+  buildProductionCutDraftJson({
+    id: 'parent-task',
+    type: 'video',
+    status: 'running',
+    createdAt: Date.parse('2026-06-17T00:00:00.000Z'),
+    updatedAt: Date.parse('2026-06-17T00:00:02.000Z'),
+    progress: 50,
+    message: 'qa stale cut draft',
+    config: { prompt: 'qa segmented story', duration: '10', ratio: '16:9', resolution: '720p' },
+    result: {
+      productionProject: success.productionProject,
+      assemblyPlan: staleCutDraftPlan,
+    },
+  } as unknown as Parameters<typeof buildProductionCutDraftJson>[0]);
+} catch (error) {
+  staleCutDraftRejected = String(error).includes('已失效');
+}
+assert(staleCutDraftRejected, 'cut draft must reject a previous successful clip after its assembly segment became stale');
+
 const failed = applySegmentAssetWriteback({
   productionProject: success.productionProject,
   assemblyPlan: success.assemblyPlan,
@@ -630,6 +677,7 @@ console.log(JSON.stringify({
     'completed segment marks boundary bridge ready',
     'completed segment archives audio cue and hasAudio metadata',
     'cut draft preserves segment story/audio handoff metadata',
+    'cut draft rejects stale previous-success segment assets',
     'completed segment updates DAG node',
     'failed segment records error without fake asset',
     'deliverable remains without fake final videoUrl',

@@ -14,6 +14,9 @@ type ExportAsset = {
   duration?: number | null;
   childTaskId?: string;
   providerTaskId?: string;
+  segmentIndex?: number | null;
+  shotId?: string;
+  artifactVersion?: string;
   audioCue?: string;
   storyStateCue?: string;
   hasAudio?: boolean;
@@ -71,6 +74,9 @@ function exportAsset(
     duration: asNumber(metadata.duration),
     childTaskId: asString(metadata.childTaskId),
     providerTaskId: asString(metadata.providerTaskId),
+    segmentIndex: asNumber(metadata.segmentIndex),
+    shotId: asString(metadata.shotId),
+    artifactVersion: asString(metadata.artifactVersion),
     audioCue: asString(metadata.audioCue) || segment?.expectedOutputs.audioCue || segment?.audioState?.audioCue || undefined,
     storyStateCue: asString(metadata.storyStateCue) || storyStateCue || undefined,
     hasAudio: asBoolean(metadata.hasAudio) ?? asBoolean(segment?.expectedOutputs.hasAudio),
@@ -81,6 +87,34 @@ function exportAsset(
       ? metadata.segmentAssetIds.filter((id): id is string => typeof id === 'string')
       : undefined,
   };
+}
+
+export class ProductionCutDraftVersionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ProductionCutDraftVersionError';
+  }
+}
+
+function assertCurrentVideoSegments(
+  assets: ExportAsset[],
+  sourceAssets: ProductionProject['assets'],
+  assemblyPlan?: ProductionAssemblyPlan,
+) {
+  if (!assemblyPlan) return;
+  for (const asset of assets) {
+    const sourceAsset = sourceAssets.find(item => item.id === asset.id);
+    const segment = sourceAsset ? segmentForAsset(sourceAsset, assemblyPlan) : undefined;
+    if (!segment
+      || segment.status !== 'completed'
+      || segment.artifactReadiness?.stale === true
+      || !segment.expectedOutputs.videoUrl
+      || segment.expectedOutputs.videoUrl !== asset.videoUrl) {
+      throw new ProductionCutDraftVersionError(
+        `片段 ${asset.name} 已失效或不属于当前分镜版本，请重新生成后再导出剪辑草稿。`,
+      );
+    }
+  }
 }
 
 function segmentForAsset(
@@ -110,7 +144,10 @@ export function buildProductionCutDraftJson(task: BackgroundTask) {
   const assemblyPlan = result.assemblyPlan as ProductionAssemblyPlan | undefined;
   const assets = productionProject.assets.map(asset => exportAsset(asset, segmentForAsset(asset, assemblyPlan)));
   const finalVideos = assets.filter(asset => asset.kind === 'finalVideo' && asset.videoUrl);
-  const videoSegments = assets.filter(asset => asset.kind === 'videoSegment' && asset.videoUrl);
+  const videoSegments = assets
+    .filter(asset => asset.kind === 'videoSegment' && asset.videoUrl)
+    .sort((left, right) => (left.segmentIndex ?? Number.MAX_SAFE_INTEGER) - (right.segmentIndex ?? Number.MAX_SAFE_INTEGER));
+  assertCurrentVideoSegments(videoSegments, productionProject.assets, assemblyPlan);
 
   return {
     version: 'yh-cut-draft-json-v1',

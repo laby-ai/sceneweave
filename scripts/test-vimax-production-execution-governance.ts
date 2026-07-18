@@ -4,6 +4,8 @@ import { rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
+import type { TaskResult } from '../src/lib/task-manager';
+
 const taskFile = path.join(tmpdir(), `sceneweave-vimax-execution-governance-${randomUUID()}.json`);
 process.env.HUIYING_TASKS_FILE = taskFile;
 
@@ -122,6 +124,57 @@ async function main() {
   assert.equal(exportBody.usedRealKey, false);
   assert.equal(exportBody.incurredCost, false);
 
+  const exportReadyTask = taskManager.getTaskFresh(taskId);
+  taskManager.updateTask(taskId, {
+    result: {
+      ...exportReadyTask?.result,
+      productionProject: {
+        ...(exportReadyTask?.result?.productionProject as Record<string, unknown>),
+        assets: [{
+          id: 'video-segment-1',
+          kind: 'videoSegment',
+          name: '片段 1',
+          status: 'completed',
+          summary: '旧版本已成功片段',
+          source: 'task',
+          relatedShotIds: ['shot-1'],
+          metadata: {
+            segmentId: 'segment-1',
+            segmentIndex: 0,
+            shotId: 'shot-1',
+            videoUrl: '/generated/videos/previous-segment-1.mp4',
+          },
+        }],
+      },
+      assemblyPlan: {
+        version: 'yh-assembly-plan-v1',
+        status: 'planned',
+        segments: [{
+          id: 'segment-1',
+          index: 0,
+          shotId: 'shot-1',
+          status: 'queued',
+          artifactReadiness: {
+            version: 'yh-artifact-readiness-v1',
+            sourceRevision: 'rev-after-edit',
+            stale: true,
+            staleReason: 'storyboard-shot-writeback',
+            staleFromSegmentIndex: 0,
+            checkedAt: '2026-07-19T04:40:00.000Z',
+            blockers: ['artifact-stale-after-project-writeback'],
+          },
+          expectedOutputs: { taskId: 'segment-task-1', videoUrl: null, lastFrameUrl: null },
+        }],
+      },
+    } as unknown as TaskResult,
+  });
+  const staleSegmentExport = await exportRoute.GET(new NextRequest(
+    `http://localhost/api/production/export?taskId=${taskId}&format=cut-draft-json`,
+    { headers },
+  ));
+  assert.equal(staleSegmentExport.status, 409);
+  assert.match(String((await staleSegmentExport.json()).error), /已失效/);
+
   const otherGuestResponse = await taskRoute.POST(new NextRequest(`http://localhost/api/tasks/${taskId}`, {
     method: 'POST',
     headers: { ...headers, 'x-paper-host-guest-workspace': 'guest-creation-execution-governance-other' },
@@ -133,7 +186,7 @@ async function main() {
   console.log(JSON.stringify({
     ok: true,
     script: 'test-vimax-production-execution-governance',
-    checks: 26,
+    checks: 28,
     usedRealKey: false,
     incurredCost: false,
   }));
