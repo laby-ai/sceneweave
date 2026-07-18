@@ -28,6 +28,7 @@ export async function PATCH(
         status: body.status,
         metadata: body.metadata,
         relatedShotIds: body.relatedShotIds,
+        versionAction: body.versionAction,
       },
     });
 
@@ -37,6 +38,7 @@ export async function PATCH(
       incurredCost: false,
       taskId: result.task.id,
       productionProjectId: result.productionProject.id,
+      productionProject: result.productionProject,
       asset: result.asset,
       changedFields: result.changedFields,
     });

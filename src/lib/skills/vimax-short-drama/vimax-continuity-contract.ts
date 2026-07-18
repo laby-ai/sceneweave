@@ -72,8 +72,16 @@ function isGlobalAsset(asset: ProductionProject['assets'][number], allShotIds: s
   return relatedShotIds.length === 0 || allShotIds.every(shotId => relatedShotIds.includes(shotId));
 }
 
+function isApprovedAssetVersion(asset: ProductionProject['assets'][number]) {
+  const version = asset.metadata?.assetVersion;
+  if (!version || typeof version !== 'object' || Array.isArray(version)) return true;
+  return (version as { status?: unknown }).status === 'approved';
+}
+
 function assetSummary(project: ProductionProject, kind: string, fallback: string, allShotIds: string[]) {
-  const assets = project.assets.filter(asset => asset.kind === kind && isGlobalAsset(asset, allShotIds));
+  const assets = project.assets.filter(asset =>
+    asset.kind === kind && isApprovedAssetVersion(asset) && isGlobalAsset(asset, allShotIds),
+  );
   if (assets.length === 0) return fallback;
   return assets.map(asset => `${asset.name}：${asset.summary}`).join('；');
 }
@@ -143,7 +151,9 @@ export function buildVimaxContinuityContract(input: BuildContinuityContractInput
       audioCue: compact(segment.audioState?.audioCue || story.audioContract.audioCue, frame.audioDescription),
       narrativeCause: compact(story.videoDesc.visualCausality, projectShot?.dramaticPurpose || '推进当前剧情节点。'),
       assetAnchors: project.assets
-        .filter(asset => !isGlobalAsset(asset, allShotIds) && asset.relatedShotIds?.includes(segment.shotId))
+        .filter(asset => isApprovedAssetVersion(asset)
+          && !isGlobalAsset(asset, allShotIds)
+          && asset.relatedShotIds?.includes(segment.shotId))
         .map(asset => `${asset.name}：${asset.summary}`),
     };
   });
@@ -166,7 +176,7 @@ export function buildVimaxContinuityContract(input: BuildContinuityContractInput
     wardrobe: compact(wardrobe, '服饰、发型与可见身份锚点必须跨镜保持。'),
     scene: assetSummary(project, 'scene', project.storyBible.relationship, allShotIds),
     props: project.assets
-      .filter(asset => asset.kind === 'prop' && isGlobalAsset(asset, allShotIds))
+      .filter(asset => asset.kind === 'prop' && isApprovedAssetVersion(asset) && isGlobalAsset(asset, allShotIds))
       .map(asset => `${asset.name}：${asset.summary}`),
     productionDirection: {
       artStyle: compact(project.creativeDirection?.artStyle, project.style || '保持全片视觉风格一致。'),

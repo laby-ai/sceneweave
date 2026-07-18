@@ -45,6 +45,30 @@ assert.equal(assetUpdated.assets[0]?.name, '定稿脚本');
 assert.equal(assetUpdated.assets[0]?.summary, '成功保存的新摘要');
 assert.equal(assetUpdated.assets[1]?.name, '主角');
 
+const derivedAsset = {
+  ...project.assets[1],
+  id: 'character-1-v2',
+  name: '主角 · 雨夜服装',
+  metadata: {
+    assetVersion: {
+      rootAssetId: 'character-1',
+      parentAssetId: 'character-1',
+      number: 2,
+      status: 'draft',
+    },
+  },
+};
+const derivedProject = {
+  ...project,
+  assets: [...project.assets, derivedAsset],
+} as ProductionProject;
+const derivedUpdated = applyVimaxAssetEditorWriteback(project, {
+  success: true,
+  asset: derivedAsset,
+  productionProject: derivedProject,
+});
+assert.equal(derivedUpdated.assets.at(-1)?.id, 'character-1-v2');
+
 const storyboardUpdated = applyVimaxStoryboardEditorWriteback(assetUpdated, {
   success: true,
   shot: { ...project.storyboard.shots[0], prompt: '雨夜街口的推进镜头', duration: 7 },
@@ -66,6 +90,9 @@ assert.equal(storyboardUpdated.assets[0]?.summary, '成功保存的新摘要');
 const cardSource = readFileSync(new URL('../src/components/generate/vimax-project-editor-card.tsx', import.meta.url), 'utf8');
 assert.match(cardSource, /素材与分镜/);
 assert.match(cardSource, /保存素材/);
+assert.match(cardSource, /保存为新版本/);
+assert.match(cardSource, /批准此版本/);
+assert.match(cardSource, /versionAction/);
 assert.match(cardSource, /适用镜头/);
 assert.match(cardSource, /relatedShotIds/);
 assert.match(cardSource, /保存分镜/);

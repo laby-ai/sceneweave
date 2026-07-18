@@ -19,6 +19,7 @@ export interface VimaxProjectEditorView {
 export interface VimaxAssetWritebackResponse {
   success: boolean;
   asset?: ProductionAsset;
+  productionProject?: ProductionProject;
   error?: string;
 }
 
@@ -55,6 +56,7 @@ export function applyVimaxAssetEditorWriteback(
   response: VimaxAssetWritebackResponse,
 ): ProductionProject {
   if (!response.success || !response.asset) throw new Error(response.error || '素材保存失败');
+  if (response.productionProject) return response.productionProject;
   if (!project.assets.some(asset => asset.id === response.asset?.id)) throw new Error('素材不存在');
   return {
     ...project,

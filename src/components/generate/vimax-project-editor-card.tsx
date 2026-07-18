@@ -47,6 +47,7 @@ export function VimaxProjectEditorCard({ taskId, requestHeaders }: {
   );
   const selectedAsset = view?.editableAssets.find(asset => asset.id === selectedAssetId) || view?.editableAssets[0];
   const selectedShot = view?.shots.find(shot => shot.id === selectedShotId) || view?.shots[0];
+  const selectedAssetVersion = selectedAsset?.metadata?.assetVersion as { number?: number; status?: string } | undefined;
 
   const loadProject = useCallback(async () => {
     const sequence = ++loadSequence.current;
@@ -123,7 +124,7 @@ export function VimaxProjectEditorCard({ taskId, requestHeaders }: {
     }
   }
 
-  async function saveAsset() {
+  async function saveAsset(versionAction?: 'derive' | 'approve') {
     if (!project || !selectedAsset || pending) return;
     setPending('asset');
     setError('');
@@ -133,11 +134,14 @@ export function VimaxProjectEditorCard({ taskId, requestHeaders }: {
         {
           method: 'PATCH',
           headers: requestHeaders,
-          body: JSON.stringify(assetDraft),
+          body: JSON.stringify(versionAction === 'approve'
+            ? { versionAction }
+            : { ...assetDraft, ...(versionAction ? { versionAction } : {}) }),
           redirectOnUnauthorized: false,
         },
       );
       setProject(current => current ? applyVimaxAssetEditorWriteback(current, response) : current);
+      if (response.asset) setSelectedAssetId(response.asset.id);
     } catch {
       setError('素材保存失败，请重试。已保存的内容不会被覆盖。');
     } finally {
@@ -233,7 +237,18 @@ export function VimaxProjectEditorCard({ taskId, requestHeaders }: {
               ))}
             </div>
           </fieldset>
-          <button type="button" disabled={!selectedAsset || Boolean(pending) || assetDraft.relatedShotIds.length === 0} onClick={() => void saveAsset()} className="mt-2 rounded-lg bg-[#2f6bff] px-3 py-1.5 text-[11px] font-medium text-white disabled:opacity-50">{pending === 'asset' ? '正在保存…' : '保存素材'}</button>
+          {selectedAssetVersion ? (
+            <p className="mt-2 text-[10px] text-[#7c8592]">
+              版本 {selectedAssetVersion.number || '—'} · {{ draft: '待批准', approved: '已批准', superseded: '历史版本', failed: '生成失败' }[selectedAssetVersion.status || ''] || '未知状态'}
+            </p>
+          ) : null}
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button type="button" disabled={!selectedAsset || Boolean(pending) || assetDraft.relatedShotIds.length === 0} onClick={() => void saveAsset()} className="rounded-lg bg-[#2f6bff] px-3 py-1.5 text-[11px] font-medium text-white disabled:opacity-50">{pending === 'asset' ? '正在保存…' : '保存素材'}</button>
+            <button type="button" disabled={!selectedAsset || Boolean(pending) || assetDraft.relatedShotIds.length === 0} onClick={() => void saveAsset('derive')} className="rounded-lg border border-[#cfd7e3] bg-white px-3 py-1.5 text-[11px] font-medium text-[#4d5663] disabled:opacity-50">保存为新版本</button>
+            {selectedAssetVersion?.status === 'draft' ? (
+              <button type="button" disabled={Boolean(pending)} onClick={() => void saveAsset('approve')} className="rounded-lg border border-[#bcd0ff] bg-[#eef4ff] px-3 py-1.5 text-[11px] font-medium text-[#2f6bff] disabled:opacity-50">批准此版本</button>
+            ) : null}
+          </div>
         </div>
 
         <div className="rounded-lg border border-[#e2e7ee] bg-white p-3">
