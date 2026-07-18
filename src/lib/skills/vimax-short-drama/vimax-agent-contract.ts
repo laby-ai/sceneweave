@@ -8,6 +8,15 @@ export interface VimaxAgentReferenceAsset {
   prompt?: string;
   url?: string;
   shotIndex?: number;
+  subjectId?: string;
+  subjectView?: 'front' | 'side' | 'back';
+  selectedSubjectViews?: Array<{
+    subjectId: string;
+    label: string;
+    view: 'front' | 'side' | 'back';
+    viewId: string;
+    url: string;
+  }>;
 }
 
 export interface VimaxAgentPlan {

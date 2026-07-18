@@ -127,6 +127,9 @@ export interface ChatMessage {
       url?: string;
       /** 关联到的分镜序号；用于把参考图归位到对应 Clip 下。 */
       shotIndex?: number;
+      /** 角色定妆注册表中的稳定主体与朝向。 */
+      subjectId?: string;
+      subjectView?: 'front' | 'side' | 'back';
       status: 'planned' | 'generated' | 'blocked';
     }>;
     shots?: Array<{

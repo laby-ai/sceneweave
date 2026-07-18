@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { mergeVideosWithLocalFfmpeg } from '@/lib/local-video-merge';
 import { extractLastFrameForHandoff } from '@/lib/video-frame-extraction';
 import { resolvePaperHostCreationOwnerFromRequest } from '@/lib/task-access';
-import { createTask, type TaskOwner } from '@/lib/task-manager';
+import { createTask, getTaskForOwner, updateTask, type TaskOwner } from '@/lib/task-manager';
 import type { VimaxAgentPlan, VimaxAgentReferenceAsset, VimaxAgentStepBody } from '@/lib/skills/vimax-short-drama/vimax-agent-contract';
 import { VIMAX_PLAN_MODEL } from '@/lib/skills/vimax-short-drama/vimax-generation-preferences';
 import { buildProductionBackedVimaxPlan } from '@/lib/skills/vimax-short-drama/vimax-plan-artifacts';
@@ -683,6 +683,15 @@ export async function POST(request: NextRequest) {
           imageModel: config.imageModel,
         },
       });
+      const task = getTaskForOwner(canonical.taskId, owner);
+      if (!task) throw new Error('创作项目不存在或无权访问，参考素材无法保存。');
+      if (!updateTask(task.id, {
+        result: {
+          ...(task.result || {}),
+          vimaxReferenceAssets: result.assets,
+          vimaxSubjectReferenceRegistry: result.subjectRegistry,
+        },
+      })) throw new Error('角色定妆与参考素材保存失败。');
       return NextResponse.json({
         success: true,
         phase,
@@ -690,6 +699,7 @@ export async function POST(request: NextRequest) {
         incurredCost: true,
         model: result.model,
         assets: result.assets,
+        subjectRegistry: result.subjectRegistry,
       });
     }
 
@@ -715,7 +725,13 @@ export async function POST(request: NextRequest) {
         video: videoModel,
       });
       const preset = resolveVimaxSkillPresetForRuntime(productionPlan.workflow.presetId);
-      const assets = Array.isArray(body.assets) ? body.assets : [];
+      const task = getTaskForOwner(canonical.taskId, owner);
+      const persistedAssets = Array.isArray(task?.result?.vimaxReferenceAssets)
+        ? task.result.vimaxReferenceAssets as VimaxAgentReferenceAsset[]
+        : [];
+      const assets = Array.isArray(body.assets) && body.assets.length > 0
+        ? body.assets
+        : persistedAssets;
       const generationPreferences = productionPlan.preferences;
       if (!productionPlan.continuity) {
         throw new Error('制作计划缺少连续性契约，请返回计划阶段重新确认。');

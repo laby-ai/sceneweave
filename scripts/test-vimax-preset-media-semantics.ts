@@ -145,9 +145,11 @@ async function main() {
   }));
   assert.equal(referenceResponse.status, 200);
   assert.ok(imagePrompts.length > 0, 'reference stage must invoke the existing image route fixture');
-  assert.match(imagePrompts[0], /电商商品片/);
-  assert.match(imagePrompts[0], /明快商业广告/);
-  assert.doesNotMatch(imagePrompts[0], /雨夜|同一部短剧/);
+  const commerceShotPrompt = imagePrompts.find((prompt) => prompt.includes('创作类型：电商商品片'));
+  assert.ok(commerceShotPrompt, 'reference stage must preserve the commerce shot prompt after portrait generation');
+  assert.match(commerceShotPrompt, /电商商品片/);
+  assert.match(commerceShotPrompt, /明快商业广告/);
+  assert.doesNotMatch(commerceShotPrompt, /雨夜|同一部短剧/);
 
   const videoResponse = await route.POST(new NextRequest('http://localhost/api/smart/vimax-agent-step', {
     method: 'POST',
