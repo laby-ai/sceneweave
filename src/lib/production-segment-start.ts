@@ -434,7 +434,19 @@ export function startProductionAssemblySegment(
     );
   }
 
-  startTask(resolvedChildTask.id);
+  if (!startTask(resolvedChildTask.id)) {
+    const currentTask = getTaskFresh(resolvedChildTask.id);
+    throw new ProductionSegmentStartError(
+      '该片段已由另一执行请求领取，请等待当前任务结束或先取消后重试。',
+      409,
+      {
+        code: 'segment-job-already-active',
+        taskId: resolvedChildTask.id,
+        status: currentTask?.status || 'unknown',
+        nextAction: '保留当前供应商任务并继续查看进度，禁止重复提交同一片段。',
+      },
+    );
+  }
   updateTaskProgress(resolvedChildTask.id, 10, '正在提交片段视频任务（Ark BYOK）...', '片段任务将独立写回父级 assemblyPlan。');
   updateTask(resolvedChildTask.id, {
       config: {
