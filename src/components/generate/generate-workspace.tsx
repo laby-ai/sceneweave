@@ -64,6 +64,7 @@ import {
   buildVimaxContinueEditPrompt,
   buildVimaxResultDelivery,
   createVimaxManifestDataUrl,
+  resolveVimaxProjectPresetId,
   resolveVimaxResultIteration,
 } from '@/lib/skills/vimax-short-drama/vimax-result-delivery';
 
@@ -177,6 +178,16 @@ export function GenerateWorkspace({
     setTimeout(() => textareaRef.current?.focus(), 0);
   }, [skillScope]);
 
+  const restoreSkillPreset = useCallback((skillId?: string | null) => {
+    if (!skillId) return;
+    const preset = saveVimaxSkillPreset(localStorage, skillScope, skillId);
+    setSkillSelection({ scope: skillScope, id: preset.id });
+  }, [skillScope]);
+
+  const restoreProjectSkillPreset = useCallback((projectMessages: ChatMessage[]) => {
+    restoreSkillPreset(resolveVimaxProjectPresetId(projectMessages));
+  }, [restoreSkillPreset]);
+
   // 自动保存当前对话到 localStorage，刷新后最近列表可见
   useEffect(() => {
     if (restoredScope !== (storageScope || '')) return;
@@ -222,6 +233,7 @@ export function GenerateWorkspace({
     const recoveredHistory = loadChatHistory(storageScope);
     const recoveredProjectId = loadActiveVimaxProjectId(sessionStorage, storageScope);
     setMessages(recoveredMessages);
+    restoreProjectSkillPreset(recoveredMessages);
     setHistory(recoveredHistory);
     setActiveProjectId(recoveredProjectId && recoveredHistory.some(entry => entry.id === recoveredProjectId)
       ? recoveredProjectId
@@ -235,7 +247,7 @@ export function GenerateWorkspace({
     setIsLoading(false);
     restoredScopeRef.current = storageScope || '';
     setRestoredScope(restoredScopeRef.current);
-  }, [cancelCurrentRun, storageScope]);
+  }, [cancelCurrentRun, restoreProjectSkillPreset, storageScope]);
 
   const startNewChat = useCallback(() => {
     cancelCurrentRun();
@@ -259,9 +271,11 @@ export function GenerateWorkspace({
     setIsLoading(false);
     setActiveProjectId(projectId);
     saveActiveVimaxProjectId(sessionStorage, storageScope, projectId);
-    setMessages(recoverVimaxProjectMessages(entry.messages || []));
+    const recoveredMessages = recoverVimaxProjectMessages(entry.messages || []);
+    setMessages(recoveredMessages);
+    restoreProjectSkillPreset(recoveredMessages);
     setScopedWorkspaceView('project');
-  }, [cancelCurrentRun, history, setScopedWorkspaceView, storageScope]);
+  }, [cancelCurrentRun, history, restoreProjectSkillPreset, setScopedWorkspaceView, storageScope]);
 
   const renameActiveProject = useCallback((title: string) => {
     if (!activeProjectId) return;
@@ -332,10 +346,11 @@ export function GenerateWorkspace({
     }
   }, [input, onNavigate, subjectOpeningId]);
 
-  const handleSend = useCallback(async (overrideText?: string) => {
+  const handleSend = useCallback(async (overrideText?: string, overrideSkillId?: string) => {
     const text = (overrideText ?? input).trim();
     if (!text || isLoading) return;
     setScopedWorkspaceView('project');
+    const requestSkill = resolveVimaxSkillPreset(overrideSkillId || selectedSkill.id);
 
     if (mode === 'agent') {
       // 点击“确认开始生成 / 重做视频” -> 真实调用 Seedance 生成完整短剧
@@ -383,9 +398,9 @@ export function GenerateWorkspace({
         duration: durationSpec.duration,
         segmentDuration: durationSpec.segmentDuration,
         segmentCount: durationSpec.segmentCount,
-        style: selectedSkill.style,
-        skillId: selectedSkill.id,
-        sceneType: selectedSkill.sceneType,
+        style: requestSkill.style,
+        skillId: requestSkill.id,
+        sceneType: requestSkill.sceneType,
         settings: generationSettings,
       });
       return;
@@ -436,13 +451,14 @@ export function GenerateWorkspace({
   const handleResultIteration = useCallback((messageId: string, action: 'edit' | 'regenerate') => {
     const context = resolveVimaxResultIteration(messages, messageId);
     if (!context) return;
+    restoreSkillPreset(context.presetId);
     if (action === 'edit') {
       setInput(buildVimaxContinueEditPrompt(context));
       setTimeout(() => textareaRef.current?.focus(), 0);
       return;
     }
-    void handleSend(context.sourcePrompt);
-  }, [handleSend, messages]);
+    void handleSend(context.sourcePrompt, context.presetId);
+  }, [handleSend, messages, restoreSkillPreset]);
 
   return (
     <div className="relative flex h-full w-full overflow-hidden bg-[#f6f7f9] text-[#181a20]">

@@ -1,4 +1,5 @@
 import type { ChatMessage } from '@/lib/smart-assistant-panel-model';
+import { resolveVimaxSkillPresetForRuntime } from '@/lib/skills/vimax-short-drama/vimax-skill-presets';
 
 export type VimaxDeliveryStageId = 'plan' | 'storyboard' | 'reference' | 'video';
 export type VimaxDeliveryStageState = 'pending' | 'active' | 'completed' | 'failed';
@@ -28,6 +29,26 @@ export interface VimaxResultIterationContext {
   sourcePrompt: string;
   sourceTitle: string;
   nextAttempt: number;
+  presetId?: string;
+}
+
+function resolveMessagePresetId(message: ChatMessage): string | null {
+  if (message.role !== 'assistant' || message.generationStatus !== 'completed') return null;
+  const presetId = message.vimaxAgent?.productionPlan?.workflow?.presetId;
+  if (!presetId) return null;
+  try {
+    return resolveVimaxSkillPresetForRuntime(presetId).id;
+  } catch {
+    return null;
+  }
+}
+
+export function resolveVimaxProjectPresetId(messages: ChatMessage[]): string | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const presetId = resolveMessagePresetId(messages[index]);
+    if (presetId) return presetId;
+  }
+  return null;
 }
 
 export function resolveVimaxResultIteration(
@@ -43,7 +64,13 @@ export function resolveVimaxResultIteration(
   const completedAttempts = messages.slice(0, sourceIndex + 1).filter(message => message.role === 'assistant'
     && message.generationStatus === 'completed'
     && Boolean(message.vimaxAgent)).length;
-  return { sourceMessageId, sourcePrompt, sourceTitle: source.vimaxAgent.title, nextAttempt: completedAttempts + 1 };
+  return {
+    sourceMessageId,
+    sourcePrompt,
+    sourceTitle: source.vimaxAgent.title,
+    nextAttempt: completedAttempts + 1,
+    presetId: resolveMessagePresetId(source) || undefined,
+  };
 }
 
 export function buildVimaxContinueEditPrompt(context: VimaxResultIterationContext): string {
