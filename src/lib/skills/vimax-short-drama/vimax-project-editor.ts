@@ -29,6 +29,14 @@ export interface VimaxStoryboardWritebackResponse {
   error?: string;
 }
 
+export function resolveVimaxProductionDirection(project: ProductionProject) {
+  return {
+    artStyle: project.creativeDirection?.artStyle?.trim() || project.style || '电影感短剧',
+    directorManual: project.creativeDirection?.directorManual?.trim()
+      || '遵循已确认的角色、场景、道具、轴线和动作连续性。',
+  };
+}
+
 export function resolveVimaxProjectEditorView(result: unknown): VimaxProjectEditorView | null {
   if (!result || typeof result !== 'object') return null;
   const project = (result as { productionProject?: unknown }).productionProject;

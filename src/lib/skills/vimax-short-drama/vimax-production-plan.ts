@@ -312,6 +312,7 @@ export function refreshVimaxProductionPlanContinuity(input: {
       productionProject: input.productionProject,
       assemblyPlan: input.assemblyPlan,
       providerHandoff,
+      imageModel: plan.providerRoutes.find(route => route.stage === 'reference_assets')?.model,
     }),
   };
 }

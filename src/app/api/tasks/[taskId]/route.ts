@@ -9,6 +9,7 @@ import {
   resumeVimaxProduction,
 } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 import { approveVimaxProductionRender } from '@/lib/skills/vimax-short-drama/vimax-render-delivery-lock';
+import { updateVimaxProductionDirectionForTask } from '@/lib/skills/vimax-short-drama/vimax-production-direction';
 
 function publicTask(task: NonNullable<ReturnType<typeof getTaskForOwner>>) {
   const { abortController: _abortController, owner: _owner, idempotencyHash: _idempotencyHash, ...taskInfo } = task;
@@ -115,6 +116,26 @@ export async function POST(
     const { taskId } = await params;
     const body = await request.json().catch(() => ({}));
     const action = body.action;
+
+    if (action === 'update-production-direction') {
+      try {
+        const result = updateVimaxProductionDirectionForTask({ taskId, owner, patch: body });
+        return NextResponse.json({
+          success: true,
+          usedRealKey: false,
+          incurredCost: false,
+          ...result,
+          message: '制作方向已保存，并已更新后续镜头制作合约。',
+        });
+      } catch (error) {
+        return NextResponse.json({
+          success: false,
+          usedRealKey: false,
+          incurredCost: false,
+          error: error instanceof Error ? error.message : '制作方向保存失败',
+        }, { status: 409 });
+      }
+    }
 
     if (action === 'approve-production-plan') {
       const task = getTaskForOwner(taskId, owner);

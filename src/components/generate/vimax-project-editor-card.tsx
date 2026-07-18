@@ -7,6 +7,7 @@ import type { ProductionProject } from '@/lib/production-project';
 import {
   applyVimaxAssetEditorWriteback,
   applyVimaxStoryboardEditorWriteback,
+  resolveVimaxProductionDirection,
   resolveVimaxProjectEditorView,
 } from '@/lib/skills/vimax-short-drama/vimax-project-editor';
 import type {
@@ -19,6 +20,12 @@ interface TaskResponse {
   task?: { result?: unknown };
 }
 
+interface DirectionWritebackResponse {
+  success: boolean;
+  productionProject?: ProductionProject;
+  error?: string;
+}
+
 export function VimaxProjectEditorCard({ taskId, requestHeaders }: {
   taskId: string;
   requestHeaders?: Record<string, string>;
@@ -28,8 +35,9 @@ export function VimaxProjectEditorCard({ taskId, requestHeaders }: {
   const [selectedShotId, setSelectedShotId] = useState('');
   const [assetDraft, setAssetDraft] = useState({ name: '', summary: '', relatedShotIds: [] as string[] });
   const [shotDraft, setShotDraft] = useState({ prompt: '', duration: 1 });
+  const [directionDraft, setDirectionDraft] = useState({ artStyle: '', directorManual: '' });
   const [loading, setLoading] = useState(true);
-  const [pending, setPending] = useState<'asset' | 'shot' | ''>('');
+  const [pending, setPending] = useState<'asset' | 'shot' | 'direction' | ''>('');
   const [error, setError] = useState('');
   const loadSequence = useRef(0);
 
@@ -86,6 +94,34 @@ export function VimaxProjectEditorCard({ taskId, requestHeaders }: {
     if (!selectedShot) return;
     setShotDraft({ prompt: selectedShot.prompt, duration: selectedShot.duration });
   }, [selectedShot]);
+
+  useEffect(() => {
+    if (!project) return;
+    setDirectionDraft(resolveVimaxProductionDirection(project));
+  }, [project]);
+
+  async function saveDirection() {
+    if (!project || pending) return;
+    setPending('direction');
+    setError('');
+    try {
+      const response = await clientApiFetch<DirectionWritebackResponse>(
+        `/api/tasks/${encodeURIComponent(taskId)}`,
+        {
+          method: 'POST',
+          headers: requestHeaders,
+          body: JSON.stringify({ action: 'update-production-direction', ...directionDraft }),
+          redirectOnUnauthorized: false,
+        },
+      );
+      if (!response.success || !response.productionProject) throw new Error(response.error || 'save_failed');
+      setProject(response.productionProject);
+    } catch {
+      setError('制作方向保存失败，请重试。已保存的内容不会被覆盖。');
+    } finally {
+      setPending('');
+    }
+  }
 
   async function saveAsset() {
     if (!project || !selectedAsset || pending) return;
@@ -155,6 +191,18 @@ export function VimaxProjectEditorCard({ taskId, requestHeaders }: {
       </div>
 
       {error ? <p role="alert" className="mt-2 rounded-lg bg-red-50 px-2.5 py-2 text-[11px] text-red-600">{error}</p> : null}
+
+      <div className="mt-3 rounded-lg border border-[#e2e7ee] bg-white p-3">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <p className="text-[11px] font-medium text-[#4d5663]">制作方向</p>
+            <p className="mt-0.5 text-[10px] text-[#7c8592]">画风和导演约束会写入项目，并约束后续参考素材与每个视频镜头。</p>
+          </div>
+          <button type="button" disabled={Boolean(pending)} onClick={() => void saveDirection()} className="rounded-lg bg-[#2f6bff] px-3 py-1.5 text-[11px] font-medium text-white disabled:opacity-50">{pending === 'direction' ? '正在保存…' : '保存方向'}</button>
+        </div>
+        <input value={directionDraft.artStyle} onChange={event => setDirectionDraft(current => ({ ...current, artStyle: event.target.value }))} aria-label="整体画风" placeholder="整体画风" className="mt-2 w-full rounded-lg border border-[#dfe5ed] px-2.5 py-2 text-xs" />
+        <textarea value={directionDraft.directorManual} onChange={event => setDirectionDraft(current => ({ ...current, directorManual: event.target.value }))} aria-label="导演手册" placeholder="导演手册：轴线、动作、构图、光色与叙事约束" rows={3} className="mt-2 w-full resize-y rounded-lg border border-[#dfe5ed] px-2.5 py-2 text-xs leading-relaxed" />
+      </div>
 
       <div className="mt-3 grid gap-3 lg:grid-cols-2">
         <div className="rounded-lg border border-[#e2e7ee] bg-white p-3">

@@ -36,6 +36,13 @@ export interface VimaxContinuityContract {
   wardrobe: string;
   scene: string;
   props: string[];
+  productionDirection?: {
+    artStyle: string;
+    directorManual: string;
+    imageModel: string;
+    videoModel: string;
+    mode: VimaxProviderHandoffMode;
+  };
   shots: VimaxContinuityShot[];
 }
 
@@ -48,6 +55,7 @@ interface BuildContinuityContractInput {
   productionProject: ProductionProject;
   assemblyPlan: ProductionAssemblyPlan;
   providerHandoff: VimaxProviderHandoff;
+  imageModel?: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -160,8 +168,29 @@ export function buildVimaxContinuityContract(input: BuildContinuityContractInput
     props: project.assets
       .filter(asset => asset.kind === 'prop' && isGlobalAsset(asset, allShotIds))
       .map(asset => `${asset.name}：${asset.summary}`),
+    productionDirection: {
+      artStyle: compact(project.creativeDirection?.artStyle, project.style || '保持全片视觉风格一致。'),
+      directorManual: compact(
+        project.creativeDirection?.directorManual,
+        '遵循已确认的角色、场景、道具、轴线和动作连续性；不得擅自改变叙事关系。',
+      ),
+      imageModel: compact(input.imageModel, '由已确认的参考素材路由决定'),
+      videoModel: input.providerHandoff.model,
+      mode: input.providerHandoff.mode,
+    },
     shots,
   };
+}
+
+export function buildVimaxProductionDirectionPrompt(contract: VimaxContinuityContract) {
+  const direction = contract.productionDirection || {
+    artStyle: '保持已确认的全片视觉风格。',
+    directorManual: '遵循角色、场景、道具、轴线和动作连续性。',
+    imageModel: '由已确认的参考素材路由决定',
+    videoModel: contract.providerHandoff.model,
+    mode: contract.providerHandoff.mode,
+  };
+  return `【制作方向】画风=${direction.artStyle}；导演手册=${direction.directorManual}；图像模型=${direction.imageModel}；视频模型=${direction.videoModel}；交接模式=${direction.mode}`;
 }
 
 export function buildVimaxContinuityPrompt(contract: VimaxContinuityContract, shotIndex: number) {
@@ -178,6 +207,7 @@ export function buildVimaxContinuityPrompt(contract: VimaxContinuityContract, sh
     `【服饰锚点】${contract.wardrobe}`,
     `【场景锚点】${contract.scene}`,
     `【道具状态】${contract.props.join('；') || '无独立道具；保持已建立的关键线索状态。'}`,
+    buildVimaxProductionDirectionPrompt(contract),
     `【本镜资产】${shot.assetAnchors?.join('；') || '沿用全局角色、场景和道具状态。'}`,
     `【动作衔接】起点=${shot.actionStart}；终点=${shot.actionEnd}`,
     `【空间与构图】方向=${shot.screenDirection}；景别=${shot.framing}；光色=${shot.lightingPalette}`,
@@ -225,6 +255,12 @@ export function parseVimaxContinuityContract(value: unknown): VimaxContinuityCon
     || typeof value.scene !== 'string'
     || !Array.isArray(value.props)
     || !value.props.every(prop => typeof prop === 'string')
+    || (value.productionDirection !== undefined && (!isRecord(value.productionDirection)
+      || typeof value.productionDirection.artStyle !== 'string'
+      || typeof value.productionDirection.directorManual !== 'string'
+      || typeof value.productionDirection.imageModel !== 'string'
+      || typeof value.productionDirection.videoModel !== 'string'
+      || !['frame-handoff', 'text-anchors'].includes(String(value.productionDirection.mode))))
     || !Array.isArray(value.shots)) return undefined;
 
   const validShots = value.shots.every(shot => isRecord(shot)

@@ -121,6 +121,13 @@ export interface ProductionProject {
   style: string;
   ratio: string;
   sceneType: string;
+  creativeDirection?: {
+    version: 'sceneweave-creative-direction-v1';
+    artStyle: string;
+    directorManual: string;
+    revision: number;
+    updatedAt: string;
+  };
   duration: number;
   segmentDuration: number;
   narrativeSummary: string;

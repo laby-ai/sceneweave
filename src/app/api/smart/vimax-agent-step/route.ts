@@ -19,6 +19,7 @@ import {
   type BYOKConnection,
 } from '@/lib/byok-provider';
 import { callHappyHorseVimaxVideo } from '@/lib/skills/vimax-short-drama/happyhorse-vimax-video';
+import { callVimaxReferenceImages } from '@/lib/skills/vimax-short-drama/vimax-reference-assets';
 import {
   buildVimaxContinuityContract,
   buildVimaxFrameProviderPrompt,
@@ -269,6 +270,7 @@ function buildVimaxPlanEnvelope(
   const continuity = buildVimaxContinuityContract({
     productionProject,
     assemblyPlan,
+    imageModel: config.imageModel,
     providerHandoff: resolveVimaxProviderHandoffMode({
       provider: videoConnection?.provider || 'ark-video-v3',
       model: videoModel,
@@ -390,125 +392,6 @@ async function callArkTextStream(prompt: string, preset: VimaxSkillPreset, model
   return { model, plan: extractJsonObject(rawText), rawText };
 }
 
-
-interface ReferenceTarget {
-  kind: 'shot' | 'character' | 'scene' | 'prop' | 'reference';
-  label: string;
-  prompt: string;
-  shotIndex?: number;
-}
-
-async function generateOneSeedreamImage(target: ReferenceTarget, imageApiBase: string, imageApiKey: string, imageModel: string) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 60_000);
-  let response: Response;
-  try {
-    response = await fetch(`${imageApiBase}/images/generations`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${imageApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: imageModel,
-        prompt: target.prompt,
-        // Seedream 5.0 要求图像 >= 3,686,400 像素；2560x1440 为达标的 16:9 尺寸。
-        size: '2560x1440',
-        response_format: 'url',
-      }),
-      signal: controller.signal,
-    });
-  } catch (fetchError) {
-    clearTimeout(timeout);
-    if (fetchError instanceof Error && fetchError.name === 'AbortError') {
-      throw new Error(`Seedream 参考图生成超时（60s）：${target.label}。`);
-    }
-    throw fetchError;
-  }
-  clearTimeout(timeout);
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const message = typeof data?.error?.message === 'string' ? data.error.message : response.statusText;
-    throw new Error(`Seedream 参考图生成失败：${target.label} - ${message}`);
-  }
-  const url = data?.data?.[0]?.url || data?.imageUrls?.[0] || data?.url;
-  if (typeof url !== 'string' || !url) {
-    throw new Error(`Seedream 未返回 ${target.label} 的图片 URL。`);
-  }
-  return { ...target, url, status: 'generated' as const };
-}
-
-// 参考图按「每个分镜一张首帧」生成，让用户可以把每张图归位到对应 Clip 下；
-// 角色/场景描述被融进对应镜头的画面 prompt，保持一致性。并行生成、放开数量，
-// 不再只取前两张。任意一张失败不影响其它，但全部失败时显式报错（不伪造结果）。
-function appendPresetVisualDirection(prompt: string, preset: VimaxSkillPreset) {
-  return [
-    prompt,
-    `创作类型：${preset.name}。`,
-    `创作目标：${preset.description}。`,
-    `视觉风格：${preset.style}。`,
-    '保持主体与场景连续，不要字幕，不要水印。',
-  ].join(' ').trim();
-}
-
-async function callSeedreamReferenceImages(plan: VimaxAgentPlan, preset: VimaxSkillPreset) {
-  const { imageApiKey, imageApiBase, imageModel } = getArkConfig();
-  if (!imageApiKey) {
-    throw new Error('缺少图像模型 API Key，无法进入 Seedream 参考素材阶段。');
-  }
-
-  const characterHint = plan.assets
-    .filter(asset => ['character', 'scene', 'prop'].includes(asset.kind))
-    .map(asset => `${asset.label}: ${asset.prompt}`)
-    .join('；')
-    .slice(0, 600);
-
-  const targets: ReferenceTarget[] = [];
-  if (Array.isArray(plan.shots) && plan.shots.length > 0) {
-    for (const shot of plan.shots.slice(0, 8)) {
-      const base = shot.prompt || `${shot.title}, ${shot.camera}`;
-      targets.push({
-        kind: 'shot',
-        label: `Clip ${shot.index} · ${shot.title}`,
-        shotIndex: shot.index,
-        prompt: appendPresetVisualDirection(
-          characterHint ? `${base}。角色与场景设定参考：${characterHint}` : base,
-          preset,
-        ),
-      });
-    }
-  } else {
-    // 没有分镜时退回到资产级参考图。
-    for (const asset of plan.assets.filter(a => ['character', 'scene', 'prop', 'reference'].includes(a.kind)).slice(0, 6)) {
-      targets.push({
-        kind: (asset.kind === 'script' || asset.kind === 'shot') ? 'reference' : asset.kind,
-        label: asset.label,
-        prompt: appendPresetVisualDirection(
-          asset.prompt || `${asset.label}, cinematic reference image, clean composition`,
-          preset,
-        ),
-      });
-    }
-  }
-
-  if (targets.length === 0) {
-    throw new Error('当前计划没有可用于 Seedream 生成的参考素材 prompt。');
-  }
-
-  const settled = await Promise.allSettled(
-    targets.map(target => generateOneSeedreamImage(target, imageApiBase, imageApiKey, imageModel)),
-  );
-  const generated = settled
-    .filter((result): result is PromiseFulfilledResult<ReferenceTarget & { url: string; status: 'generated' }> => result.status === 'fulfilled')
-    .map(result => result.value);
-
-  if (generated.length === 0) {
-    const firstError = settled.find((result): result is PromiseRejectedResult => result.status === 'rejected');
-    throw new Error(firstError?.reason instanceof Error ? firstError.reason.message : 'Seedream 参考图全部生成失败。');
-  }
-
-  return { model: imageModel, assets: generated };
-}
 
 function clampVideoDuration(value: unknown): number {
   const seconds = Math.floor(Number(value) || 5);
@@ -787,7 +670,19 @@ export async function POST(request: NextRequest) {
         video: config.videoModel,
       });
       const preset = resolveVimaxSkillPresetForRuntime(productionPlan.workflow.presetId);
-      const result = await callSeedreamReferenceImages(canonical.plan, preset);
+      if (!productionPlan.continuity) {
+        throw new Error('制作计划缺少连续性契约，请返回计划阶段重新确认。');
+      }
+      const result = await callVimaxReferenceImages({
+        plan: canonical.plan,
+        preset,
+        continuity: productionPlan.continuity,
+        config: {
+          imageApiKey: config.imageApiKey || '',
+          imageApiBase: config.imageApiBase,
+          imageModel: config.imageModel,
+        },
+      });
       return NextResponse.json({
         success: true,
         phase,
