@@ -223,6 +223,7 @@ export async function recoverHappyHorseVimaxVideo(
   connection: BYOKConnection,
   options: { createdAfter: number; createdBefore?: number; owner?: FinalVideoOwner },
   knownSegments: HappyHorseVimaxSegment[] = [],
+  onSegmentState?: HappyHorseSegmentObserver,
 ) {
   const model = connection.videoModel || connection.model;
   if (!model) throw new Error('快乐马连接缺少视频模型。');
@@ -271,14 +272,16 @@ export async function recoverHappyHorseVimaxVideo(
   for (let index = 0; index < selected.length; index += 1) {
     const item = selected[index];
     if (item.videoUrl) {
-      segments.push(await ensureLastFrame({ ...item, status: 'succeeded' }));
+      const segment = await ensureLastFrame({ ...item, status: 'succeeded' });
+      segments.push(segment);
+      await onSegmentState?.(segment);
       continue;
     }
     const status = await getVideoStatusWithBYOK(connection, item.taskId);
     if (status.status !== 'succeeded' || !status.videoUrl) {
       throw new Error(`第 ${index + 1} 个片段尚未形成可交付结果；未重新提交生成。`);
     }
-    segments.push({
+    const segment: HappyHorseVimaxSegment = {
       shotIndex: shots[index].index,
       shotTitle: shots[index].title || `Clip ${shots[index].index}`,
       duration: clampDuration(shots[index].duration),
@@ -287,7 +290,9 @@ export async function recoverHappyHorseVimaxVideo(
       videoUrl: status.videoUrl,
       lastFrameUrl: status.lastFrameUrl,
       ...(item.referenceManifest ? { referenceManifest: item.referenceManifest } : {}),
-    });
+    };
+    segments.push(segment);
+    await onSegmentState?.(segment);
   }
 
   const { videoUrl, merge } = await finalizeHappyHorseSegments(segments, options.owner);

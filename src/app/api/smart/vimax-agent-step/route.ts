@@ -813,7 +813,7 @@ export async function POST(request: NextRequest) {
             canonical.plan,
             videoConnection,
             { createdAfter: recoveryCreatedAfter, owner },
-            savedHappyHorseSegments,
+            savedHappyHorseSegments, persistSegment,
           )
           : videoConnection?.provider === 'happyhorse-dashscope'
             ? await callHappyHorseVimaxVideo(

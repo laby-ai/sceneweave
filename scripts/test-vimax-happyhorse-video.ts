@@ -247,6 +247,13 @@ async function main() {
   assert.doesNotMatch(submitBody.input.prompt, /客户端伪造/);
   assert.ok(calls.every(call => !call.url.includes('contents/generations/tasks')), 'must not fall back to Ark video route');
 
+  assert.ok(updateTask(taskId, {
+    result: {
+      ...(getTaskForOwner(taskId, owner)?.result || {}),
+      assemblyPlan: built.assemblyPlan,
+    },
+  }), 'the fixture must reproduce an older task whose provider results succeeded before assembly writeback existed');
+
   const recoveryResponse = await route.POST(new NextRequest('http://localhost/api/smart/vimax-agent-step', {
     method: 'POST',
     headers: {
