@@ -7,6 +7,7 @@ import {
   type BYOKConnection,
 } from '@/lib/byok-provider';
 import {
+  buildHappyHorsePublicTaskListUrl,
   buildHappyHorseVideoTaskListUrl,
   getHappyHorseProviderErrorMessage,
   parseHappyHorseVideoTaskList,
@@ -149,11 +150,17 @@ export async function recoverHappyHorseVimaxVideo(
     endTime: formatDashScopeTime(options.createdBefore || Date.now()),
     model,
   });
-  const response = await fetch(listUrl, {
+  const requestInit: RequestInit = {
     method: 'GET',
     headers: { Authorization: `Bearer ${connection.apiKey}`, 'Content-Type': 'application/json' },
-  });
-  const payload = await response.json().catch(() => ({}));
+  };
+  let response = await fetch(listUrl, requestInit);
+  let payload = await response.json().catch(() => ({}));
+  if ((response.status === 401 || response.status === 403)
+    && new URL(listUrl).hostname !== 'dashscope.aliyuncs.com') {
+    response = await fetch(buildHappyHorsePublicTaskListUrl(listUrl), requestInit);
+    payload = await response.json().catch(() => ({}));
+  }
   if (!response.ok) {
     throw new Error(`快乐马任务恢复失败：${getHappyHorseProviderErrorMessage(payload, response.status)}`);
   }

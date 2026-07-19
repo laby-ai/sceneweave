@@ -1,4 +1,5 @@
 import {
+  buildHappyHorsePublicTaskListUrl,
   buildHappyHorseVideoSubmitRequest,
   buildHappyHorseVideoTaskListUrl,
   buildHappyHorseVideoTaskUrl,
@@ -50,6 +51,11 @@ assert(
     model: 'happyhorse-1.1-t2v',
   }) === 'https://workspace.example.com/api/v1/tasks/?start_time=20260719122000&end_time=20260719124500&model_name=happyhorse-1.1-t2v&status=SUCCEEDED&page_no=1&page_size=100',
   'HappyHorse task list URL mismatch',
+);
+assert(
+  buildHappyHorsePublicTaskListUrl('https://workspace.example.com/api/v1/tasks/?status=SUCCEEDED') ===
+    'https://dashscope.aliyuncs.com/api/v1/tasks/?status=SUCCEEDED',
+  'HappyHorse public task list fallback URL mismatch',
 );
 const listed = parseHappyHorseVideoTaskList({
   data: [

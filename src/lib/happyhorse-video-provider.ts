@@ -111,6 +111,13 @@ export function buildHappyHorseVideoTaskListUrl(
   return `${resolveHappyHorseApiRoot(apiBase)}/tasks/?${params.toString()}`;
 }
 
+export function buildHappyHorsePublicTaskListUrl(taskListUrl: string): string {
+  const url = new URL(taskListUrl);
+  url.protocol = 'https:';
+  url.host = 'dashscope.aliyuncs.com';
+  return url.toString();
+}
+
 function taskListTimestamp(value?: string) {
   if (!value) return Number.NaN;
   const normalized = value.includes('T') ? value : value.replace(' ', 'T');

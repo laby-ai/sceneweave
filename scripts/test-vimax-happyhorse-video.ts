@@ -22,6 +22,7 @@ process.env.HUIYING_TASKS_FILE = taskFile;
 
 const calls: Array<{ url: string; init?: RequestInit }> = [];
 const originalFetch = globalThis.fetch;
+let workspaceListRejected = false;
 globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input);
   calls.push({ url, init });
@@ -41,6 +42,18 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     }), { status: 200, headers: { 'content-type': 'application/json' } });
   }
   if (url.includes('/api/v1/tasks/?')) {
+    if (url.startsWith('https://workspace.example.com/')) {
+      workspaceListRejected = true;
+      return new Response(JSON.stringify({ code: 'InvalidApiKey', message: 'Authentication Failed' }), {
+        status: 401,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    assert.equal(
+      url.startsWith('https://dashscope.aliyuncs.com/api/v1/tasks/?'),
+      true,
+      'workspace task-list authentication failures must fall back to the official DashScope task-list endpoint',
+    );
     return new Response(JSON.stringify({
       data: [{
         task_id: 'happyhorse-task-recovered',
@@ -187,6 +200,7 @@ async function main() {
   assert.equal(recoveryPayload.recovered, true);
   assert.equal(recoveryPayload.incurredCost, false);
   assert.equal(recoveryPayload.segments?.[0]?.taskId, 'happyhorse-task-recovered');
+  assert.equal(workspaceListRejected, true, 'fixture must exercise the workspace task-list auth rejection');
   assert.equal(calls.filter(call => call.init?.method === 'POST').length, 1, 'recovery must never submit another provider job');
 
   const recoveryAfterRestart = await route.POST(new NextRequest('http://localhost/api/smart/vimax-agent-step', {
