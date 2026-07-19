@@ -15,6 +15,7 @@ interface ProviderErrorPayload {
 }
 
 const BYOK_STORAGE_KEY = 'dreambox-api-connection';
+const PLANNING_SESSION_STORAGE_KEY = 'dreambox-planning-connection';
 const HAPPYHORSE_SESSION_STORAGE_KEY = 'dreambox-happyhorse-connection';
 
 function isStoredProvider(value: unknown): value is StoredApiProvider {
@@ -25,6 +26,10 @@ function scopedHappyHorseStorageKey(storageScope = ''): string {
   return `${HAPPYHORSE_SESSION_STORAGE_KEY}:${storageScope || 'default'}`;
 }
 
+function scopedPlanningStorageKey(storageScope = ''): string {
+  return `${PLANNING_SESSION_STORAGE_KEY}:${storageScope || 'default'}`;
+}
+
 function parseConnection(raw: string | null): StoredApiConnection | undefined {
   if (!raw) return undefined;
   const config = JSON.parse(raw) as StoredApiConnection;
@@ -32,8 +37,9 @@ function parseConnection(raw: string | null): StoredApiConnection | undefined {
   return config;
 }
 
-function loadPrimaryConnection(): StoredApiConnection | undefined {
-  return parseConnection(window.localStorage.getItem(BYOK_STORAGE_KEY));
+function loadPrimaryConnection(storageScope = ''): StoredApiConnection | undefined {
+  return parseConnection(window.sessionStorage.getItem(scopedPlanningStorageKey(storageScope)))
+    || parseConnection(window.localStorage.getItem(BYOK_STORAGE_KEY));
 }
 
 function loadHappyHorseConnection(storageScope = ''): StoredApiConnection | undefined {
@@ -51,6 +57,42 @@ export function saveHappyHorseSessionConnection(
     apiKey: config.apiKey.trim(),
     videoModel: config.videoModel?.trim() || 'happyhorse-1.1-t2v',
   } satisfies StoredApiConnection));
+}
+
+export function savePlanningSessionConnection(
+  storageScope: string,
+  config: { apiBase: string; apiKey: string; model?: string },
+): void {
+  if (typeof window === 'undefined') return;
+  window.sessionStorage.setItem(scopedPlanningStorageKey(storageScope), JSON.stringify({
+    provider: 'openai-compatible',
+    apiBase: config.apiBase.trim(),
+    apiKey: config.apiKey.trim(),
+    model: config.model?.trim() || 'Kimi-K3',
+  } satisfies StoredApiConnection));
+}
+
+export function clearPlanningSessionConnection(storageScope: string): void {
+  if (typeof window === 'undefined') return;
+  window.sessionStorage.removeItem(scopedPlanningStorageKey(storageScope));
+}
+
+export function getPlanningSessionConnectionSummary(storageScope: string): {
+  configured: boolean;
+  apiBase: string;
+  model: string;
+} {
+  if (typeof window === 'undefined') return { configured: false, apiBase: '', model: 'Kimi-K3' };
+  try {
+    const config = parseConnection(window.sessionStorage.getItem(scopedPlanningStorageKey(storageScope)));
+    return {
+      configured: config?.provider === 'openai-compatible',
+      apiBase: config?.apiBase || '',
+      model: config?.model || 'Kimi-K3',
+    };
+  } catch {
+    return { configured: false, apiBase: '', model: 'Kimi-K3' };
+  }
 }
 
 export function clearHappyHorseSessionConnection(storageScope: string): void {
@@ -82,7 +124,7 @@ export function getBYOKRequestHeaders(storageScope = ''): Record<string, string>
   if (typeof window === 'undefined') return {};
 
   try {
-    const primary = loadPrimaryConnection();
+    const primary = loadPrimaryConnection(storageScope);
     const video = loadHappyHorseConnection(storageScope);
     const config = primary || video;
     if (!config?.provider || !config.apiBase || !config.apiKey) return {};
@@ -119,7 +161,7 @@ export function hasBYOKConnectionConfigured(storageScope = ''): boolean {
   if (typeof window === 'undefined') return false;
 
   try {
-    return Boolean(loadPrimaryConnection() || loadHappyHorseConnection(storageScope));
+    return Boolean(loadPrimaryConnection(storageScope) || loadHappyHorseConnection(storageScope));
   } catch {
     return false;
   }

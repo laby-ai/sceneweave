@@ -30,6 +30,7 @@ import { VimaxProductionPlanCard } from '@/components/generate/vimax-production-
 import { VimaxProjectEditorCard } from '@/components/generate/vimax-project-editor-card';
 import { VimaxSegmentedProductionCard } from '@/components/generate/vimax-segmented-production-card';
 import { HappyHorseConnectionControl } from '@/components/generate/happyhorse-connection-control';
+import { PlanningConnectionControl } from '@/components/generate/planning-connection-control';
 import { getBYOKRequestHeaders } from '@/lib/byok-client';
 import {
   useVimaxShortDramaSkill,
@@ -171,6 +172,7 @@ export function GenerateWorkspace({
     ...byokHeaders,
   }), [byokHeaders, requestHeaders]);
   const selectedVideoModel = effectiveRequestHeaders['x-yh-video-model'] || 'doubao-seedance-1.5-pro';
+  const selectedPlanModel = effectiveRequestHeaders['x-yh-model'] || VIMAX_PLAN_MODEL;
 
   const setScopedWorkspaceView = useCallback((view: VimaxWorkspaceView) => {
     setWorkspaceView(view);
@@ -597,6 +599,11 @@ export function GenerateWorkspace({
             onConnectionChange={() => setByokHeaders(getBYOKRequestHeaders(storageScope))}
           />
 
+          <PlanningConnectionControl
+            storageScope={storageScope}
+            onConnectionChange={() => setByokHeaders(getBYOKRequestHeaders(storageScope))}
+          />
+
           <div className="relative">
             <button
               type="button"
@@ -609,7 +616,7 @@ export function GenerateWorkspace({
             {mediaModelMenuOpen && (
               <div className="absolute left-0 top-full z-20 mt-2 w-56 overflow-hidden rounded-xl border border-[#e1e5eb] bg-white p-2 text-[#252931] shadow-[0_18px_38px_rgba(31,41,55,0.14)]">
                 <p className="px-1 pb-1 text-[11px] font-semibold uppercase tracking-wider text-[#9299a4]">规划模型</p>
-                <div className="rounded-lg bg-[#f5f7fa] px-2.5 py-1.5 text-sm text-[#555d68]">{VIMAX_PLAN_MODEL}</div>
+                <div className="rounded-lg bg-[#f5f7fa] px-2.5 py-1.5 text-sm text-[#555d68]">{selectedPlanModel}</div>
                 <p className="px-1 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-[#9299a4]">参考图像模型</p>
                 <div className="rounded-lg bg-[#edf3ff] px-2.5 py-1.5 text-sm text-[#2f6bff]">doubao-seedream-5.0-lite</div>
                 <p className="px-1 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-[#9299a4]">视频模型</p>
