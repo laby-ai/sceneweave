@@ -313,8 +313,8 @@ async function main() {
     result: {
       ...(getTaskForOwner(r2vTaskId, owner)?.result || {}),
       vimaxReferenceAssets: [
-        { kind: 'character', url: 'https://fixture.invalid/reporter-front.png' },
-        { kind: 'scene', url: 'https://fixture.invalid/rain-station.png' },
+        { kind: 'character', label: '女记者正面定妆', url: 'https://fixture.invalid/reporter-front.png' },
+        { kind: 'scene', label: '雨夜车站', url: 'https://fixture.invalid/rain-station.png' },
       ],
     },
   }));
@@ -354,7 +354,34 @@ async function main() {
     { type: 'reference_image', url: 'https://fixture.invalid/reporter-front.png' },
     { type: 'reference_image', url: 'https://fixture.invalid/rain-station.png' },
   ], 'R2V route must use the persisted approved project assets');
+  assert.match(r2vSubmitBody.input.prompt, /\[Image 1\].*女记者正面定妆.*角色参考/);
+  assert.match(r2vSubmitBody.input.prompt, /\[Image 2\].*雨夜车站.*场景参考/);
   assert.match(r2vSubmitBody.input.prompt, /【供应商交接】参考驱动交接/);
+  const r2vSegments = getTaskForOwner(r2vTaskId, owner)?.result?.vimaxHappyHorseSegments as Array<{
+    referenceManifest?: {
+      version?: string;
+      artifactRevision?: string;
+      sha256?: string;
+      entries?: Array<{ token?: string; role?: string; label?: string; url?: string }>;
+    };
+  }> | undefined;
+  assert.equal(r2vSegments?.[0]?.referenceManifest?.version, 'sceneweave-happyhorse-r2v-reference-manifest-v1');
+  assert.equal(r2vSegments?.[0]?.referenceManifest?.artifactRevision, r2vProductionPlan.continuity?.artifactRevision);
+  assert.match(r2vSegments?.[0]?.referenceManifest?.sha256 || '', /^[a-f0-9]{64}$/);
+  assert.deepEqual(r2vSegments?.[0]?.referenceManifest?.entries, [
+    {
+      token: '[Image 1]',
+      role: 'subject',
+      label: '女记者正面定妆',
+      url: 'https://fixture.invalid/reporter-front.png',
+    },
+    {
+      token: '[Image 2]',
+      role: 'scene',
+      label: '雨夜车站',
+      url: 'https://fixture.invalid/rain-station.png',
+    },
+  ]);
 
   console.log(JSON.stringify({
     ok: true,
