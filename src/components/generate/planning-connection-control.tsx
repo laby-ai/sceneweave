@@ -5,6 +5,7 @@ import { Brain, Check, Trash2, X } from 'lucide-react';
 
 import {
   clearPlanningSessionConnection,
+  DEFAULT_PLANNING_MODEL,
   getPlanningSessionConnectionSummary,
   savePlanningSessionConnection,
 } from '@/lib/byok-client';
@@ -22,7 +23,7 @@ export function PlanningConnectionControl({
   const [configured, setConfigured] = useState(false);
   const [apiBase, setApiBase] = useState('https://api.scnet.cn/api/llm/v1');
   const [apiKey, setApiKey] = useState('');
-  const [model, setModel] = useState('Kimi-K3');
+  const [model, setModel] = useState(DEFAULT_PLANNING_MODEL);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -59,7 +60,7 @@ export function PlanningConnectionControl({
     setConfigured(false);
     setApiBase('https://api.scnet.cn/api/llm/v1');
     setApiKey('');
-    setModel('Kimi-K3');
+    setModel(DEFAULT_PLANNING_MODEL);
     setError('');
     setOpen(false);
     onConnectionChange();

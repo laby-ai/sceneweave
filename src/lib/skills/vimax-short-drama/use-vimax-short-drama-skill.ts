@@ -20,6 +20,7 @@ import {
   type VimaxProductionPlan,
 } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 import { waitForVimaxBackgroundVideoTask } from '@/lib/skills/vimax-short-drama/vimax-background-video-task';
+import { formatProviderError } from '@/lib/byok-client';
 
 /**
  * ViMAX 短剧制作 = Agent 驱动的一个 skill。
@@ -202,8 +203,8 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         throw new Error(reason);
       }
       if (!response.ok || !response.body) {
-        const errText = await response.text().catch(() => '');
-        throw new Error('AgentPlan 调用失败：' + (errText.slice(0, 200) || response.statusText));
+        const failure = await response.json().catch(() => null);
+        throw new Error(formatProviderError(failure, '规划暂时不可用，请稍后重试。'));
       }
 
       // 流式读取 SSE，逐 delta 解析出「已完整的镜头/资产」，逐条渲染成卡片，
@@ -285,7 +286,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
               planTaskId = typeof data.taskId === 'string' ? data.taskId : '';
               productionPlan = parseVimaxProductionPlan(data.productionPlan);
             } else if (event === 'plan.error') {
-              streamError = data.error || '流式规划失败';
+              streamError = formatProviderError(data, '规划暂时不可用，请稍后重试。');
             }
           } catch { /* skip */ }
         }
@@ -339,9 +340,14 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       setCurrentStep(5);
     } catch (error) {
       if (!runCoordinator.isCurrent(run)) return;
+      const rawMessage = error instanceof Error ? error.message : '';
+      const failureMessage = /^(规划模型连接不可用|规划模型暂不可用|规划暂时失败)/.test(rawMessage)
+        ? rawMessage
+        : formatProviderError({ provider: 'planning', code: 'planning_provider_failed' }, '规划暂时不可用，请稍后重试。');
+      setInputValue(prompt);
       updateRunMessages(run, prev => prev.map(message => message.id === progressMsgId ? {
         ...message,
-        content: `规划失败：${error instanceof Error ? error.message : '未知错误'}\n请调整想法后重试。`,
+        content: `${failureMessage}\n输入和项目已保留，可更换规划模型后重试。`,
         generationStatus: 'failed',
         generationProgress: 100,
         generationStepInfo: {

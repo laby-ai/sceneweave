@@ -10,6 +10,7 @@ interface StoredApiConnection {
 }
 
 interface ProviderErrorPayload {
+  code?: unknown;
   error?: unknown;
   provider?: unknown;
 }
@@ -17,6 +18,7 @@ interface ProviderErrorPayload {
 const BYOK_STORAGE_KEY = 'dreambox-api-connection';
 const PLANNING_SESSION_STORAGE_KEY = 'dreambox-planning-connection';
 const HAPPYHORSE_SESSION_STORAGE_KEY = 'dreambox-happyhorse-connection';
+export const DEFAULT_PLANNING_MODEL = 'Qwen3.6-Plus';
 
 function isStoredProvider(value: unknown): value is StoredApiProvider {
   return value === 'openai-compatible' || value === 'ark-plan' || value === 'happyhorse-dashscope';
@@ -68,7 +70,7 @@ export function savePlanningSessionConnection(
     provider: 'openai-compatible',
     apiBase: config.apiBase.trim(),
     apiKey: config.apiKey.trim(),
-    model: config.model?.trim() || 'Kimi-K3',
+    model: config.model?.trim() || DEFAULT_PLANNING_MODEL,
   } satisfies StoredApiConnection));
 }
 
@@ -82,16 +84,16 @@ export function getPlanningSessionConnectionSummary(storageScope: string): {
   apiBase: string;
   model: string;
 } {
-  if (typeof window === 'undefined') return { configured: false, apiBase: '', model: 'Kimi-K3' };
+  if (typeof window === 'undefined') return { configured: false, apiBase: '', model: DEFAULT_PLANNING_MODEL };
   try {
     const config = parseConnection(window.sessionStorage.getItem(scopedPlanningStorageKey(storageScope)));
     return {
       configured: config?.provider === 'openai-compatible',
       apiBase: config?.apiBase || '',
-      model: config?.model || 'Kimi-K3',
+      model: config?.model || DEFAULT_PLANNING_MODEL,
     };
   } catch {
-    return { configured: false, apiBase: '', model: 'Kimi-K3' };
+    return { configured: false, apiBase: '', model: DEFAULT_PLANNING_MODEL };
   }
 }
 
@@ -126,25 +128,18 @@ export function getBYOKRequestHeaders(storageScope = ''): Record<string, string>
   try {
     const primary = loadPrimaryConnection(storageScope);
     const video = loadHappyHorseConnection(storageScope);
-    const config = primary || video;
-    if (!config?.provider || !config.apiBase || !config.apiKey) return {};
+    const headers: Record<string, string> = {};
 
-    const headers: Record<string, string> = {
-      'x-yh-provider': config.provider,
-      'x-yh-api-base': config.apiBase,
-      'x-yh-api-key': config.apiKey,
-    };
+    if (primary?.provider && primary.apiBase && primary.apiKey) {
+      headers['x-yh-provider'] = primary.provider;
+      headers['x-yh-api-base'] = primary.apiBase;
+      headers['x-yh-api-key'] = primary.apiKey;
+      if (primary.model) headers['x-yh-model'] = primary.model;
+      if (primary.imageModel) headers['x-yh-image-model'] = primary.imageModel;
+      if (primary.videoModel) headers['x-yh-video-model'] = primary.videoModel;
+    }
 
-    if (config.model) {
-      headers['x-yh-model'] = config.model;
-    }
-    if (config.imageModel) {
-      headers['x-yh-image-model'] = config.imageModel;
-    }
-    if (config.videoModel) {
-      headers['x-yh-video-model'] = config.videoModel;
-    }
-    if (primary && video?.provider === 'happyhorse-dashscope' && video.apiBase && video.apiKey) {
+    if (video?.provider === 'happyhorse-dashscope' && video.apiBase && video.apiKey) {
       headers['x-yh-video-provider'] = video.provider;
       headers['x-yh-video-api-base'] = video.apiBase;
       headers['x-yh-video-api-key'] = video.apiKey;
@@ -170,6 +165,16 @@ export function hasBYOKConnectionConfigured(storageScope = ''): boolean {
 export function formatProviderError(payload: unknown, fallback: string): string {
   const data = payload as ProviderErrorPayload | null;
   const errorText = typeof data?.error === 'string' ? data.error : fallback;
+
+  if (data?.provider === 'planning') {
+    if (data.code === 'planning_provider_auth_failed') {
+      return '规划模型连接不可用，请检查 API Base、API Key 和模型名后重试。';
+    }
+    if (data.code === 'planning_provider_unavailable') {
+      return '规划模型暂不可用，请先连接可用的规划模型后重试。';
+    }
+    return '规划暂时失败，输入和项目已保留，请稍后重试或更换规划模型。';
+  }
 
   if (data?.provider !== 'byok') {
     return errorText || fallback;

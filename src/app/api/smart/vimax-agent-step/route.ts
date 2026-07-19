@@ -28,6 +28,7 @@ import {
   type HappyHorseVimaxSegment,
 } from '@/lib/skills/vimax-short-drama/happyhorse-vimax-video';
 import { callVimaxReferenceImages } from '@/lib/skills/vimax-short-drama/vimax-reference-assets';
+import { callWithSanitizedVimaxPlanningFailure, resolveVimaxPlanningReadinessFailure, sanitizeVimaxPlanningFailure } from '@/lib/skills/vimax-short-drama/vimax-planning-readiness';
 import {
   buildVimaxContinuityContract,
   buildVimaxFrameProviderPrompt,
@@ -36,7 +37,6 @@ import {
 } from '@/lib/skills/vimax-short-drama/vimax-continuity-contract';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
 function getArkConfig() {
   // Text model uses the plan/v3 endpoint with the agent key.
   const apiKey = process.env.HUIYING_AGENTPLAN_ARK_API_KEY_SECONDARY || process.env.HUIYING_AGENTPLAN_ARK_API_KEY_PRIMARY || process.env.HUIYING_REAL_ARK_API_KEY || process.env.ARK_API_KEY;
@@ -47,7 +47,6 @@ function getArkConfig() {
   const rawBase = (process.env.HUIYING_REAL_ARK_API_BASE || process.env.ARK_API_BASE || '').replace(/\/$/, '');
   const apiBase = rawBase.includes('/plan/') ? rawBase : 'https://ark.cn-beijing.volces.com/api/plan/v3';
   const textModel = VIMAX_PLAN_MODEL;
-
   // Image/video models use the standard v3 endpoint with a separate key
   const imageApiKey = process.env.ARK_IMAGE_API_KEY || process.env.HUIYING_REAL_ARK_API_KEY || process.env.ARK_API_KEY;
   const imageApiBase = 'https://ark.cn-beijing.volces.com/api/v3';
@@ -56,11 +55,9 @@ function getArkConfig() {
   const imageModel = process.env.ARK_IMAGE_MODEL || 'doubao-seedream-5-0-260128';
   // UI alias doubao-seedance-1.5-pro maps to the callable Ark video model id below.
   const videoModel = process.env.ARK_VIDEO_MODEL || 'doubao-seedance-1-5-pro-251215';
-
   const selectorModel = process.env.HUIYING_VIMAX_SELECTOR_MODEL || process.env.ARK_VISION_MODEL;
   return { apiKey, apiBase, textModel, selectorModel, imageApiKey, imageApiBase, imageModel, videoModel };
 }
-
 function buildPlanSystemPrompt(preset: VimaxSkillPreset) {
   return [
   `你是创作工作台的“${preset.name}”制作 Agent，只输出 JSON，不要任何解释、验收话术、QA 语言或兜底路径。`,
@@ -85,7 +82,6 @@ function buildPlanSystemPrompt(preset: VimaxSkillPreset) {
   '所有字符串值里的双引号和换行必须转义（\\" 和 \\n）；对象与数组元素之间必须有逗号，结尾不要多余逗号；务必输出完整闭合的 JSON。',
 ].join('\n');
 }
-
 function buildPlanMessages(prompt: string, preset: VimaxSkillPreset) {
   return [
     { role: 'system', content: buildPlanSystemPrompt(preset) },
@@ -653,6 +649,10 @@ export async function POST(request: NextRequest) {
       const wantStream = body.stream === true;
       const planConnection = extractBYOKConnection(request.headers);
       const videoConnection = extractBYOKVideoConnection(request.headers);
+      const readinessFailure = resolveVimaxPlanningReadinessFailure(planConnection, getArkConfig().apiKey);
+      if (readinessFailure) {
+        return NextResponse.json({ ...readinessFailure, phase: 'plan' }, { status: 503 });
+      }
 
       if (wantStream) {
         const encoder = new TextEncoder();
@@ -675,7 +675,7 @@ export async function POST(request: NextRequest) {
               );
               send('plan.complete', { success: true, phase: 'plan', model: result.model, ...envelope });
             } catch (error) {
-              send('plan.error', { error: error instanceof Error ? error.message : 'unknown' });
+              send('plan.error', sanitizeVimaxPlanningFailure(error));
             } finally {
               controller.close();
             }
@@ -684,7 +684,7 @@ export async function POST(request: NextRequest) {
         return new Response(stream, { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' } });
       }
 
-      const result = await callArkText(prompt, preset, body.model, planConnection);
+      const result = await callWithSanitizedVimaxPlanningFailure(() => callArkText(prompt, preset, body.model, planConnection));
       const envelope = createPersistedPlanEnvelope(
         owner,
         prompt,
