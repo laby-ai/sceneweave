@@ -144,6 +144,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
     onAuthenticationRequired,
   } = deps;
   const fallbackRunCoordinatorRef = useRef<VimaxRunCoordinator | null>(null);
+  const planningReadinessPendingRef = useRef(false);
   if (!fallbackRunCoordinatorRef.current) fallbackRunCoordinatorRef.current = createVimaxRunCoordinator();
   const runCoordinator = providedRunCoordinator || fallbackRunCoordinatorRef.current;
 
@@ -157,6 +158,51 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
     const generationSettings = context.settings || resolveVimaxGenerationSettings({});
     const userMsgId = genId();
     const progressMsgId = `vimax-agent-plan-${Date.now()}`;
+    if (planningReadinessPendingRef.current) return;
+    planningReadinessPendingRef.current = true;
+    try {
+      const readinessResponse = await fetch('/api/smart/vimax-agent-step', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...requestHeaders },
+        body: JSON.stringify({ phase: 'planning_readiness' }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      const readiness = await readinessResponse.json().catch(() => null) as { ready?: boolean } | null;
+      if (!readinessResponse.ok || readiness?.ready !== true) {
+        const failureMessage = formatProviderError(readiness, '规划暂时不可用，请稍后重试。');
+        setMessages(prev => [...prev,
+          { id: userMsgId, role: 'user', content: prompt, timestamp: Date.now() },
+          {
+            id: progressMsgId,
+            role: 'assistant',
+            content: `${failureMessage}\n输入和项目已保留，可更换规划模型后重试。`,
+            timestamp: Date.now(),
+            generationStatus: 'failed',
+            generationProgress: 100,
+            generationStepInfo: { step: 'vimax-agent-plan', progress: 100, totalSteps: 4, currentStepLabel: '规划未就绪' },
+          },
+        ]);
+        setInputValue(prompt);
+        return;
+      }
+    } catch {
+      setMessages(prev => [...prev,
+        { id: userMsgId, role: 'user', content: prompt, timestamp: Date.now() },
+        {
+          id: progressMsgId,
+          role: 'assistant',
+          content: '规划暂时失败，输入和项目已保留，请稍后重试或更换规划模型。',
+          timestamp: Date.now(),
+          generationStatus: 'failed',
+          generationProgress: 100,
+          generationStepInfo: { step: 'vimax-agent-plan', progress: 100, totalSteps: 4, currentStepLabel: '规划未就绪' },
+        },
+      ]);
+      setInputValue(prompt);
+      return;
+    } finally {
+      planningReadinessPendingRef.current = false;
+    }
     const run = runCoordinator.begin({
       projectId: messagesRef.current[0]?.id || userMsgId,
       phase: 'plan',

@@ -88,7 +88,6 @@ function buildPlanMessages(prompt: string, preset: VimaxSkillPreset) {
     { role: 'user', content: `请严格按 brief 指定的总时长、clip 数量和每段时长生成“${preset.name}”制作计划；如果 brief 写了 30 秒、6 个 5 秒 clip，就必须返回 6 个 duration=5 的 shots。只返回符合上面 schema 的 JSON：\n${prompt}` },
   ];
 }
-
 function assertPrompt(prompt: unknown): string {
   const text = typeof prompt === 'string' ? prompt.trim() : '';
   if (text.length < 4) {
@@ -96,14 +95,11 @@ function assertPrompt(prompt: unknown): string {
   }
   return text;
 }
-
 type LooseRecord = Record<string, unknown>;
-
 function asNum(value: unknown, fallback: number): number {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
 }
-
 function asStr(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : value == null ? fallback : String(value);
 }
@@ -636,6 +632,10 @@ export async function POST(request: NextRequest) {
   try {
     const body = (await request.json().catch(() => ({}))) as VimaxAgentStepBody;
     const phase = body.phase || 'plan';
+    if (phase === 'planning_readiness') {
+      const failure = resolveVimaxPlanningReadinessFailure(extractBYOKConnection(request.headers), getArkConfig().apiKey);
+      return NextResponse.json(failure ? { ...failure, phase, ready: false } : { success: true, provider: 'planning', phase, ready: true });
+    }
 
     if (phase === 'plan') {
       const prompt = assertPrompt(body.prompt);

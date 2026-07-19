@@ -1,6 +1,6 @@
 import type { VimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 
-export type VimaxAgentPhase = 'plan' | 'reference_assets' | 'video';
+export type VimaxAgentPhase = 'planning_readiness' | 'plan' | 'reference_assets' | 'video';
 
 export interface VimaxAgentReferenceAsset {
   kind?: string;

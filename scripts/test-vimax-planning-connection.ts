@@ -84,17 +84,28 @@ async function verifyServerPlanningGate() {
   try {
     const { NextRequest } = await import('next/server');
     const route = await import('../src/app/api/smart/vimax-agent-step/route');
+    const headers = {
+      'content-type': 'application/json',
+      'x-paper-host-embed': 'creation-agent',
+      'x-paper-host-guest-workspace': 'guest-creation-planning-readiness-001',
+      'x-yh-provider': 'happyhorse-dashscope',
+      'x-yh-api-base': 'https://video.example.com/api/v1',
+      'x-yh-api-key': 'video-secret',
+      'x-yh-video-model': 'happyhorse-1.1-t2v',
+    };
+    const readinessResponse = await route.POST(new NextRequest('http://localhost/api/smart/vimax-agent-step', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ phase: 'planning_readiness' }),
+    }));
+    const readinessPayload = await readinessResponse.json() as { ready?: boolean; code?: string; error?: string };
+    assert.equal(readinessResponse.status, 200);
+    assert.equal(readinessPayload.ready, false);
+    assert.equal(readinessPayload.code, 'planning_provider_unavailable');
+    assert.doesNotMatch(readinessPayload.error || '', /video-secret|request_id|happyhorse/i);
     const response = await route.POST(new NextRequest('http://localhost/api/smart/vimax-agent-step', {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-paper-host-embed': 'creation-agent',
-        'x-paper-host-guest-workspace': 'guest-creation-planning-readiness-001',
-        'x-yh-provider': 'happyhorse-dashscope',
-        'x-yh-api-base': 'https://video.example.com/api/v1',
-        'x-yh-api-key': 'video-secret',
-        'x-yh-video-model': 'happyhorse-1.1-t2v',
-      },
+      headers,
       body: JSON.stringify({
         phase: 'plan',
         stream: true,
