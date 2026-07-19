@@ -383,7 +383,7 @@ export function GenerateWorkspace({
           vimaxAgent: {
             phase: 'video_cost_confirm',
             title: '视频生成费用确认',
-            summary: '将基于已确认的参考图和分镜脚本，调用当前视频模型逐段生成并合成为完整短剧。',
+            summary: '将基于已确认的连续性约束和分镜脚本，调用当前视频模型逐段生成并合成为完整短剧。',
             model: selectedVideoModel,
             costState: 'not-yet',
             nextAction: '点击“确认开始生成”后开始真实调用视频模型。',

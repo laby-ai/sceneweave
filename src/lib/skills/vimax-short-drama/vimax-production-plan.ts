@@ -219,6 +219,12 @@ export function buildVimaxProductionPlan(input: VimaxProductionPlanInput): Vimax
   };
 }
 
+export function skipsVimaxReferenceAssets(plan: VimaxProductionPlan | undefined): boolean {
+  return Boolean(plan?.checkpoints.some(checkpoint => (
+    checkpoint.id === 'reference_assets' && checkpoint.status === 'skipped'
+  )));
+}
+
 export function parseVimaxProductionPlan(value: unknown): VimaxProductionPlan | undefined {
   if (!isRecord(value)
     || value.version !== 'sceneweave-production-plan-v1'

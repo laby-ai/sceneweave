@@ -16,6 +16,7 @@ import {
 } from '@/lib/skills/vimax-short-drama/vimax-project-session';
 import {
   parseVimaxProductionPlan,
+  skipsVimaxReferenceAssets,
   type VimaxProductionPlan,
 } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 
@@ -26,7 +27,7 @@ import {
  *
  * 阶段约束（不可放宽）：
  * - plan：真实 Ark AgentPlan / Doubao，失败直接报错，不切假规划、不回退旧 director-chain。
- * - reference_assets：真实 Seedream 5.0 Lite，失败直接报错，不切其他图像模型。
+ * - reference_assets：需要参考图时真实调用图像模型；服务端计划明确跳过时使用文本连续性约束。
  * - 视频/语音阶段必须用户显式确认费用，这里不触发。
  */
 
@@ -329,7 +330,9 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
             status: 'planned' as const,
           })),
         },
-        quickOptions: ['确认分镜，生成参考图', '调整时长和节奏', '补充角色或场景'],
+        quickOptions: skipsVimaxReferenceAssets(productionPlan)
+          ? ['继续生成视频', '调整时长和节奏', '补充角色或场景']
+          : ['确认分镜，生成参考图', '调整时长和节奏', '补充角色或场景'],
         actions: ['复制', '引用', '修改'],
       } : message));
       setCurrentStep(5);
@@ -364,6 +367,26 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         generationStatus: 'failed',
         generationStepInfo: { step: 'blocked', progress: 0, totalSteps: 4, currentStepLabel: '需要先规划' },
       }]);
+      return;
+    }
+
+    if (skipsVimaxReferenceAssets(plan.productionPlan)) {
+      setMessages(prev => [...prev, {
+        id: genId(),
+        role: 'assistant',
+        content: '当前视频模型使用文本连续性约束，不需要生成参考图。角色、服饰、道具、动作起止与构图锚点会按制作计划传入每个镜头。',
+        timestamp: Date.now(),
+        generationStatus: 'completed',
+        generationProgress: 100,
+        generationStepInfo: { step: 'reference-skipped', progress: 100, totalSteps: 4, currentStepLabel: '参考素材无需生成' },
+        quickOptions: ['继续生成视频', '调整分镜', '取消'],
+        vimaxAgent: {
+          ...plan,
+          phase: 'reference_assets',
+          costState: 'not-yet',
+          nextAction: '确认视频费用后按文本连续性约束逐镜生成。',
+        },
+      } as ChatMessage]);
       return;
     }
 
@@ -511,7 +534,8 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       ...((refMessage?.generatedImages || []).map(image => image.url).filter(Boolean)),
       ...((refMessage?.vimaxAgent?.assets || []).map(asset => asset.url).filter((url): url is string => Boolean(url))),
     ];
-    if (!referenceUrls.length || !planAgent) {
+    const referenceAssetsSkipped = skipsVimaxReferenceAssets(planAgent?.productionPlan);
+    if (!planAgent || (!referenceUrls.length && !referenceAssetsSkipped)) {
       setMessages(prev => [...prev, {
         id: genId(),
         role: 'assistant',
@@ -630,7 +654,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       if (!runCoordinator.isCurrent(run)) return;
       updateRunMessages(run, prev => prev.map(message => message.id === progressMsgId ? {
         ...message,
-        content: `视频生成失败：${error instanceof Error ? error.message : '未知错误'}\n可调整分镜或参考图后重试。`,
+        content: `视频生成失败：${error instanceof Error ? error.message : '未知错误'}\n可调整分镜或连续性约束后重试。`,
         generationStatus: 'failed',
         generationProgress: 100,
         generationStepInfo: { step: 'seedance-video', progress: 100, totalSteps: 4, currentStepLabel: '视频生成失败' },
