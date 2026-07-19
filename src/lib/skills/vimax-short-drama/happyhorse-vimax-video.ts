@@ -1,4 +1,10 @@
 import { mergeVideosWithLocalFfmpeg } from '@/lib/local-video-merge';
+import {
+  getFinalVideoStoreRoot,
+  mergeMemberFinalVideos,
+  saveMemberFinalVideoFromUrl,
+  type FinalVideoOwner,
+} from '@/lib/final-videos/member-final-video-store';
 import { extractLastFrameForHandoff } from '@/lib/video-frame-extraction';
 import {
   submitVideoWithBYOK,
@@ -97,7 +103,7 @@ export async function callHappyHorseVimaxVideo(
   plan: VimaxAgentPlan,
   preset: VimaxSkillPreset,
   connection: BYOKConnection,
-  options: { ratio?: string; resolution?: string },
+  options: { ratio?: string; resolution?: string; owner?: FinalVideoOwner },
   continuity: VimaxContinuityContract,
   referenceAssets: VimaxAgentReferenceAsset[] = [],
   onSegmentState?: HappyHorseSegmentObserver,
@@ -193,13 +199,7 @@ export async function callHappyHorseVimaxVideo(
     await onSegmentState?.(segment);
   }
 
-  let videoUrl = segments[0]?.videoUrl;
-  let merge: { bytes?: number; segmentCount?: number } = {};
-  if (segments.length > 1) {
-    const merged = await mergeVideosWithLocalFfmpeg(segments.map(segment => segment.videoUrl as string));
-    videoUrl = merged.videoUrl;
-    merge = { bytes: merged.bytes, segmentCount: merged.segmentCount };
-  }
+  const { videoUrl, merge } = await finalizeHappyHorseSegments(segments, options.owner);
   if (!videoUrl) throw new Error('视频片段已生成，但没有可返回的成片 URL。');
   return {
     model,
@@ -221,7 +221,7 @@ function formatDashScopeTime(timestamp: number) {
 export async function recoverHappyHorseVimaxVideo(
   plan: VimaxAgentPlan,
   connection: BYOKConnection,
-  options: { createdAfter: number; createdBefore?: number },
+  options: { createdAfter: number; createdBefore?: number; owner?: FinalVideoOwner },
   knownSegments: HappyHorseVimaxSegment[] = [],
 ) {
   const model = connection.videoModel || connection.model;
@@ -270,6 +270,10 @@ export async function recoverHappyHorseVimaxVideo(
   const segments: HappyHorseVimaxSegment[] = [];
   for (let index = 0; index < selected.length; index += 1) {
     const item = selected[index];
+    if (item.videoUrl) {
+      segments.push(await ensureLastFrame({ ...item, status: 'succeeded' }));
+      continue;
+    }
     const status = await getVideoStatusWithBYOK(connection, item.taskId);
     if (status.status !== 'succeeded' || !status.videoUrl) {
       throw new Error(`第 ${index + 1} 个片段尚未形成可交付结果；未重新提交生成。`);
@@ -286,15 +290,7 @@ export async function recoverHappyHorseVimaxVideo(
     });
   }
 
-  let videoUrl = segments[0]?.videoUrl;
-  let merge: { bytes?: number; segmentCount?: number; renderReport?: unknown } = {};
-  if (segments.length > 1) {
-    const merged = await mergeVideosWithLocalFfmpeg(segments.map(segment => segment.videoUrl as string), {
-      expectedDurationSeconds: segments.reduce((sum, segment) => sum + segment.duration, 0),
-    });
-    videoUrl = merged.videoUrl;
-    merge = { bytes: merged.bytes, segmentCount: merged.segmentCount, renderReport: merged.renderReport };
-  }
+  const { videoUrl, merge } = await finalizeHappyHorseSegments(segments, options.owner);
   if (!videoUrl) throw new Error('已找回视频片段，但没有可返回的成片 URL。');
   return {
     model,
@@ -304,5 +300,35 @@ export async function recoverHappyHorseVimaxVideo(
     segmentCount: segments.length,
     merge,
     shotTitle: segments.length > 1 ? '完整成片' : segments[0]?.shotTitle,
+  };
+}
+
+async function finalizeHappyHorseSegments(
+  segments: HappyHorseVimaxSegment[],
+  owner?: FinalVideoOwner,
+) {
+  const segmentUrls = segments.map(segment => segment.videoUrl).filter((url): url is string => Boolean(url));
+  if (segmentUrls.length !== segments.length) throw new Error('视频片段已生成，但缺少可交付地址。');
+  const expectedDurationSeconds = segments.reduce((sum, segment) => sum + segment.duration, 0);
+  if (owner) {
+    const root = getFinalVideoStoreRoot();
+    const saved = segmentUrls.length === 1
+      ? await saveMemberFinalVideoFromUrl(root, owner, segmentUrls[0])
+      : await mergeMemberFinalVideos(root, owner, segmentUrls, { expectedDurationSeconds });
+    const basePath = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
+    return {
+      videoUrl: `${basePath}/api/final-videos/${saved.id}`,
+      merge: {
+        bytes: saved.bytes,
+        segmentCount: saved.segmentCount,
+        ...('renderReport' in saved ? { renderReport: saved.renderReport } : {}),
+      },
+    };
+  }
+  if (segmentUrls.length === 1) return { videoUrl: segmentUrls[0], merge: {} };
+  const merged = await mergeVideosWithLocalFfmpeg(segmentUrls, { expectedDurationSeconds });
+  return {
+    videoUrl: merged.videoUrl,
+    merge: { bytes: merged.bytes, segmentCount: merged.segmentCount, renderReport: merged.renderReport },
   };
 }

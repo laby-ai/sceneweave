@@ -6,7 +6,6 @@ import {
   AtSign,
   Check,
   ChevronDown,
-  Download,
   FileJson,
   Footprints,
   Image as ImageIcon,
@@ -29,6 +28,7 @@ import { genId, loadChatHistory, loadMessages, saveChatHistory, saveMessages, ty
 import { VimaxProductionPlanCard } from '@/components/generate/vimax-production-plan-card';
 import { VimaxProjectEditorCard } from '@/components/generate/vimax-project-editor-card';
 import { VimaxSegmentedProductionCard } from '@/components/generate/vimax-segmented-production-card';
+import { VimaxProtectedDownload, VimaxProtectedVideo } from '@/components/generate/vimax-protected-media';
 import { HappyHorseConnectionControl } from '@/components/generate/happyhorse-connection-control';
 import { PlanningConnectionControl } from '@/components/generate/planning-connection-control';
 import { getBYOKRequestHeaders } from '@/lib/byok-client';
@@ -834,12 +834,9 @@ function MessageBubble({ message, onQuickOption, onResultIteration, onProduction
 
         {message.generatedVideo?.url && (
           <div className="mt-3">
-            <video
-              key={message.generatedVideo.url}
-              src={message.generatedVideo.url}
-              controls
-              playsInline
-              preload="metadata"
+            <VimaxProtectedVideo
+              url={message.generatedVideo.url}
+              requestHeaders={requestHeaders}
               className="aspect-video w-full rounded-xl border border-[#e1e5eb] bg-black"
             />
             {message.generatedVideo.duration ? (
@@ -901,18 +898,13 @@ function MessageBubble({ message, onQuickOption, onResultIteration, onProduction
               导出制作清单
             </a>
             {delivery.downloads.map(item => (
-              <a
+              <VimaxProtectedDownload
                 key={`${item.kind}-${item.url}`}
-                data-testid="vimax-download-result"
-                href={item.url}
-                download={item.filename}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-lg bg-[#2f6bff] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#235bd9]"
-              >
-                <Download className="h-3.5 w-3.5" />
-                下载{item.label}
-              </a>
+                url={item.url}
+                filename={item.filename}
+                label={item.label}
+                requestHeaders={requestHeaders}
+              />
             ))}
           </div>
         ) : null}

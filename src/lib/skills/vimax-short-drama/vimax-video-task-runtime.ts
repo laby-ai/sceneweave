@@ -5,13 +5,34 @@ import {
   getTaskForOwner,
   startTask,
   updateTask,
+  type TaskResult,
   type TaskOwner,
 } from '@/lib/task-manager';
+import type { ProductionAssemblyPlan } from '@/lib/production-assembly-plan';
+import { freshArtifactReadiness } from '@/lib/production-artifact-stale';
+import type { ProductionProject } from '@/lib/production-project';
+import { applySegmentAssetWriteback, type SegmentAssetWritebackPatch } from '@/lib/production-segment-assets';
+import {
+  approveVimaxProductionRender,
+  recordVimaxSuccessfulRender,
+} from '@/lib/skills/vimax-short-drama/vimax-render-delivery-lock';
+import type { VimaxRenderReport } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 
 interface PersistedVideoSegment {
   shotIndex: number;
   status?: string;
+  taskId?: string;
+  videoUrl?: string;
+  lastFrameUrl?: string;
 }
+
+type CanonicalVideoTaskResult = Omit<TaskResult, 'assemblyPlan'> & {
+  assemblyPlan?: ProductionAssemblyPlan;
+  productionProject?: ProductionProject;
+  productionPlan?: unknown;
+  vimaxHappyHorseSegments?: PersistedVideoSegment[];
+  vimaxVideoResult?: object;
+};
 
 interface CreateVimaxVideoTaskRuntimeInput<Result extends object, Segment extends PersistedVideoSegment> {
   owner: TaskOwner;
@@ -35,8 +56,39 @@ export function createVimaxVideoTaskRuntime<
       : [];
     const next = [...existing.filter(item => item.shotIndex !== segment.shotIndex), segment]
       .sort((left, right) => left.shotIndex - right.shotIndex);
+    const currentResult = {
+      ...(latest?.result || {}),
+      vimaxHappyHorseSegments: next,
+    } as CanonicalVideoTaskResult;
+    const productionProject = currentResult.productionProject;
+    const assemblyPlan = currentResult.assemblyPlan;
+    if (productionProject && assemblyPlan?.version === 'yh-assembly-plan-v1') {
+      const storyboardShot = productionProject.storyboard.shots.find(shot => shot.index === segment.shotIndex);
+      const assemblySegment = assemblyPlan.segments.find(item => item.shotId === storyboardShot?.id)
+        || assemblyPlan.segments[segment.shotIndex - 1];
+      if (assemblySegment) {
+        const now = new Date().toISOString();
+        const succeeded = segment.status === 'succeeded' && Boolean(segment.videoUrl);
+        const patch: SegmentAssetWritebackPatch = {
+          status: succeeded ? 'completed' : 'running',
+          startedAt: assemblySegment.startedAt || now,
+          ...(succeeded ? { completedAt: now, artifactReadiness: freshArtifactReadiness(productionProject) } : {}),
+          expectedOutputs: {
+            providerTaskId: segment.taskId || assemblySegment.expectedOutputs.providerTaskId,
+            ...(segment.videoUrl ? { videoUrl: segment.videoUrl } : {}),
+            ...(segment.lastFrameUrl ? { lastFrameUrl: segment.lastFrameUrl } : {}),
+          },
+        };
+        const writeback = applySegmentAssetWriteback({
+          assemblyPlan,
+          segmentIndex: assemblySegment.index,
+          patch,
+        });
+        currentResult.assemblyPlan = writeback.assemblyPlan;
+      }
+    }
     if (!updateTask(input.parentTaskId, {
-      result: { ...(latest?.result || {}), vimaxHappyHorseSegments: next },
+      result: currentResult as TaskResult,
     })) throw new Error('视频任务恢复信息保存失败，已停止继续提交后续镜头。');
     if (!backgroundTaskId) return;
 
@@ -65,9 +117,45 @@ export function createVimaxVideoTaskRuntime<
       throw new Error('video_background_cancelled');
     }
     const parent = getTaskForOwner(input.parentTaskId, input.owner);
+    const currentResult = {
+      ...(parent?.result || {}),
+      vimaxVideoResult: result,
+    } as CanonicalVideoTaskResult;
+    const final = result as {
+      videoUrl?: string;
+      merge?: { renderReport?: Omit<VimaxRenderReport, 'artifactVersion'> };
+    };
+    const assemblyPlan = currentResult.assemblyPlan as ProductionAssemblyPlan | undefined;
+    if (assemblyPlan?.version === 'yh-assembly-plan-v1' && final.videoUrl) {
+      currentResult.assemblyPlan = {
+        ...assemblyPlan,
+        assembly: { ...assemblyPlan.assembly, outputUrl: final.videoUrl },
+      };
+    }
     if (!updateTask(input.parentTaskId, {
-      result: { ...(parent?.result || {}), vimaxVideoResult: result },
+      result: currentResult as TaskResult,
     })) throw new Error('完整短剧结果保存失败。');
+    if (final.videoUrl && final.merge?.renderReport) {
+      const latest = getTaskForOwner(input.parentTaskId, input.owner);
+      const latestResult = latest?.result as CanonicalVideoTaskResult | undefined;
+      const productionProject = latestResult?.productionProject;
+      const latestAssemblyPlan = latestResult?.assemblyPlan;
+      if (!latestResult || !productionProject || !latestAssemblyPlan) throw new Error('成片已保存，但项目制作状态不完整，未开放交付。');
+      const approved = approveVimaxProductionRender(latestResult.productionPlan, {
+        productionProject,
+        assemblyPlan: latestAssemblyPlan,
+      });
+      const productionPlan = recordVimaxSuccessfulRender(approved, {
+        productionProject,
+        assemblyPlan: latestAssemblyPlan,
+        videoUrl: final.videoUrl,
+        completedAt: new Date().toISOString(),
+        renderReport: final.merge.renderReport,
+      });
+      if (!updateTask(input.parentTaskId, {
+        result: { ...latestResult, productionPlan } as TaskResult,
+      })) throw new Error('成片已保存，但最后成功交付状态写回失败。');
+    }
     return result;
   };
 

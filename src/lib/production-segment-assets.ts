@@ -16,6 +16,7 @@ export interface SegmentAssetWritebackPatch {
   completedAt?: string;
   expectedInputs?: Partial<ProductionSegmentPlan['expectedInputs']>;
   expectedOutputs?: Partial<ProductionSegmentPlan['expectedOutputs']>;
+  artifactReadiness?: ProductionSegmentPlan['artifactReadiness'];
 }
 
 export interface SegmentAssetWritebackParams {

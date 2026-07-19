@@ -20,7 +20,9 @@ import {
 } from '../src/lib/skills/vimax-short-drama/vimax-continuity-contract';
 
 const taskFile = path.join(tmpdir(), `sceneweave-happyhorse-route-${randomUUID()}.json`);
+const finalVideoRoot = path.join(tmpdir(), `sceneweave-happyhorse-final-${randomUUID()}`);
 process.env.HUIYING_TASKS_FILE = taskFile;
+process.env.HUIYING_FINAL_VIDEO_STORE_PATH = finalVideoRoot;
 
 const calls: Array<{ url: string; init?: RequestInit }> = [];
 const originalFetch = globalThis.fetch;
@@ -79,6 +81,13 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
         video_url: 'https://fixture.invalid/happyhorse-recovered.mp4',
       },
     }), { status: 200, headers: { 'content-type': 'application/json' } });
+  }
+  if (url.startsWith('https://fixture.invalid/') && url.endsWith('.mp4')) {
+    const mp4 = Buffer.alloc(2048);
+    mp4.writeUInt32BE(24, 0);
+    mp4.write('ftyp', 4, 'ascii');
+    mp4.write('isom', 8, 'ascii');
+    return new Response(mp4, { status: 200, headers: { 'content-type': 'video/mp4' } });
   }
   throw new Error(`Unexpected network call: ${url}`);
 }) as typeof fetch;
@@ -205,6 +214,11 @@ async function main() {
     (getTaskForOwner(backgroundTaskId, owner)?.result?.vimaxVideoResult as { model?: string } | undefined)?.model,
     'happyhorse-1.1-t2v',
   );
+  assert.match(
+    String((getTaskForOwner(backgroundTaskId, owner)?.result?.vimaxVideoResult as { videoUrl?: string } | undefined)?.videoUrl || ''),
+    /^\/api\/final-videos\/[0-9a-f-]{36}$/,
+    'the original video runtime must return an owner-isolated durable final URL',
+  );
   assert.deepEqual(
     getTaskForOwner(taskId, owner)?.result?.vimaxHappyHorseSegments,
     [{
@@ -218,7 +232,11 @@ async function main() {
     }],
     'each provider task id and last successful result must persist before the long request returns',
   );
-  assert.equal(calls.length, 2, 'one shot must submit once and poll once');
+  assert.equal(
+    calls.filter(call => call.url.includes('/video-synthesis') || call.url.includes('/api/v1/tasks/happyhorse-task-a')).length,
+    2,
+    'one shot must submit once and poll once',
+  );
   const submitBody = JSON.parse(String(calls[0]?.init?.body || '{}'));
   assert.equal(submitBody.parameters.resolution, '720P');
   assert.equal(submitBody.parameters.duration, 5);
@@ -248,13 +266,58 @@ async function main() {
     incurredCost?: boolean;
     segments?: Array<{ taskId?: string }>;
   };
-  assert.equal(recoveryResponse.status, 200);
+  assert.equal(recoveryResponse.status, 200, JSON.stringify(recoveryPayload));
   assert.equal(recoveryPayload.success, true);
   assert.equal(recoveryPayload.recovered, true);
   assert.equal(recoveryPayload.incurredCost, false);
   assert.equal(recoveryPayload.segments?.[0]?.taskId, 'happyhorse-task-a');
   assert.equal(workspaceListRejected, false, 'known provider task ids must bypass unsupported task enumeration');
   assert.equal(calls.filter(call => call.init?.method === 'POST').length, 1, 'recovery must never submit another provider job');
+  assert.equal(getTaskForOwner(taskId, owner)?.result?.assemblyPlan?.status, 'completed');
+  assert.equal(getTaskForOwner(taskId, owner)?.result?.assemblyPlan?.segments?.[0]?.expectedOutputs?.videoUrl, 'https://fixture.invalid/happyhorse-a.mp4');
+
+  const { createVimaxVideoTaskRuntime } = await import('../src/lib/skills/vimax-short-drama/vimax-video-task-runtime');
+  const durableVideoUrl = '/api/final-videos/11111111-1111-4111-8111-111111111111';
+  await createVimaxVideoTaskRuntime({
+    owner,
+    parentTaskId: taskId,
+    totalShots: 1,
+    prompt: plan.title,
+    ratio: '16:9',
+    resolution: '720p',
+    modelId: 'happyhorse-1.1-t2v',
+    execute: async persistSegment => {
+      persistSegment({
+        shotIndex: 1,
+        status: 'succeeded',
+        taskId: 'happyhorse-task-a',
+        videoUrl: 'https://fixture.invalid/happyhorse-a.mp4',
+        lastFrameUrl: 'https://fixture.invalid/happyhorse-a-last.jpg',
+      });
+      return {
+        videoUrl: durableVideoUrl,
+        merge: {
+          renderReport: {
+            version: 'sceneweave-render-report-v1' as const,
+            status: 'passed' as const,
+            runtime: 'sceneweave-segmented-ffmpeg-v1' as const,
+            checkedAt: new Date().toISOString(),
+            segmentCount: 1,
+            expectedDurationSeconds: 5,
+            actualDurationSeconds: 5.04,
+            outputBytes: 2048,
+          },
+        },
+      };
+    },
+  }).execute();
+  assert.equal(
+    (getTaskForOwner(taskId, owner)?.result?.productionPlan as {
+      render?: { lastSuccessfulResult?: { videoUrl?: string } };
+    } | undefined)?.render?.lastSuccessfulResult?.videoUrl,
+    durableVideoUrl,
+    'render QA must promote only the durable current-version video to lastSuccessfulResult',
+  );
 
   const recoveryAfterRestart = await route.POST(new NextRequest('http://localhost/api/smart/vimax-agent-step', {
     method: 'POST',
@@ -452,6 +515,7 @@ async function main() {
 main().finally(() => {
   globalThis.fetch = originalFetch;
   rmSync(taskFile, { force: true });
+  rmSync(finalVideoRoot, { force: true, recursive: true });
 }).catch(error => {
   console.error(error);
   process.exitCode = 1;

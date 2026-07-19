@@ -812,7 +812,7 @@ export async function POST(request: NextRequest) {
           ? await recoverHappyHorseVimaxVideo(
             canonical.plan,
             videoConnection,
-            { createdAfter: recoveryCreatedAfter },
+            { createdAfter: recoveryCreatedAfter, owner },
             savedHappyHorseSegments,
           )
           : videoConnection?.provider === 'happyhorse-dashscope'
@@ -820,7 +820,7 @@ export async function POST(request: NextRequest) {
               canonical.plan,
               preset,
               videoConnection,
-              generationPreferences,
+              { ...generationPreferences, owner },
               continuity, persistedAssets, persistSegment, savedHappyHorseSegments,
             )
             : await callSeedanceVideo(canonical.plan, assets, preset, continuity, generationPreferences),
