@@ -158,6 +158,20 @@ export function extractBYOKConnection(headers: Headers): BYOKConnection | undefi
   return undefined;
 }
 
+export function extractBYOKVideoConnection(headers: Headers): BYOKConnection | undefined {
+  const provider = headers.get('x-yh-video-provider')?.trim();
+  const apiBase = headers.get('x-yh-video-api-base')?.trim();
+  const apiKey = headers.get('x-yh-video-api-key')?.trim();
+  const videoModel = headers.get('x-yh-video-model')?.trim() || undefined;
+  if (
+    provider && apiBase && apiKey
+    && (provider === 'openai-compatible' || provider === 'ark-plan' || provider === 'happyhorse-dashscope')
+  ) {
+    return { provider, apiBase: normalizeBYOKApiBase(apiBase), apiKey, videoModel };
+  }
+  return extractBYOKConnection(headers);
+}
+
 export async function chatWithBYOK(
   connection: BYOKConnection,
   params: BYOKChatParams

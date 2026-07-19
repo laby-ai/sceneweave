@@ -26,6 +26,7 @@ export type VimaxProductionGovernanceStatus =
 export type VimaxProductionDecisionAction =
   | 'approved'
   | 'draft-only-confirmed'
+  | 'external-cost-confirmed'
   | 'paused'
   | 'resumed'
   | 'draft-delivered';
@@ -89,6 +90,7 @@ export interface VimaxProductionPlan {
     currency: 'CNY';
     amount: number | null;
     status: 'provider-confirmation-required' | 'draft-only-confirmed' | 'confirmed';
+    billingSource?: 'platform' | 'external-byok';
     requiresConfirmation: true;
     reason: string;
   };
@@ -123,6 +125,7 @@ interface VimaxProductionPlanInput {
     referenceAssets: boolean;
     video: boolean;
   };
+  referenceAssetsRequired?: boolean;
   assets: Array<{ kind: string; label: string; prompt?: string }>;
   shots: Array<{ index: number; title: string; duration: number; camera: string; prompt: string }>;
   workflow?: VimaxSkillRuntimeBinding;
@@ -158,7 +161,10 @@ export function buildVimaxProductionPlan(input: VimaxProductionPlanInput): Vimax
     { stage: 'reference_assets', provider: PROVIDERS.reference_assets, model: input.imageModel, ready: input.providerReadiness.referenceAssets, locked: true },
     { stage: 'video', provider: PROVIDERS.video, model: input.videoModel, ready: input.providerReadiness.video, locked: true },
   ];
-  const planApprovalReady = input.providerReadiness.referenceAssets;
+  const referenceAssetsRequired = input.referenceAssetsRequired !== false;
+  const planApprovalReady = referenceAssetsRequired
+    ? input.providerReadiness.referenceAssets
+    : input.providerReadiness.video;
 
   return {
     version: 'sceneweave-production-plan-v1',
@@ -184,7 +190,11 @@ export function buildVimaxProductionPlan(input: VimaxProductionPlanInput): Vimax
     ],
     checkpoints: [
       { id: 'plan', name: CHECKPOINT_NAMES.plan, status: 'completed' },
-      { id: 'reference_assets', name: CHECKPOINT_NAMES.reference_assets, status: planApprovalReady ? 'awaiting-human' : 'blocked' },
+      {
+        id: 'reference_assets',
+        name: CHECKPOINT_NAMES.reference_assets,
+        status: referenceAssetsRequired ? (planApprovalReady ? 'awaiting-human' : 'blocked') : 'skipped',
+      },
       { id: 'video', name: CHECKPOINT_NAMES.video, status: 'blocked' },
       { id: 'render', name: CHECKPOINT_NAMES.render, status: 'blocked' },
     ],
@@ -196,6 +206,7 @@ export function buildVimaxProductionPlan(input: VimaxProductionPlanInput): Vimax
       currency: 'CNY',
       amount: null,
       status: 'provider-confirmation-required',
+      billingSource: 'platform',
       requiresConfirmation: true,
       reason: '图像与视频阶段使用真实模型，执行前必须按当前供应商价格再次确认。',
     },
@@ -248,7 +259,7 @@ export function parseVimaxProductionPlan(value: unknown): VimaxProductionPlan | 
     || !Array.isArray(governance.decisionLog)
     || !governance.decisionLog.every(decision => isRecord(decision)
       && ['plan', 'cost', 'execution', 'render'].includes(String(decision.checkpoint))
-      && ['approved', 'draft-only-confirmed', 'paused', 'resumed', 'draft-delivered'].includes(String(decision.action))
+      && ['approved', 'draft-only-confirmed', 'external-cost-confirmed', 'paused', 'resumed', 'draft-delivered'].includes(String(decision.action))
       && typeof decision.at === 'string')) return undefined;
 
   const validRoutes = value.providerRoutes.length === 3 && value.providerRoutes.every(route => (
@@ -270,11 +281,14 @@ export function parseVimaxProductionPlan(value: unknown): VimaxProductionPlan | 
   const costAmountValid = value.estimatedCost.amount === null
     || (typeof value.estimatedCost.amount === 'number' && Number.isFinite(value.estimatedCost.amount) && value.estimatedCost.amount >= 0);
   const confirmedCostValid = value.estimatedCost.status !== 'confirmed'
-    || typeof value.estimatedCost.amount === 'number';
+    || typeof value.estimatedCost.amount === 'number'
+    || value.estimatedCost.billingSource === 'external-byok';
   const validCost = value.estimatedCost.currency === 'CNY'
     && costAmountValid
     && confirmedCostValid
     && ['provider-confirmation-required', 'draft-only-confirmed', 'confirmed'].includes(String(value.estimatedCost.status))
+    && (value.estimatedCost.billingSource === undefined
+      || ['platform', 'external-byok'].includes(String(value.estimatedCost.billingSource)))
     && value.estimatedCost.requiresConfirmation === true
     && typeof value.estimatedCost.reason === 'string';
   const checkpointDecision = value.render.checkpointDecision;
@@ -361,8 +375,11 @@ export function approveVimaxProductionPlan(value: unknown): VimaxProductionPlan 
   if (plan.governance.status !== 'awaiting-plan-approval') {
     throw new Error('当前制作计划尚未具备确认条件。');
   }
-  const referenceRoute = plan.providerRoutes.find(route => route.stage === 'reference_assets');
-  if (!referenceRoute?.ready) throw new Error('参考素材服务尚未就绪，暂不能确认制作计划。');
+  const referenceSkipped = plan.checkpoints.some(checkpoint => checkpoint.id === 'reference_assets' && checkpoint.status === 'skipped');
+  const requiredRoute = plan.providerRoutes.find(route => route.stage === (referenceSkipped ? 'video' : 'reference_assets'));
+  if (!requiredRoute?.ready) throw new Error(referenceSkipped
+    ? '视频服务尚未就绪，暂不能确认制作计划。'
+    : '参考素材服务尚未就绪，暂不能确认制作计划。');
 
   return {
     ...plan,
@@ -373,6 +390,37 @@ export function approveVimaxProductionPlan(value: unknown): VimaxProductionPlan 
         ...plan.governance.decisionLog,
         { checkpoint: 'plan', action: 'approved', at: new Date().toISOString() },
       ],
+    },
+  };
+}
+
+export function confirmVimaxProductionExternalCost(value: unknown): VimaxProductionPlan {
+  const plan = parseVimaxProductionPlan(value);
+  if (!plan) throw new Error('制作计划已失效，请重新规划。');
+  if (plan.governance.status === 'ready' && plan.estimatedCost.status === 'confirmed') return plan;
+  if (plan.governance.status !== 'awaiting-cost-decision') {
+    throw new Error('请先确认制作计划，再确认外部供应商费用。');
+  }
+  const videoRoute = plan.providerRoutes.find(route => route.stage === 'video');
+  if (!videoRoute?.ready) throw new Error('视频服务尚未就绪，暂不能确认真实生成。');
+  return {
+    ...plan,
+    checkpoints: plan.checkpoints.map(checkpoint => checkpoint.id === 'video'
+      ? { ...checkpoint, status: 'pending' as const }
+      : checkpoint),
+    governance: {
+      status: 'ready',
+      decisionLog: [
+        ...plan.governance.decisionLog,
+        { checkpoint: 'cost', action: 'external-cost-confirmed', at: new Date().toISOString() },
+      ],
+    },
+    estimatedCost: {
+      ...plan.estimatedCost,
+      amount: null,
+      status: 'confirmed',
+      billingSource: 'external-byok',
+      reason: '用户已确认按外部视频供应商账单执行，平台不虚构或代报价格。',
     },
   };
 }

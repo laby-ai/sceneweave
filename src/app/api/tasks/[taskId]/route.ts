@@ -3,6 +3,7 @@ import { cancelTask, getTaskForOwner, retryTask, updateTask } from '@/lib/task-m
 import { resolvePaperHostCreationOwnerFromRequest } from '@/lib/task-access';
 import {
   approveVimaxProductionPlan,
+  confirmVimaxProductionExternalCost,
   confirmVimaxProductionDraft,
   pauseVimaxProduction,
   prepareVimaxProductionDraft,
@@ -190,6 +191,7 @@ export async function POST(
     }
 
     if ([
+      'confirm-production-external',
       'confirm-production-draft',
       'pause-production',
       'resume-production',
@@ -203,8 +205,10 @@ export async function POST(
         );
       }
       try {
-        const productionPlan = action === 'confirm-production-draft'
-          ? confirmVimaxProductionDraft(task.result?.productionPlan)
+        const productionPlan = action === 'confirm-production-external'
+          ? confirmVimaxProductionExternalCost(task.result?.productionPlan)
+          : action === 'confirm-production-draft'
+            ? confirmVimaxProductionDraft(task.result?.productionPlan)
           : action === 'pause-production'
             ? pauseVimaxProduction(task.result?.productionPlan)
             : action === 'resume-production'
@@ -212,6 +216,7 @@ export async function POST(
               : prepareVimaxProductionDraft(task.result?.productionPlan);
         updateTask(taskId, { result: { ...task.result, productionPlan } });
         const messages: Record<string, string> = {
+          'confirm-production-external': '已确认按外部供应商账单执行，平台不会虚构费用。',
           'confirm-production-draft': '已选择无成本草稿交付，不会调用图像或视频模型。',
           'pause-production': '制作流程已暂停，刷新后可继续。',
           'resume-production': '制作流程已继续。',

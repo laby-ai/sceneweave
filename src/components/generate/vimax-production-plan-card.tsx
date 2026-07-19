@@ -55,6 +55,7 @@ export function VimaxProductionPlanCard({ plan, taskId, requestHeaders, onPlanCh
   const governance = buildVimaxProductionGovernanceView(currentPlan);
   const videoReady = currentPlan.providerRoutes.find(route => route.stage === 'video')?.ready === true;
   const completed = currentPlan.checkpoints.filter(checkpoint => checkpoint.status === 'completed').length;
+  const referenceSkipped = currentPlan.checkpoints.some(checkpoint => checkpoint.id === 'reference_assets' && checkpoint.status === 'skipped');
 
   async function updatePlan(action: string, fallbackError: string) {
     if (!taskId || pendingAction) return;
@@ -136,7 +137,9 @@ export function VimaxProductionPlanCard({ plan, taskId, requestHeaders, onPlanCh
             <div className="flex items-center justify-between gap-2 text-[11px]">
               <span className="font-medium text-[#4d5663]">{stageLabels[route.stage]}</span>
               <span className={route.ready ? 'text-emerald-600' : 'text-amber-700'}>
-                {route.ready ? '已就绪' : route.stage === 'video' ? '视频服务待就绪' : '服务待就绪'}
+                {route.stage === 'reference_assets' && referenceSkipped
+                  ? '当前模型无需'
+                  : route.ready ? '已就绪' : route.stage === 'video' ? '视频服务待就绪' : '服务待就绪'}
               </span>
             </div>
             <p className="mt-1 truncate text-[10px] text-[#9199a4]" title={route.model}>{route.model}</p>
@@ -193,14 +196,26 @@ export function VimaxProductionPlanCard({ plan, taskId, requestHeaders, onPlanCh
           </button>
         ) : null}
         {awaitingCost ? (
-          <button
-            type="button"
-            disabled={!taskId || Boolean(pendingAction)}
-            onClick={() => void updatePlan('confirm-production-draft', '执行方式保存失败')}
-            className="rounded-lg bg-[#2f6bff] px-3 py-1.5 text-[11px] font-medium text-white transition hover:bg-[#245de3] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {pendingAction === 'confirm-production-draft' ? '正在保存…' : '继续无成本草稿'}
-          </button>
+          <>
+            {videoReady ? (
+              <button
+                type="button"
+                disabled={!taskId || Boolean(pendingAction)}
+                onClick={() => void updatePlan('confirm-production-external', '真实生成确认失败')}
+                className="rounded-lg bg-[#2f6bff] px-3 py-1.5 text-[11px] font-medium text-white transition hover:bg-[#245de3] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {pendingAction === 'confirm-production-external' ? '正在保存…' : '确认按供应商账单生成'}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              disabled={!taskId || Boolean(pendingAction)}
+              onClick={() => void updatePlan('confirm-production-draft', '执行方式保存失败')}
+              className="rounded-lg border border-[#dfe5ed] bg-white px-3 py-1.5 text-[11px] font-medium text-[#4d5663] transition hover:bg-[#f5f7fa] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {pendingAction === 'confirm-production-draft' ? '正在保存…' : '继续无成本草稿'}
+            </button>
+          </>
         ) : null}
         {ready ? (
           <>

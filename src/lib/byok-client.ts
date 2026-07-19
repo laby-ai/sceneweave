@@ -25,13 +25,19 @@ function scopedHappyHorseStorageKey(storageScope = ''): string {
   return `${HAPPYHORSE_SESSION_STORAGE_KEY}:${storageScope || 'default'}`;
 }
 
-function loadConnection(storageScope = ''): StoredApiConnection | undefined {
-  const sessionRaw = window.sessionStorage.getItem(scopedHappyHorseStorageKey(storageScope));
-  const raw = sessionRaw || window.localStorage.getItem(BYOK_STORAGE_KEY);
+function parseConnection(raw: string | null): StoredApiConnection | undefined {
   if (!raw) return undefined;
   const config = JSON.parse(raw) as StoredApiConnection;
   if (!isStoredProvider(config.provider) || !config.apiBase || !config.apiKey) return undefined;
   return config;
+}
+
+function loadPrimaryConnection(): StoredApiConnection | undefined {
+  return parseConnection(window.localStorage.getItem(BYOK_STORAGE_KEY));
+}
+
+function loadHappyHorseConnection(storageScope = ''): StoredApiConnection | undefined {
+  return parseConnection(window.sessionStorage.getItem(scopedHappyHorseStorageKey(storageScope)));
 }
 
 export function saveHappyHorseSessionConnection(
@@ -76,7 +82,9 @@ export function getBYOKRequestHeaders(storageScope = ''): Record<string, string>
   if (typeof window === 'undefined') return {};
 
   try {
-    const config = loadConnection(storageScope);
+    const primary = loadPrimaryConnection();
+    const video = loadHappyHorseConnection(storageScope);
+    const config = primary || video;
     if (!config?.provider || !config.apiBase || !config.apiKey) return {};
 
     const headers: Record<string, string> = {
@@ -94,6 +102,12 @@ export function getBYOKRequestHeaders(storageScope = ''): Record<string, string>
     if (config.videoModel) {
       headers['x-yh-video-model'] = config.videoModel;
     }
+    if (primary && video?.provider === 'happyhorse-dashscope' && video.apiBase && video.apiKey) {
+      headers['x-yh-video-provider'] = video.provider;
+      headers['x-yh-video-api-base'] = video.apiBase;
+      headers['x-yh-video-api-key'] = video.apiKey;
+      headers['x-yh-video-model'] = video.videoModel || 'happyhorse-1.1-t2v';
+    }
 
     return headers;
   } catch {
@@ -105,7 +119,7 @@ export function hasBYOKConnectionConfigured(storageScope = ''): boolean {
   if (typeof window === 'undefined') return false;
 
   try {
-    return Boolean(loadConnection(storageScope));
+    return Boolean(loadPrimaryConnection() || loadHappyHorseConnection(storageScope));
   } catch {
     return false;
   }

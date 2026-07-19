@@ -15,7 +15,9 @@ import {
   type VimaxSkillPreset,
 } from '@/lib/skills/vimax-short-drama/vimax-skill-presets';
 import {
+  chatWithBYOK,
   extractBYOKConnection,
+  extractBYOKVideoConnection,
   type BYOKConnection,
 } from '@/lib/byok-provider';
 import { callHappyHorseVimaxVideo } from '@/lib/skills/vimax-short-drama/happyhorse-vimax-video';
@@ -220,9 +222,18 @@ function extractJsonObject(text: string): VimaxAgentPlan {
   });
 }
 
-async function callArkText(prompt: string, preset: VimaxSkillPreset, modelOverride?: string): Promise<{ model: string; plan: VimaxAgentPlan; rawText: string }> {
+async function callArkText(prompt: string, preset: VimaxSkillPreset, modelOverride?: string, connection?: BYOKConnection): Promise<{ model: string; plan: VimaxAgentPlan; rawText: string }> {
   const { apiKey, apiBase, textModel } = getArkConfig();
-  const model = (modelOverride && modelOverride.trim()) || textModel;
+  const model = connection?.model || (modelOverride && modelOverride.trim()) || textModel;
+  if (connection) {
+    const result = await chatWithBYOK(connection, {
+      model,
+      temperature: 0.2,
+      maxTokens: 4000,
+      messages: buildPlanMessages(prompt, preset) as Array<{ role: 'system' | 'user'; content: string }>,
+    });
+    return { model: result.model, plan: extractJsonObject(result.content), rawText: result.content };
+  }
   if (!apiKey) {
     throw new Error('缺少 ARK_API_KEY 或 HUIYING_REAL_ARK_API_KEY，无法进入真实 AgentPlan 阶段。');
   }
@@ -262,11 +273,14 @@ function buildVimaxPlanEnvelope(
   basePlan: VimaxAgentPlan,
   body: VimaxAgentStepBody,
   taskId: string,
+  planConnection?: BYOKConnection,
   videoConnection?: BYOKConnection,
 ) {
   const { plan, productionProject, assemblyPlan } = buildProductionBackedVimaxPlan(prompt, basePlan, body, taskId);
   const config = getArkConfig();
   const workflow = resolveVimaxSkillRuntimeBinding({ skillId: body.skillId });
+  const planModel = planConnection?.model || model;
+  const imageModel = planConnection?.imageModel || config.imageModel;
   const videoModel = videoConnection?.videoModel || config.videoModel;
   const continuity = buildVimaxContinuityContract({
     productionProject,
@@ -281,14 +295,15 @@ function buildVimaxPlanEnvelope(
     title: plan.title,
     ratio: body.ratio || '16:9',
     resolution: body.resolution || '720p',
-    planModel: model,
-    imageModel: config.imageModel,
+    planModel,
+    imageModel,
     videoModel,
     providerReadiness: {
-      plan: Boolean(config.apiKey),
-      referenceAssets: Boolean(config.imageApiKey),
+      plan: Boolean(planConnection?.apiKey || config.apiKey),
+      referenceAssets: Boolean((planConnection?.apiKey && planConnection.imageModel) || config.imageApiKey),
       video: Boolean(videoConnection?.videoModel && videoConnection.apiKey) || Boolean(config.imageApiKey),
     },
+    referenceAssetsRequired: videoConnection?.provider !== 'happyhorse-dashscope',
     assets: plan.assets,
     shots: plan.shots,
     workflow,
@@ -303,6 +318,7 @@ function createPersistedPlanEnvelope(
   model: string,
   basePlan: VimaxAgentPlan,
   body: VimaxAgentStepBody,
+  planConnection?: BYOKConnection,
   videoConnection?: BYOKConnection,
 ) {
   const taskId = createTask('storyboard', {
@@ -321,6 +337,7 @@ function createPersistedPlanEnvelope(
     basePlan,
     body,
     taskId,
+    planConnection,
     videoConnection,
   );
   persistVimaxPlanTask({
@@ -335,15 +352,17 @@ function createPersistedPlanEnvelope(
 }
 
 // 流式 plan：原生 fetch + SSE，逐 token 把 delta 透传给前端
-async function callArkTextStream(prompt: string, preset: VimaxSkillPreset, modelOverride: string | undefined, writer: (delta: string) => void): Promise<{ model: string; plan: VimaxAgentPlan; rawText: string }> {
+async function callArkTextStream(prompt: string, preset: VimaxSkillPreset, modelOverride: string | undefined, writer: (delta: string) => void, connection?: BYOKConnection): Promise<{ model: string; plan: VimaxAgentPlan; rawText: string }> {
   const { apiKey, apiBase, textModel } = getArkConfig();
-  const model = (modelOverride && modelOverride.trim()) || textModel;
-  if (!apiKey) throw new Error('缺少 API Key，无法进入 AgentPlan 阶段。');
+  const model = connection?.model || (modelOverride && modelOverride.trim()) || textModel;
+  const resolvedApiKey = connection?.apiKey || apiKey;
+  const resolvedApiBase = (connection?.apiBase || apiBase).replace(/\/+$/, '');
+  if (!resolvedApiKey) throw new Error('缺少 API Key，无法进入 AgentPlan 阶段。');
 
-  const response = await fetch(`${apiBase}/chat/completions`, {
+  const response = await fetch(`${resolvedApiBase}/chat/completions`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${resolvedApiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -613,6 +632,8 @@ export async function POST(request: NextRequest) {
         style: preset.style,
       };
       const wantStream = body.stream === true;
+      const planConnection = extractBYOKConnection(request.headers);
+      const videoConnection = extractBYOKVideoConnection(request.headers);
 
       if (wantStream) {
         const encoder = new TextEncoder();
@@ -623,14 +644,15 @@ export async function POST(request: NextRequest) {
               send('plan.start', { phase: 'plan' });
               const result = await callArkTextStream(prompt, preset, body.model, (delta) => {
                 send('plan.delta', { delta });
-              });
+              }, planConnection);
               const envelope = createPersistedPlanEnvelope(
                 owner,
                 prompt,
                 result.model,
                 result.plan,
                 trustedBody,
-                extractBYOKConnection(request.headers),
+                planConnection,
+                videoConnection,
               );
               send('plan.complete', { success: true, phase: 'plan', model: result.model, ...envelope });
             } catch (error) {
@@ -643,14 +665,15 @@ export async function POST(request: NextRequest) {
         return new Response(stream, { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' } });
       }
 
-      const result = await callArkText(prompt, preset, body.model);
+      const result = await callArkText(prompt, preset, body.model, planConnection);
       const envelope = createPersistedPlanEnvelope(
         owner,
         prompt,
         result.model,
         result.plan,
         trustedBody,
-        extractBYOKConnection(request.headers),
+        planConnection,
+        videoConnection,
       );
       return NextResponse.json({
         success: true,
@@ -665,9 +688,10 @@ export async function POST(request: NextRequest) {
     if (phase === 'reference_assets') {
       const canonical = resolveCanonicalVimaxStageInput({ taskId: body.taskId || '', owner });
       const config = getArkConfig();
+      const planConnection = extractBYOKConnection(request.headers);
       const productionPlan = assertVimaxProductionPlanForPhase(canonical.productionPlan, 'reference_assets', {
-        plan: config.textModel,
-        referenceAssets: config.imageModel,
+        plan: planConnection?.model || config.textModel,
+        referenceAssets: planConnection?.imageModel || config.imageModel,
         video: config.videoModel,
       });
       const preset = resolveVimaxSkillPresetForRuntime(productionPlan.workflow.presetId);
@@ -721,10 +745,11 @@ export async function POST(request: NextRequest) {
       }
       const canonical = resolveCanonicalVimaxStageInput({ taskId: body.taskId || '', owner });
       const config = getArkConfig();
-      const videoConnection = extractBYOKConnection(request.headers);
+      const planConnection = extractBYOKConnection(request.headers);
+      const videoConnection = extractBYOKVideoConnection(request.headers);
       const videoModel = videoConnection?.videoModel || config.videoModel;
       const productionPlan = assertVimaxProductionPlanForPhase(canonical.productionPlan, 'video', {
-        plan: config.textModel,
+        plan: planConnection?.model || config.textModel,
         referenceAssets: config.imageModel,
         video: videoModel,
       });
