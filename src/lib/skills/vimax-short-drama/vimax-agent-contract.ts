@@ -64,4 +64,5 @@ export interface VimaxAgentStepBody {
   /** 视频阶段必须显式确认，避免误触发计费。 */
   confirm?: boolean;
   recover?: boolean;
+  recoverCreatedAfter?: number;
 }

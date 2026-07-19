@@ -548,6 +548,10 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       return;
     }
     const agent = planAgent;
+    const recoveryOrigin = messagesRef.current.find(message => (
+      message.vimaxAgent?.taskId === agent.taskId
+      && (message.vimaxAgent?.shots || []).length > 0
+    ));
     const generationSettings = agent.generationSettings || resolveVimaxGenerationSettings({});
 
     const progressMsgId = `vimax-video-${Date.now()}`;
@@ -586,6 +590,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
           phase: 'video',
           confirm: !recoverCompleted,
           recover: recoverCompleted,
+          recoverCreatedAfter: recoverCompleted ? recoveryOrigin?.timestamp : undefined,
           productionPlan: agent.productionPlan,
           ratio: generationSettings.ratio,
           resolution: generationSettings.resolution,
@@ -642,6 +647,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         quickOptions: ['查看成片', '重做视频', '调整分镜'],
         vimaxAgent: {
           ...agent,
+          taskId: typeof data.taskId === 'string' ? data.taskId : agent.taskId,
           phase: 'video',
           model: data.model || requestHeaders?.['x-yh-video-model'] || 'doubao-seedance-1.5-pro',
           costState: 'incurred',

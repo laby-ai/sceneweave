@@ -189,6 +189,39 @@ async function main() {
   assert.equal(recoveryPayload.segments?.[0]?.taskId, 'happyhorse-task-recovered');
   assert.equal(calls.filter(call => call.init?.method === 'POST').length, 1, 'recovery must never submit another provider job');
 
+  const recoveryAfterRestart = await route.POST(new NextRequest('http://localhost/api/smart/vimax-agent-step', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-paper-host-embed': 'creation-agent',
+      'x-paper-host-guest-workspace': workspace,
+      'x-yh-provider': 'happyhorse-dashscope',
+      'x-yh-api-base': 'https://workspace.example.com/api/v1',
+      'x-yh-api-key': 'dummy-key',
+      'x-yh-video-model': 'happyhorse-1.1-t2v',
+    },
+    body: JSON.stringify({
+      taskId: 'task-removed-by-release-restart',
+      phase: 'video',
+      recover: true,
+      recoverCreatedAfter: Date.parse('2026-07-19T12:20:00+08:00'),
+      productionPlan,
+      plan,
+    }),
+  }));
+  const restartedPayload = await recoveryAfterRestart.json() as {
+    success?: boolean;
+    recovered?: boolean;
+    taskId?: string;
+    segments?: Array<{ taskId?: string }>;
+  };
+  assert.equal(recoveryAfterRestart.status, 200, 'release restart recovery must rebuild the owned task from the saved project snapshot');
+  assert.equal(restartedPayload.success, true);
+  assert.equal(restartedPayload.recovered, true);
+  assert.notEqual(restartedPayload.taskId, 'task-removed-by-release-restart');
+  assert.equal(restartedPayload.segments?.[0]?.taskId, 'happyhorse-task-recovered');
+  assert.equal(calls.filter(call => call.init?.method === 'POST').length, 1, 'restart recovery must never resubmit provider work');
+
   console.log(JSON.stringify({
     ok: true,
     usedRealKey: false,

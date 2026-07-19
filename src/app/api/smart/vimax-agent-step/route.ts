@@ -8,6 +8,7 @@ import { VIMAX_PLAN_MODEL } from '@/lib/skills/vimax-short-drama/vimax-generatio
 import { buildProductionBackedVimaxPlan } from '@/lib/skills/vimax-short-drama/vimax-plan-artifacts';
 import { persistVimaxPlanTask } from '@/lib/skills/vimax-short-drama/vimax-plan-task';
 import { resolveCanonicalVimaxStageInput } from '@/lib/skills/vimax-short-drama/vimax-canonical-stage-input';
+import { resolveVimaxRecoveryCreatedAfter, restoreVimaxRecoveryTask } from '@/lib/skills/vimax-short-drama/vimax-recovery-session';
 import { assertVimaxProductionPlanForPhase, buildVimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 import { resolveVimaxSkillRuntimeBinding } from '@/lib/skills/vimax-short-drama/vimax-skill-runtime-binding';
 import {
@@ -756,10 +757,17 @@ export async function POST(request: NextRequest) {
           { status: 409 },
         );
       }
-      const canonical = resolveCanonicalVimaxStageInput({ taskId: body.taskId || '', owner });
       const config = getArkConfig();
       const planConnection = extractBYOKConnection(request.headers);
       const videoConnection = extractBYOKVideoConnection(request.headers);
+      let canonicalTaskId = body.taskId || '';
+      let recoveryCreatedAfter = resolveVimaxRecoveryCreatedAfter(body.recoverCreatedAfter);
+      if (body.recover === true && !getTaskForOwner(canonicalTaskId, owner)) {
+        const restored = restoreVimaxRecoveryTask({ owner, body });
+        canonicalTaskId = restored.taskId;
+        recoveryCreatedAfter = restored.createdAfter;
+      }
+      const canonical = resolveCanonicalVimaxStageInput({ taskId: canonicalTaskId, owner });
       const videoModel = videoConnection?.videoModel || config.videoModel;
       const productionPlan = assertVimaxProductionPlanForPhase(canonical.productionPlan, 'video', {
         plan: planConnection?.model || config.textModel,
@@ -782,7 +790,7 @@ export async function POST(request: NextRequest) {
         throw new Error('当前视频供应商不支持按异步任务列表恢复。');
       }
       const result = body.recover === true && videoConnection?.provider === 'happyhorse-dashscope'
-        ? await recoverHappyHorseVimaxVideo(canonical.plan, videoConnection, { createdAfter: task?.createdAt || Date.now() })
+        ? await recoverHappyHorseVimaxVideo(canonical.plan, videoConnection, { createdAfter: recoveryCreatedAfter })
         : videoConnection?.provider === 'happyhorse-dashscope'
           ? await callHappyHorseVimaxVideo(canonical.plan, preset, videoConnection, generationPreferences, productionPlan.continuity)
         : await callSeedanceVideo(canonical.plan, assets, preset, productionPlan.continuity, generationPreferences);
@@ -795,6 +803,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         phase,
+        taskId: canonical.taskId,
         usedRealKey: true,
         incurredCost: body.recover !== true,
         recovered: body.recover === true,
