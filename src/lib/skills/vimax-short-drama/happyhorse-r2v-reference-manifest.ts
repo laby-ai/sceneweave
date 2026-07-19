@@ -44,6 +44,7 @@ export function buildHappyHorseR2VReferenceManifest(input: {
   artifactRevision: string;
   previousLastFrameUrl?: string;
 }): HappyHorseR2VReferenceManifest {
+  const maxReferenceImages = 9;
   const shotAssets = input.assets.filter(asset => asset.shotIndex === input.shotIndex);
   const globalAssets = input.assets.filter(asset => asset.shotIndex === undefined);
   const candidates: Array<Omit<HappyHorseR2VReferenceManifestEntry, 'token'>> = [];
@@ -57,17 +58,25 @@ export function buildHappyHorseR2VReferenceManifest(input: {
       candidates.push({ role, label: asset.label || roleLabel(role), url: asset.url });
     }
   }
-  if (input.previousLastFrameUrl) {
-    candidates.push({
+  const previousTailUrl = normalizeHappyHorseR2VReferenceImages(
+    input.previousLastFrameUrl ? [input.previousLastFrameUrl] : [],
+  )[0];
+  const previousTail = previousTailUrl
+    ? {
       role: 'previous-tail',
       label: '上一镜尾帧',
-      url: input.previousLastFrameUrl,
-    });
-  }
+      url: previousTailUrl,
+    } as const
+    : undefined;
 
-  const urls = normalizeHappyHorseR2VReferenceImages(candidates.map(candidate => candidate.url));
+  const regularLimit = previousTail ? maxReferenceImages - 1 : maxReferenceImages;
+  const urls = normalizeHappyHorseR2VReferenceImages(candidates.map(candidate => candidate.url))
+    .slice(0, regularLimit);
+  if (previousTail && !urls.includes(previousTail.url)) urls.push(previousTail.url);
   const entries = urls.map((url, index) => {
-    const candidate = candidates.find(item => item.url === url) as Omit<HappyHorseR2VReferenceManifestEntry, 'token'>;
+    const candidate = previousTail?.url === url
+      ? previousTail
+      : candidates.find(item => item.url === url) as Omit<HappyHorseR2VReferenceManifestEntry, 'token'>;
     return { token: `[Image ${index + 1}]`, ...candidate };
   });
   const sha256 = createHash('sha256').update(JSON.stringify({

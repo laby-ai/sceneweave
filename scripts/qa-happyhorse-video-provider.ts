@@ -118,6 +118,20 @@ assert(
   'R2V must select current-shot assets, global assets, then the previous tail without cross-shot leakage',
 );
 
+const saturatedReferences = selectHappyHorseR2VReferenceImages(
+  Array.from({ length: 10 }, (_, index) => ({
+    kind: index === 0 ? 'character' : 'reference',
+    url: `https://media.example.com/reference-${index + 1}.png`,
+  })),
+  2,
+  'https://media.example.com/previous-tail-priority.png',
+);
+assert(saturatedReferences.length === 9, 'R2V reference list must respect the provider limit');
+assert(
+  saturatedReferences.includes('https://media.example.com/previous-tail-priority.png'),
+  'R2V must reserve a reference slot for the previous shot tail at the provider limit',
+);
+
 async function verifyProviderDispatch() {
   const originalFetch = globalThis.fetch;
   const calls: Array<{ url: string; init?: RequestInit }> = [];
