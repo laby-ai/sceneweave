@@ -364,6 +364,12 @@ export function GenerateWorkspace({
     const requestSkill = resolveVimaxSkillPreset(overrideSkillId || selectedSkill.id);
 
     if (mode === 'agent') {
+      if (/找回已完成片段/.test(text)) {
+        setMessages(prev => [...prev, { id: genId(), role: 'user', content: text, timestamp: Date.now() }]);
+        setInput('');
+        await handleVideoStep({ recover: true });
+        return;
+      }
       // 点击“确认开始生成 / 重做视频” -> 真实调用当前视频供应商生成完整短剧
       if (/确认开始生成|重做视频/.test(text)) {
         setMessages(prev => [...prev, { id: genId(), role: 'user', content: text, timestamp: Date.now() }]);

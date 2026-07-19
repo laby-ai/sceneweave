@@ -126,7 +126,7 @@ interface VimaxShortDramaSkillDeps {
 export interface VimaxShortDramaSkill {
   handlePlanStep: (context: VimaxPlanContext) => Promise<void>;
   handleReferenceAssetsStep: () => Promise<void>;
-  handleVideoStep: () => Promise<void>;
+  handleVideoStep: (options?: { recover?: boolean }) => Promise<void>;
   cancelCurrentRun: () => boolean;
 }
 
@@ -523,7 +523,8 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
     }
   }, [messagesRef, onAuthenticationRequired, requestHeaders, runCoordinator, setMessages, setIsLoading, updateRunMessages]);
 
-  const handleVideoStep = useCallback(async () => {
+  const handleVideoStep = useCallback(async (options: { recover?: boolean } = {}) => {
+    const recoverCompleted = options.recover === true;
     const reversed = [...messagesRef.current].reverse();
     // 真实参考图 URL：优先用 generatedImages（恢复历史后最可靠），回退到 vimaxAgent.assets。
     const refMessage = reversed.find(message => (message.generatedImages || []).some(image => image.url))
@@ -560,7 +561,9 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
     setMessages(prev => [...prev, {
       id: progressMsgId,
       role: 'assistant',
-      content: '正在调用当前视频模型逐段生成完整短剧，预计 4-10 分钟…',
+      content: recoverCompleted
+        ? '正在找回本项目已完成的视频片段并合成为完整短剧，不会重新提交生成…'
+        : '正在调用当前视频模型逐段生成完整短剧，预计 4-10 分钟…',
       timestamp: Date.now(),
       generationStatus: 'generating',
       generationProgress: 30,
@@ -570,7 +573,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         ...agent,
         phase: 'video',
         costState: 'incurred',
-        nextAction: '等待视频模型返回成片。',
+        nextAction: recoverCompleted ? '等待已完成片段恢复并合成。' : '等待视频模型返回成片。',
       },
     } as ChatMessage]);
 
@@ -581,7 +584,8 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         body: JSON.stringify({
           taskId: agent.taskId,
           phase: 'video',
-          confirm: true,
+          confirm: !recoverCompleted,
+          recover: recoverCompleted,
           productionPlan: agent.productionPlan,
           ratio: generationSettings.ratio,
           resolution: generationSettings.resolution,
@@ -626,7 +630,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       const generatedSegments = Array.isArray(data.segments) ? data.segments : [];
       updateRunMessages(run, prev => prev.map(message => message.id === progressMsgId ? {
         ...message,
-        content: `已生成完整短剧「${agent.title || data.shotTitle || '短剧成片'}」（${data.duration || ''}秒，${data.segmentCount || generatedSegments.length || 1} 段真实视频片段已合成）。`,
+        content: `${data.recovered ? '已找回并合成' : '已生成'}完整短剧「${agent.title || data.shotTitle || '短剧成片'}」（${data.duration || ''}秒，${data.segmentCount || generatedSegments.length || 1} 段真实视频片段）。`,
         generationStatus: 'completed',
         generationProgress: 100,
         generatedVideo: {
@@ -657,7 +661,11 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         content: `视频生成失败：${error instanceof Error ? error.message : '未知错误'}\n可调整分镜或连续性约束后重试。`,
         generationStatus: 'failed',
         generationProgress: 100,
-        generationStepInfo: { step: 'seedance-video', progress: 100, totalSteps: 4, currentStepLabel: '视频生成失败' },
+        generationStepInfo: { step: 'seedance-video', progress: 100, totalSteps: 4, currentStepLabel: recoverCompleted ? '片段恢复失败' : '视频生成失败' },
+        quickOptions: requestHeaders?.['x-yh-video-provider'] === 'happyhorse-dashscope'
+          || requestHeaders?.['x-yh-provider'] === 'happyhorse-dashscope'
+          ? ['找回已完成片段', '调整分镜']
+          : ['调整分镜'],
         vimaxAgent: {
           ...agent,
           phase: 'video',

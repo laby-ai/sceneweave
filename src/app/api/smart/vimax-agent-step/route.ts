@@ -20,7 +20,7 @@ import {
   extractBYOKVideoConnection,
   type BYOKConnection,
 } from '@/lib/byok-provider';
-import { callHappyHorseVimaxVideo } from '@/lib/skills/vimax-short-drama/happyhorse-vimax-video';
+import { callHappyHorseVimaxVideo, recoverHappyHorseVimaxVideo } from '@/lib/skills/vimax-short-drama/happyhorse-vimax-video';
 import { callVimaxReferenceImages } from '@/lib/skills/vimax-short-drama/vimax-reference-assets';
 import {
   buildVimaxContinuityContract,
@@ -746,7 +746,7 @@ export async function POST(request: NextRequest) {
 
     if (phase === 'video') {
       // 视频生成阶段需要用户在界面显式确认费用、模型、时长和参考素材后，才会调用视频模型。
-      if (body.confirm !== true) {
+      if (body.confirm !== true && body.recover !== true) {
         return NextResponse.json(
           {
             success: false,
@@ -778,14 +778,26 @@ export async function POST(request: NextRequest) {
       if (!productionPlan.continuity) {
         throw new Error('制作计划缺少连续性契约，请返回计划阶段重新确认。');
       }
-      const result = videoConnection?.provider === 'happyhorse-dashscope'
-        ? await callHappyHorseVimaxVideo(canonical.plan, preset, videoConnection, generationPreferences, productionPlan.continuity)
+      if (body.recover === true && videoConnection?.provider !== 'happyhorse-dashscope') {
+        throw new Error('当前视频供应商不支持按异步任务列表恢复。');
+      }
+      const result = body.recover === true && videoConnection?.provider === 'happyhorse-dashscope'
+        ? await recoverHappyHorseVimaxVideo(canonical.plan, videoConnection, { createdAfter: task?.createdAt || Date.now() })
+        : videoConnection?.provider === 'happyhorse-dashscope'
+          ? await callHappyHorseVimaxVideo(canonical.plan, preset, videoConnection, generationPreferences, productionPlan.continuity)
         : await callSeedanceVideo(canonical.plan, assets, preset, productionPlan.continuity, generationPreferences);
+      updateTask(canonical.taskId, {
+        result: {
+          ...(task?.result || {}),
+          vimaxVideoResult: result,
+        },
+      });
       return NextResponse.json({
         success: true,
         phase,
         usedRealKey: true,
-        incurredCost: true,
+        incurredCost: body.recover !== true,
+        recovered: body.recover === true,
         model: result.model,
         videoUrl: result.videoUrl,
         duration: result.duration,

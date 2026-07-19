@@ -1,8 +1,10 @@
 import {
   buildHappyHorseVideoSubmitRequest,
+  buildHappyHorseVideoTaskListUrl,
   buildHappyHorseVideoTaskUrl,
   getHappyHorseProviderErrorMessage,
   parseHappyHorseVideoStatus,
+  parseHappyHorseVideoTaskList,
   parseHappyHorseVideoTaskId,
 } from '../src/lib/happyhorse-video-provider';
 import { getVideoStatusWithBYOK, submitVideoWithBYOK } from '../src/lib/byok-provider';
@@ -41,6 +43,22 @@ assert(
     'https://workspace.example.com/api/v1/tasks/task%20id',
   'HappyHorse task URL mismatch',
 );
+assert(
+  buildHappyHorseVideoTaskListUrl(connection.apiBase, {
+    startTime: '20260719122000',
+    endTime: '20260719124500',
+    model: 'happyhorse-1.1-t2v',
+  }) === 'https://workspace.example.com/api/v1/tasks/?start_time=20260719122000&end_time=20260719124500&model_name=happyhorse-1.1-t2v&status=SUCCEEDED&page_no=1&page_size=100',
+  'HappyHorse task list URL mismatch',
+);
+const listed = parseHappyHorseVideoTaskList({
+  data: [
+    { task_id: 'task-b', status: 'SUCCEEDED', model_name: 'happyhorse-1.1-t2v', submit_time: '2026-07-19 12:32:00' },
+    { task_id: 'task-a', status: 'SUCCEEDED', model_name: 'happyhorse-1.1-t2v', submit_time: '2026-07-19 12:30:00' },
+  ],
+});
+assert(listed.length === 2, 'HappyHorse task list parse failed');
+assert(listed[0]?.taskId === 'task-a' && listed[1]?.taskId === 'task-b', 'HappyHorse task list must be chronological');
 assert(parseHappyHorseVideoTaskId({ output: { task_id: 'task-a' } }) === 'task-a', 'task id parse failed');
 
 const running = parseHappyHorseVideoStatus({ output: { task_status: 'RUNNING' } });

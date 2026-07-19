@@ -36,6 +36,13 @@ export interface HappyHorseVideoSubmitRequest {
   };
 }
 
+export interface HappyHorseVideoTaskListItem {
+  taskId: string;
+  model: string;
+  status: string;
+  submittedAt?: string;
+}
+
 function resolveHappyHorseApiRoot(apiBase: string): string {
   const url = new URL(apiBase.trim());
   const cleanPath = url.pathname.replace(/\/+$/, '');
@@ -87,6 +94,44 @@ export function buildHappyHorseVideoSubmitRequest(
 
 export function buildHappyHorseVideoTaskUrl(apiBase: string, taskId: string): string {
   return `${resolveHappyHorseApiRoot(apiBase)}/tasks/${encodeURIComponent(taskId)}`;
+}
+
+export function buildHappyHorseVideoTaskListUrl(
+  apiBase: string,
+  options: { startTime: string; endTime: string; model: string },
+): string {
+  const params = new URLSearchParams({
+    start_time: options.startTime,
+    end_time: options.endTime,
+    model_name: options.model,
+    status: 'SUCCEEDED',
+    page_no: '1',
+    page_size: '100',
+  });
+  return `${resolveHappyHorseApiRoot(apiBase)}/tasks/?${params.toString()}`;
+}
+
+function taskListTimestamp(value?: string) {
+  if (!value) return Number.NaN;
+  const normalized = value.includes('T') ? value : value.replace(' ', 'T');
+  return Date.parse(normalized);
+}
+
+export function parseHappyHorseVideoTaskList(payload: unknown): HappyHorseVideoTaskListItem[] {
+  const data = payload && typeof payload === 'object' && Array.isArray((payload as { data?: unknown }).data)
+    ? (payload as { data: Array<Record<string, unknown>> }).data
+    : [];
+  return data.map(item => ({
+    taskId: String(item.task_id || ''),
+    model: String(item.model_name || ''),
+    status: String(item.status || item.task_status || ''),
+    submittedAt: typeof item.submit_time === 'string'
+      ? item.submit_time
+      : typeof item.created_at === 'string'
+        ? item.created_at
+        : undefined,
+  })).filter(item => item.taskId)
+    .sort((left, right) => taskListTimestamp(left.submittedAt) - taskListTimestamp(right.submittedAt));
 }
 
 export function parseHappyHorseVideoTaskId(payload: unknown): string {

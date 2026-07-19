@@ -40,6 +40,24 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       },
     }), { status: 200, headers: { 'content-type': 'application/json' } });
   }
+  if (url.includes('/api/v1/tasks/?')) {
+    return new Response(JSON.stringify({
+      data: [{
+        task_id: 'happyhorse-task-recovered',
+        status: 'SUCCEEDED',
+        model_name: 'happyhorse-1.1-t2v',
+        submit_time: '2026-07-19 12:30:00',
+      }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  }
+  if (url.endsWith('/api/v1/tasks/happyhorse-task-recovered')) {
+    return new Response(JSON.stringify({
+      output: {
+        task_status: 'SUCCEEDED',
+        video_url: 'https://fixture.invalid/happyhorse-recovered.mp4',
+      },
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  }
   throw new Error(`Unexpected network call: ${url}`);
 }) as typeof fetch;
 
@@ -145,13 +163,40 @@ async function main() {
   assert.doesNotMatch(submitBody.input.prompt, /客户端伪造/);
   assert.ok(calls.every(call => !call.url.includes('contents/generations/tasks')), 'must not fall back to Ark video route');
 
+  const recoveryResponse = await route.POST(new NextRequest('http://localhost/api/smart/vimax-agent-step', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-paper-host-embed': 'creation-agent',
+      'x-paper-host-guest-workspace': workspace,
+      'x-yh-provider': 'happyhorse-dashscope',
+      'x-yh-api-base': 'https://workspace.example.com/api/v1',
+      'x-yh-api-key': 'dummy-key',
+      'x-yh-video-model': 'happyhorse-1.1-t2v',
+    },
+    body: JSON.stringify({ taskId, phase: 'video', recover: true }),
+  }));
+  const recoveryPayload = await recoveryResponse.json() as {
+    success?: boolean;
+    recovered?: boolean;
+    incurredCost?: boolean;
+    segments?: Array<{ taskId?: string }>;
+  };
+  assert.equal(recoveryResponse.status, 200);
+  assert.equal(recoveryPayload.success, true);
+  assert.equal(recoveryPayload.recovered, true);
+  assert.equal(recoveryPayload.incurredCost, false);
+  assert.equal(recoveryPayload.segments?.[0]?.taskId, 'happyhorse-task-recovered');
+  assert.equal(calls.filter(call => call.init?.method === 'POST').length, 1, 'recovery must never submit another provider job');
+
   console.log(JSON.stringify({
     ok: true,
     usedRealKey: false,
     incurredCost: false,
     route: '/api/smart/vimax-agent-step',
     providerSubmits: 1,
-    providerPolls: 1,
+    providerPolls: 2,
+    providerRecoveries: 1,
   }));
 }
 

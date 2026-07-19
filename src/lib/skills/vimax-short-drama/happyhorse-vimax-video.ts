@@ -2,9 +2,15 @@ import { mergeVideosWithLocalFfmpeg } from '@/lib/local-video-merge';
 import { extractLastFrameForHandoff } from '@/lib/video-frame-extraction';
 import {
   submitVideoWithBYOK,
+  getVideoStatusWithBYOK,
   waitForVideoWithBYOK,
   type BYOKConnection,
 } from '@/lib/byok-provider';
+import {
+  buildHappyHorseVideoTaskListUrl,
+  getHappyHorseProviderErrorMessage,
+  parseHappyHorseVideoTaskList,
+} from '@/lib/happyhorse-video-provider';
 import type { VimaxAgentPlan } from '@/lib/skills/vimax-short-drama/vimax-agent-contract';
 import type { VimaxSkillPreset } from '@/lib/skills/vimax-short-drama/vimax-skill-presets';
 import {
@@ -109,6 +115,81 @@ export async function callHappyHorseVimaxVideo(
     merge = { bytes: merged.bytes, segmentCount: merged.segmentCount };
   }
   if (!videoUrl) throw new Error('视频片段已生成，但没有可返回的成片 URL。');
+  return {
+    model,
+    videoUrl,
+    duration: segments.reduce((sum, segment) => sum + segment.duration, 0),
+    segments,
+    segmentCount: segments.length,
+    merge,
+    shotTitle: segments.length > 1 ? '完整成片' : segments[0]?.shotTitle,
+  };
+}
+
+function formatDashScopeTime(timestamp: number) {
+  const beijing = new Date(timestamp + 8 * 60 * 60 * 1000);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${beijing.getUTCFullYear()}${pad(beijing.getUTCMonth() + 1)}${pad(beijing.getUTCDate())}${pad(beijing.getUTCHours())}${pad(beijing.getUTCMinutes())}${pad(beijing.getUTCSeconds())}`;
+}
+
+export async function recoverHappyHorseVimaxVideo(
+  plan: VimaxAgentPlan,
+  connection: BYOKConnection,
+  options: { createdAfter: number; createdBefore?: number },
+) {
+  const model = connection.videoModel || connection.model;
+  if (!model) throw new Error('快乐马连接缺少视频模型。');
+  const shots = (Array.isArray(plan.shots) ? plan.shots : [])
+    .filter(shot => shot && (shot.prompt || shot.title))
+    .slice(0, 8);
+  if (!shots.length) throw new Error('缺少可用于恢复视频的分镜。');
+
+  const listUrl = buildHappyHorseVideoTaskListUrl(connection.apiBase, {
+    startTime: formatDashScopeTime(options.createdAfter - 2 * 60 * 1000),
+    endTime: formatDashScopeTime(options.createdBefore || Date.now()),
+    model,
+  });
+  const response = await fetch(listUrl, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${connection.apiKey}`, 'Content-Type': 'application/json' },
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(`快乐马任务恢复失败：${getHappyHorseProviderErrorMessage(payload, response.status)}`);
+  }
+  const listed = parseHappyHorseVideoTaskList(payload)
+    .filter(item => item.model === model && item.status.toUpperCase() === 'SUCCEEDED');
+  if (listed.length < shots.length) {
+    throw new Error(`仅找回 ${listed.length}/${shots.length} 个已成功片段；未重新提交生成，请稍后再恢复。`);
+  }
+  const selected = listed.slice(-shots.length);
+  const segments: HappyHorseVimaxSegment[] = [];
+  for (let index = 0; index < selected.length; index += 1) {
+    const item = selected[index];
+    const status = await getVideoStatusWithBYOK(connection, item.taskId);
+    if (status.status !== 'succeeded' || !status.videoUrl) {
+      throw new Error(`第 ${index + 1} 个片段尚未形成可交付结果；未重新提交生成。`);
+    }
+    segments.push({
+      shotIndex: shots[index].index,
+      shotTitle: shots[index].title || `Clip ${shots[index].index}`,
+      duration: clampDuration(shots[index].duration),
+      taskId: item.taskId,
+      videoUrl: status.videoUrl,
+      lastFrameUrl: status.lastFrameUrl,
+    });
+  }
+
+  let videoUrl = segments[0]?.videoUrl;
+  let merge: { bytes?: number; segmentCount?: number; renderReport?: unknown } = {};
+  if (segments.length > 1) {
+    const merged = await mergeVideosWithLocalFfmpeg(segments.map(segment => segment.videoUrl), {
+      expectedDurationSeconds: segments.reduce((sum, segment) => sum + segment.duration, 0),
+    });
+    videoUrl = merged.videoUrl;
+    merge = { bytes: merged.bytes, segmentCount: merged.segmentCount, renderReport: merged.renderReport };
+  }
+  if (!videoUrl) throw new Error('已找回视频片段，但没有可返回的成片 URL。');
   return {
     model,
     videoUrl,
