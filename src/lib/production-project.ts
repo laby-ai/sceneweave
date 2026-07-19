@@ -247,6 +247,9 @@ function normalizeLocation(rawLocation: string, prompt: string) {
   }
 
   const genericLocations = new Set(['主要场景', '核心场景', '场景', '地点', '室内', '室外']);
+  if (rawLocation.length > 1 && !genericLocations.has(rawLocation) && prompt.includes(rawLocation)) {
+    return rawLocation;
+  }
   const explicitLocations = [
     '夜晚办公室',
     '办公室',
