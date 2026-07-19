@@ -19,6 +19,7 @@ import {
   skipsVimaxReferenceAssets,
   type VimaxProductionPlan,
 } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
+import { waitForVimaxBackgroundVideoTask } from '@/lib/skills/vimax-short-drama/vimax-background-video-task';
 
 /**
  * ViMAX 短剧制作 = Agent 驱动的一个 skill。
@@ -590,6 +591,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
           phase: 'video',
           confirm: !recoverCompleted,
           recover: recoverCompleted,
+          background: true,
           recoverCreatedAfter: recoverCompleted ? recoveryOrigin?.timestamp : undefined,
           productionPlan: agent.productionPlan,
           ratio: generationSettings.ratio,
@@ -622,11 +624,37 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         }),
         signal: run.signal,
       });
-      const data = await response.json().catch(() => ({}));
+      let data = await response.json().catch(() => ({}));
       if (response.status === 401) {
         const reason = '当前成片生成需要登录后继续，分镜与参考素材已保留。';
         onAuthenticationRequired?.(reason);
         throw new Error(reason);
+      }
+      if (response.status === 202 && data.success && data.accepted) {
+        if (typeof data.backgroundTaskId !== 'string' || !data.backgroundTaskId) {
+          throw new Error('后台视频任务已受理，但没有返回可恢复的任务号。');
+        }
+        const backgroundResult = await waitForVimaxBackgroundVideoTask({
+          taskId: data.backgroundTaskId,
+          requestId: run.requestId,
+          headers: requestHeaders || {},
+          signal: run.signal,
+          onProgress: event => {
+            const progress = event.progress ?? 0;
+            updateRunMessages(run, prev => prev.map(message => message.id === progressMsgId ? {
+              ...message,
+              content: event.message || message.content,
+              generationProgress: progress,
+              generationStepInfo: {
+                step: 'seedance-video',
+                progress,
+                totalSteps: 4,
+                currentStepLabel: event.stage || '视频生成中',
+              },
+            } : message));
+          },
+        });
+        data = { ...data, ...backgroundResult, success: true };
       }
       if (!response.ok || !data.success || !data.videoUrl) {
         throw new Error(data.error || '视频模型生成失败');

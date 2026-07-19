@@ -76,6 +76,7 @@
     "qa:scnet-video-provider": "tsx scripts/qa-scnet-video-provider.ts",
     "qa:happyhorse-video-provider": "tsx scripts/qa-happyhorse-video-provider.ts",
     "test:vimax-happyhorse-video": "tsx scripts/test-vimax-happyhorse-video.ts",
+    "test:vimax-background-video-task": "tsx scripts/test-vimax-background-video-task.ts",
     "test:happyhorse-connection-ui": "tsx scripts/test-happyhorse-connection-ui.ts",
     "ops:scnet-transition-demo": "tsx scripts/run-scnet-transition-demo.ts",
     "qa:ark-video-status-shape": "node scripts/qa-ark-video-status-shape.mjs",

@@ -23,6 +23,9 @@ process.env.HUIYING_TASKS_FILE = taskFile;
 const calls: Array<{ url: string; init?: RequestInit }> = [];
 const originalFetch = globalThis.fetch;
 let workspaceListRejected = false;
+let releaseFirstVideoPoll = () => {};
+const firstVideoPollGate = new Promise<void>(resolve => { releaseFirstVideoPoll = resolve; });
+let holdFirstVideoPoll = true;
 globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input);
   calls.push({ url, init });
@@ -33,6 +36,10 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     });
   }
   if (url.endsWith('/api/v1/tasks/happyhorse-task-a')) {
+    if (holdFirstVideoPoll) {
+      holdFirstVideoPoll = false;
+      await firstVideoPollGate;
+    }
     return new Response(JSON.stringify({
       output: {
         task_status: 'SUCCEEDED',
@@ -138,7 +145,7 @@ async function main() {
     productionPlan,
   });
 
-  const response = await route.POST(new NextRequest('http://localhost/api/smart/vimax-agent-step', {
+  const responsePromise = route.POST(new NextRequest('http://localhost/api/smart/vimax-agent-step', {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -153,6 +160,7 @@ async function main() {
       taskId,
       phase: 'video',
       confirm: true,
+      background: true,
       skillId: 'commerce-video',
       ratio: '16:9',
       resolution: '720p',
@@ -160,11 +168,41 @@ async function main() {
       plan,
     }),
   }));
-  const payload = await response.json() as { success?: boolean; model?: string; segments?: Array<{ taskId?: string }> };
-  assert.equal(response.status, 200);
+  const response = await Promise.race([
+    responsePromise,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error('video phase must return before provider polling completes')), 250)),
+  ]);
+  const payload = await response.json() as {
+    success?: boolean;
+    accepted?: boolean;
+    backgroundTaskId?: string;
+    taskId?: string;
+  };
+  assert.equal(response.status, 202);
   assert.equal(payload.success, true);
-  assert.equal(payload.model, 'happyhorse-1.1-t2v');
-  assert.equal(payload.segments?.[0]?.taskId, 'happyhorse-task-a');
+  assert.equal(payload.accepted, true);
+  assert.equal(payload.taskId, taskId);
+  assert.equal(typeof payload.backgroundTaskId, 'string');
+  const backgroundTaskId = payload.backgroundTaskId as string;
+  assert.equal(getTaskForOwner(backgroundTaskId, owner)?.config.parentTaskId, taskId);
+  assert.equal(getTaskForOwner(backgroundTaskId, owner)?.status, 'running');
+  releaseFirstVideoPoll();
+  const waitUntil = async (predicate: () => boolean, message: string) => {
+    const deadline = Date.now() + 2_000;
+    while (Date.now() < deadline) {
+      if (predicate()) return;
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    throw new Error(message);
+  };
+  await waitUntil(
+    () => getTaskForOwner(backgroundTaskId, owner)?.status === 'completed',
+    'background video task did not complete',
+  );
+  assert.equal(
+    (getTaskForOwner(backgroundTaskId, owner)?.result?.vimaxVideoResult as { model?: string } | undefined)?.model,
+    'happyhorse-1.1-t2v',
+  );
   assert.deepEqual(
     getTaskForOwner(taskId, owner)?.result?.vimaxHappyHorseSegments,
     [{

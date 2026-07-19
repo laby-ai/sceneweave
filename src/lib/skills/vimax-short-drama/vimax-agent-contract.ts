@@ -63,6 +63,8 @@ export interface VimaxAgentStepBody {
   productionPlan?: VimaxProductionPlan;
   /** 视频阶段必须显式确认，避免误触发计费。 */
   confirm?: boolean;
+  /** 长视频阶段由既有任务中心异步执行，避免请求被网关超时截断。 */
+  background?: boolean;
   recover?: boolean;
   recoverCreatedAfter?: number;
 }

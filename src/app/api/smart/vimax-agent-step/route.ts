@@ -9,6 +9,7 @@ import { buildProductionBackedVimaxPlan } from '@/lib/skills/vimax-short-drama/v
 import { persistVimaxPlanTask } from '@/lib/skills/vimax-short-drama/vimax-plan-task';
 import { resolveCanonicalVimaxStageInput } from '@/lib/skills/vimax-short-drama/vimax-canonical-stage-input';
 import { resolveVimaxRecoveryCreatedAfter, restoreVimaxRecoveryTask } from '@/lib/skills/vimax-short-drama/vimax-recovery-session';
+import { createVimaxVideoTaskRuntime } from '@/lib/skills/vimax-short-drama/vimax-video-task-runtime';
 import { assertVimaxProductionPlanForPhase, buildVimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 import { resolveVimaxSkillRuntimeBinding } from '@/lib/skills/vimax-short-drama/vimax-skill-runtime-binding';
 import {
@@ -790,47 +791,47 @@ export async function POST(request: NextRequest) {
       if (!productionPlan.continuity) {
         throw new Error('制作计划缺少连续性契约，请返回计划阶段重新确认。');
       }
+      const continuity = productionPlan.continuity;
       if (body.recover === true && videoConnection?.provider !== 'happyhorse-dashscope') {
         throw new Error('当前视频供应商不支持按异步任务列表恢复。');
       }
       const savedHappyHorseSegments = Array.isArray(task?.result?.vimaxHappyHorseSegments)
         ? task.result.vimaxHappyHorseSegments as HappyHorseVimaxSegment[]
         : [];
-      const persistHappyHorseSegment = (segment: HappyHorseVimaxSegment) => {
-        const latest = getTaskForOwner(canonical.taskId, owner);
-        const existing = Array.isArray(latest?.result?.vimaxHappyHorseSegments)
-          ? latest.result.vimaxHappyHorseSegments as HappyHorseVimaxSegment[]
-          : [];
-        const next = [...existing.filter(item => item.shotIndex !== segment.shotIndex), segment]
-          .sort((left, right) => left.shotIndex - right.shotIndex);
-        if (!updateTask(canonical.taskId, { result: { ...(latest?.result || {}), vimaxHappyHorseSegments: next } })) {
-          throw new Error('视频任务恢复信息保存失败，已停止继续提交后续镜头。');
-        }
-      };
-      const result = body.recover === true && videoConnection?.provider === 'happyhorse-dashscope'
-        ? await recoverHappyHorseVimaxVideo(
-          canonical.plan,
-          videoConnection,
-          { createdAfter: recoveryCreatedAfter },
-          savedHappyHorseSegments,
-        )
-        : videoConnection?.provider === 'happyhorse-dashscope'
-          ? await callHappyHorseVimaxVideo(
+      const totalShots = Math.max(1, canonical.plan.shots.filter(shot => shot && (shot.prompt || shot.title)).slice(0, 8).length);
+      const videoRuntime = createVimaxVideoTaskRuntime({
+        owner,
+        parentTaskId: canonical.taskId,
+        totalShots,
+        prompt: canonical.plan.title,
+        ratio: generationPreferences.ratio,
+        resolution: generationPreferences.resolution,
+        modelId: videoModel,
+        execute: async persistSegment => body.recover === true && videoConnection?.provider === 'happyhorse-dashscope'
+          ? await recoverHappyHorseVimaxVideo(
             canonical.plan,
-            preset,
             videoConnection,
-            generationPreferences,
-            productionPlan.continuity,
-            persistHappyHorseSegment,
+            { createdAfter: recoveryCreatedAfter },
+            savedHappyHorseSegments,
           )
-        : await callSeedanceVideo(canonical.plan, assets, preset, productionPlan.continuity, generationPreferences);
-      const completedTask = getTaskForOwner(canonical.taskId, owner);
-      updateTask(canonical.taskId, {
-        result: {
-          ...(completedTask?.result || {}),
-          vimaxVideoResult: result,
-        },
+          : videoConnection?.provider === 'happyhorse-dashscope'
+            ? await callHappyHorseVimaxVideo(
+              canonical.plan,
+              preset,
+              videoConnection,
+              generationPreferences,
+              continuity,
+              persistSegment,
+            )
+            : await callSeedanceVideo(canonical.plan, assets, preset, continuity, generationPreferences),
       });
+      if (body.background === true) {
+        const backgroundTaskId = videoRuntime.startBackground();
+        return NextResponse.json({ success: true, accepted: true, phase, backgroundTaskId, taskId: canonical.taskId,
+          usedRealKey: true, incurredCost: body.recover !== true, recovered: body.recover === true }, { status: 202 });
+      }
+
+      const result = await videoRuntime.execute();
       return NextResponse.json({
         success: true,
         phase,
