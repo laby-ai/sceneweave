@@ -120,6 +120,16 @@ async function main() {
       productionProject,
       assemblyPlan,
       productionPlan,
+      renderReport: {
+        version: 'sceneweave-render-report-v1',
+        status: 'passed',
+        runtime: 'sceneweave-segmented-ffmpeg-v1',
+        checkedAt: new Date(completedAt).toISOString(),
+        segmentCount: assemblyPlan.segmentCount,
+        expectedDurationSeconds: assemblyPlan.totalDuration,
+        actualDurationSeconds: assemblyPlan.totalDuration,
+        outputBytes: 4096,
+      },
     },
   });
 

@@ -138,6 +138,19 @@ function buildFinalVideoAsset(
   };
 }
 
+function resolveRenderReport(task: BackgroundTask) {
+  const direct = task.result?.renderReport;
+  if (direct && typeof direct === 'object') return direct;
+  const mergeRecovery = task.result?.mergeRecovery;
+  const merge = task.result?.merge;
+  for (const value of [mergeRecovery, merge]) {
+    if (value && typeof value === 'object' && 'renderReport' in value) {
+      return (value as { renderReport?: unknown }).renderReport;
+    }
+  }
+  return undefined;
+}
+
 function applyFinalVideoAssetWriteback(
   task: BackgroundTask,
   productionProject: ProductionProject,
@@ -259,6 +272,7 @@ export function archiveCompletedVideoTaskAsProductionProject(params: ArchiveVide
         assemblyPlan,
         videoUrl: task.result.videoUrl,
         completedAt: new Date(task.completedAt || Date.now()).toISOString(),
+        renderReport: resolveRenderReport(task) as Parameters<typeof recordVimaxSuccessfulRender>[1]['renderReport'],
       })
     : undefined;
   productionProject = applyFinalVideoAssetWriteback(task, productionProject, artifactVersion);

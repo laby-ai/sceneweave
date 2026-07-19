@@ -77,7 +77,10 @@ export async function POST(
   });
 
   try {
-    const mergeResult = await mergeVideosWithLocalFfmpeg(segmentUrls);
+    const expectedDurationSeconds = typeof task.result?.assemblyPlan?.totalDuration === 'number'
+      ? task.result.assemblyPlan.totalDuration
+      : undefined;
+    const mergeResult = await mergeVideosWithLocalFfmpeg(segmentUrls, { expectedDurationSeconds });
     const latestTask = getTaskFresh(taskId) || task;
     const updatedTask = updateTask(taskId, {
       status: 'completed',
@@ -93,6 +96,7 @@ export async function POST(
           method: 'local-ffmpeg',
           outputPath: mergeResult.outputPath,
           bytes: mergeResult.bytes,
+          renderReport: mergeResult.renderReport,
           recoveredAt: new Date().toISOString(),
         },
       },

@@ -34,6 +34,18 @@ export const VIMAX_IMAGE_MODEL_ID = 'doubao-seedream-5-0-260128';
 export const VIMAX_VIDEO_MODEL_ID = 'doubao-seedance-1-5-pro-251215';
 export const VIMAX_RENDER_RUNTIME = 'sceneweave-segmented-ffmpeg-v1';
 
+export interface VimaxRenderReport {
+  version: 'sceneweave-render-report-v1';
+  status: 'passed';
+  runtime: typeof VIMAX_RENDER_RUNTIME;
+  artifactVersion: string;
+  checkedAt: string;
+  segmentCount: number;
+  expectedDurationSeconds: number;
+  actualDurationSeconds: number;
+  outputBytes: number;
+}
+
 export interface VimaxProductionPlan {
   version: 'sceneweave-production-plan-v1';
   pipeline: {
@@ -94,6 +106,7 @@ export interface VimaxProductionPlan {
       artifactVersion: string;
       videoUrl: string;
       completedAt: string;
+      renderReport?: VimaxRenderReport;
     };
   };
 }
@@ -266,6 +279,7 @@ export function parseVimaxProductionPlan(value: unknown): VimaxProductionPlan | 
     && typeof value.estimatedCost.reason === 'string';
   const checkpointDecision = value.render.checkpointDecision;
   const lastSuccessfulResult = value.render.lastSuccessfulResult;
+  const renderReport = isRecord(lastSuccessfulResult) ? lastSuccessfulResult.renderReport : undefined;
   const validCheckpointDecision = checkpointDecision === undefined || (
     isRecord(checkpointDecision)
     && checkpointDecision.status === 'approved'
@@ -280,6 +294,27 @@ export function parseVimaxProductionPlan(value: unknown): VimaxProductionPlan | 
     && typeof lastSuccessfulResult.videoUrl === 'string'
     && lastSuccessfulResult.videoUrl.length > 0
     && typeof lastSuccessfulResult.completedAt === 'string'
+    && (renderReport === undefined || (
+      isRecord(renderReport)
+      && renderReport.version === 'sceneweave-render-report-v1'
+      && renderReport.status === 'passed'
+      && renderReport.runtime === VIMAX_RENDER_RUNTIME
+      && typeof renderReport.artifactVersion === 'string'
+      && renderReport.artifactVersion.length > 0
+      && typeof renderReport.checkedAt === 'string'
+      && typeof renderReport.segmentCount === 'number'
+      && Number.isSafeInteger(renderReport.segmentCount)
+      && renderReport.segmentCount > 0
+      && typeof renderReport.expectedDurationSeconds === 'number'
+      && Number.isFinite(renderReport.expectedDurationSeconds)
+      && renderReport.expectedDurationSeconds > 0
+      && typeof renderReport.actualDurationSeconds === 'number'
+      && Number.isFinite(renderReport.actualDurationSeconds)
+      && renderReport.actualDurationSeconds > 0
+      && typeof renderReport.outputBytes === 'number'
+      && Number.isSafeInteger(renderReport.outputBytes)
+      && renderReport.outputBytes >= 1024
+    ))
   );
   const validRender = value.render.runtime === VIMAX_RENDER_RUNTIME
     && value.render.locked === true

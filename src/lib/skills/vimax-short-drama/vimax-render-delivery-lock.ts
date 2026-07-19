@@ -2,7 +2,11 @@ import type { ProductionAssemblyPlan } from '@/lib/production-assembly-plan';
 import { computeProductionArtifactRevision } from '@/lib/production-artifact-stale';
 import type { ProductionProject } from '@/lib/production-project';
 
-import { parseVimaxProductionPlan, type VimaxProductionPlan } from './vimax-production-plan';
+import {
+  parseVimaxProductionPlan,
+  type VimaxProductionPlan,
+  type VimaxRenderReport,
+} from './vimax-production-plan';
 
 interface VimaxRenderContext {
   productionProject: unknown;
@@ -93,12 +97,34 @@ export function assertVimaxProductionRenderCheckpoint(
 
 export function recordVimaxSuccessfulRender(
   value: unknown,
-  input: VimaxRenderContext & { videoUrl: string; completedAt: string },
+  input: VimaxRenderContext & {
+    videoUrl: string;
+    completedAt: string;
+    renderReport?: Omit<VimaxRenderReport, 'artifactVersion'>;
+  },
 ): VimaxProductionPlan {
   const plan = assertVimaxProductionRenderCheckpoint(value, input);
-  const { productionProject } = resolveVimaxRenderContext(input);
+  const { productionProject, assemblyPlan } = resolveVimaxRenderContext(input);
   const artifactVersion = computeProductionArtifactRevision(productionProject);
   if (!input.videoUrl.trim()) throw new Error('成片地址为空，不能记录成功交付。');
+  const report = input.renderReport;
+  const durationTolerance = Math.max(1, assemblyPlan.totalDuration * 0.1);
+  if (!report
+    || report.version !== 'sceneweave-render-report-v1'
+    || report.status !== 'passed'
+    || report.runtime !== plan.render.runtime
+    || typeof report.checkedAt !== 'string'
+    || !report.checkedAt
+    || !Number.isSafeInteger(report.segmentCount)
+    || report.segmentCount !== assemblyPlan.segmentCount
+    || !Number.isFinite(report.expectedDurationSeconds)
+    || !Number.isFinite(report.actualDurationSeconds)
+    || Math.abs(report.expectedDurationSeconds - assemblyPlan.totalDuration) > 0.01
+    || Math.abs(report.actualDurationSeconds - assemblyPlan.totalDuration) > durationTolerance
+    || !Number.isSafeInteger(report.outputBytes)
+    || report.outputBytes < 1024) {
+    throw new Error('成片质量核验未通过，不能记录成功交付。');
+  }
   return {
     ...plan,
     checkpoints: plan.checkpoints.map(checkpoint => checkpoint.id === 'render'
@@ -112,6 +138,7 @@ export function recordVimaxSuccessfulRender(
         artifactVersion,
         videoUrl: input.videoUrl,
         completedAt: input.completedAt,
+        renderReport: { ...report, artifactVersion },
       },
     },
   };
@@ -136,6 +163,13 @@ export function assertVimaxProductionFinalDelivery(
   }
   if (plan.render.lastSuccessfulResult.videoUrl !== input.videoUrl) {
     throw new Error('请求交付的成片与最后一次成功成片不一致。');
+  }
+  const report = plan.render.lastSuccessfulResult.renderReport;
+  if (!report
+    || report.status !== 'passed'
+    || report.runtime !== plan.render.runtime
+    || report.artifactVersion !== artifactVersion) {
+    throw new Error('最后一次成功成片缺少当前版本的质量核验，不能交付。');
   }
   return plan;
 }

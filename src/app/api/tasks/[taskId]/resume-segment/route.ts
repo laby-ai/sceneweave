@@ -317,7 +317,10 @@ export async function POST(
     }
 
     const segmentUrls = getSegmentUrls(completedSegments);
-    const mergeResult = await mergeVideosWithLocalFfmpeg(segmentUrls);
+    const expectedDurationSeconds = typeof task.result?.assemblyPlan?.totalDuration === 'number'
+      ? task.result.assemblyPlan.totalDuration
+      : undefined;
+    const mergeResult = await mergeVideosWithLocalFfmpeg(segmentUrls, { expectedDurationSeconds });
     updateTaskSegments(taskId, completedSegments, {
       videoUrl: mergeResult.videoUrl,
       mergeRecovery: {
@@ -325,6 +328,7 @@ export async function POST(
         recoveredSegmentIndex: resolvedSegmentIndex,
         outputPath: mergeResult.outputPath,
         bytes: mergeResult.bytes,
+        renderReport: mergeResult.renderReport,
         recoveredAt: new Date().toISOString(),
       },
     }, {

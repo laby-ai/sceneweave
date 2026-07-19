@@ -14,11 +14,24 @@ export interface LocalVideoMergeResult {
   outputPath: string;
   bytes: number;
   segmentCount: number;
+  renderReport: LocalVideoMergeRenderReport;
 }
 
 export interface LocalVideoMergeOptions {
   outputDirectory?: string;
   outputFileName?: string;
+  expectedDurationSeconds?: number;
+}
+
+export interface LocalVideoMergeRenderReport {
+  version: 'sceneweave-render-report-v1';
+  status: 'passed';
+  runtime: 'sceneweave-segmented-ffmpeg-v1';
+  checkedAt: string;
+  segmentCount: number;
+  expectedDurationSeconds: number;
+  actualDurationSeconds: number;
+  outputBytes: number;
 }
 
 function toPublicVideoUrl(fileName: string) {
@@ -69,6 +82,49 @@ async function runConcat(concatListPath: string, outputPath: string) {
   }
 }
 
+function parseFfmpegDuration(stderr: string) {
+  const match = stderr.match(/Duration:\s*(\d{2}):(\d{2}):(\d{2}(?:\.\d+)?)/);
+  if (!match) throw new Error('本地 FFmpeg 无法读取合成结果时长');
+  return Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
+}
+
+async function verifyMergedVideo(
+  outputPath: string,
+  bytes: number,
+  segmentCount: number,
+  expectedDurationSeconds?: number,
+): Promise<LocalVideoMergeRenderReport> {
+  const ffmpegPath = resolveFfmpegPath();
+  const nullTarget = process.platform === 'win32' ? 'NUL' : '/dev/null';
+  const { stderr } = await execFileAsync(ffmpegPath, [
+    '-hide_banner',
+    '-i', outputPath,
+    '-map', '0:v:0',
+    '-map', '0:a:0?',
+    '-c', 'copy',
+    '-f', 'null',
+    nullTarget,
+  ], { timeout: 180000 });
+  const actualDurationSeconds = parseFfmpegDuration(stderr);
+  const expected = expectedDurationSeconds && expectedDurationSeconds > 0
+    ? expectedDurationSeconds
+    : actualDurationSeconds;
+  const tolerance = Math.max(1, expected * 0.1);
+  if (Math.abs(actualDurationSeconds - expected) > tolerance) {
+    throw new Error(`合成结果时长 ${actualDurationSeconds.toFixed(2)} 秒与计划 ${expected.toFixed(2)} 秒不一致`);
+  }
+  return {
+    version: 'sceneweave-render-report-v1',
+    status: 'passed',
+    runtime: 'sceneweave-segmented-ffmpeg-v1',
+    checkedAt: new Date().toISOString(),
+    segmentCount,
+    expectedDurationSeconds: expected,
+    actualDurationSeconds,
+    outputBytes: bytes,
+  };
+}
+
 function resolveFfmpegPath() {
   const configuredPath = process.env.FFMPEG_BIN?.trim();
   if (configuredPath) {
@@ -85,7 +141,7 @@ function resolveFfmpegPath() {
     return cwdFallback;
   }
 
-  throw new Error('本地 FFmpeg 不可用');
+  return platformBinary;
 }
 
 export async function mergeVideosWithLocalFfmpeg(
@@ -127,11 +183,19 @@ export async function mergeVideosWithLocalFfmpeg(
       throw new Error('本地 FFmpeg 合成结果文件过小');
     }
 
+    const renderReport = await verifyMergedVideo(
+      outputPath,
+      stat.size,
+      segmentUrls.length,
+      options.expectedDurationSeconds,
+    );
+
     return {
       videoUrl: options.outputDirectory ? '' : toPublicVideoUrl(outputFileName),
       outputPath,
       bytes: stat.size,
       segmentCount: segmentUrls.length,
+      renderReport,
     };
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);

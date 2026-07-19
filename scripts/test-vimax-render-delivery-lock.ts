@@ -93,13 +93,35 @@ assert.equal(
   'approved',
 );
 
-const completed = recordVimaxSuccessfulRender(approved, {
+assert.throws(
+  () => recordVimaxSuccessfulRender(approved, {
+    productionProject,
+    assemblyPlan,
+    videoUrl: '/generated/videos/final-unverified.mp4',
+    completedAt: '2026-07-18T08:59:00.000Z',
+  }),
+  /成片质量核验/,
+);
+
+const verifiedRenderInput = {
   productionProject,
   assemblyPlan,
   videoUrl: '/generated/videos/final-current.mp4',
   completedAt: '2026-07-18T09:00:00.000Z',
-});
+  renderReport: {
+    version: 'sceneweave-render-report-v1' as const,
+    status: 'passed' as const,
+    runtime: 'sceneweave-segmented-ffmpeg-v1' as const,
+    checkedAt: '2026-07-18T09:00:00.000Z',
+    segmentCount: assemblyPlan.segmentCount,
+    expectedDurationSeconds: assemblyPlan.totalDuration,
+    actualDurationSeconds: assemblyPlan.totalDuration,
+    outputBytes: 4096,
+  },
+};
+const completed = recordVimaxSuccessfulRender(approved, verifiedRenderInput);
 assert.equal(completed.render.lastSuccessfulResult?.artifactVersion, artifactVersion);
+assert.equal(completed.render.lastSuccessfulResult?.renderReport?.status, 'passed');
 assert.equal(
   assertVimaxProductionFinalDelivery(completed, {
     productionProject,
