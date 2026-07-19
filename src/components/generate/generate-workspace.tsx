@@ -607,6 +607,7 @@ export function GenerateWorkspace({
 
           <PlanningConnectionControl
             storageScope={storageScope}
+            requestHeaders={requestHeaders}
             onConnectionChange={() => setByokHeaders(getBYOKRequestHeaders(storageScope))}
           />
 

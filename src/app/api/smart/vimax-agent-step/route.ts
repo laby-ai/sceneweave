@@ -28,7 +28,7 @@ import {
   type HappyHorseVimaxSegment,
 } from '@/lib/skills/vimax-short-drama/happyhorse-vimax-video';
 import { callVimaxReferenceImages } from '@/lib/skills/vimax-short-drama/vimax-reference-assets';
-import { callWithSanitizedVimaxPlanningFailure, resolveVimaxPlanningReadinessFailure, sanitizeVimaxPlanningFailure } from '@/lib/skills/vimax-short-drama/vimax-planning-readiness';
+import { callWithSanitizedVimaxPlanningFailure, resolveVimaxPlanningConnectionPhase, resolveVimaxPlanningReadinessFailure, sanitizeVimaxPlanningFailure } from '@/lib/skills/vimax-short-drama/vimax-planning-readiness';
 import {
   buildVimaxContinuityContract,
   buildVimaxFrameProviderPrompt,
@@ -632,10 +632,10 @@ export async function POST(request: NextRequest) {
   try {
     const body = (await request.json().catch(() => ({}))) as VimaxAgentStepBody;
     const phase = body.phase || 'plan';
-    if (phase === 'planning_readiness') {
-      const failure = resolveVimaxPlanningReadinessFailure(extractBYOKConnection(request.headers), getArkConfig().apiKey);
-      return NextResponse.json(failure ? { ...failure, phase, ready: false } : { success: true, provider: 'planning', phase, ready: true });
-    }
+    const hasExplicitConnection = ['x-yh-provider', 'x-yh-api-base', 'x-yh-api-key', 'x-yh-model'].every(name => request.headers.get(name)?.trim());
+    const planningConnection = phase === 'planning_connection_validate' && !hasExplicitConnection ? undefined : extractBYOKConnection(request.headers);
+    const connectionResponse = await resolveVimaxPlanningConnectionPhase(phase, planningConnection, getArkConfig().apiKey);
+    if (connectionResponse) return NextResponse.json(connectionResponse.payload, { status: connectionResponse.status });
 
     if (phase === 'plan') {
       const prompt = assertPrompt(body.prompt);

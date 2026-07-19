@@ -74,6 +74,39 @@ export function savePlanningSessionConnection(
   } satisfies StoredApiConnection));
 }
 
+export async function validateAndSavePlanningSessionConnection(
+  storageScope: string,
+  config: { apiBase: string; apiKey: string; model?: string },
+  requestHeaders: Record<string, string> = {},
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const safeRequestHeaders = Object.fromEntries(
+    Object.entries(requestHeaders).filter(([name]) => !name.toLowerCase().startsWith('x-yh-')),
+  );
+  try {
+    const response = await fetch('/api/smart/vimax-agent-step', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...safeRequestHeaders,
+        'x-yh-provider': 'openai-compatible',
+        'x-yh-api-base': config.apiBase.trim(),
+        'x-yh-api-key': config.apiKey.trim(),
+        'x-yh-model': config.model?.trim() || DEFAULT_PLANNING_MODEL,
+      },
+      body: JSON.stringify({ phase: 'planning_connection_validate' }),
+      signal: AbortSignal.timeout(12_000),
+    });
+    const payload = await response.json().catch(() => null) as (ProviderErrorPayload & { ready?: unknown }) | null;
+    if (!response.ok || payload?.ready !== true) {
+      return { ok: false, error: formatProviderError(payload, '规划模型连接验证失败，请检查后重试。') };
+    }
+    savePlanningSessionConnection(storageScope, config);
+    return { ok: true };
+  } catch {
+    return { ok: false, error: '规划模型连接验证失败，请检查网络、API Base、API Key 和模型名后重试。' };
+  }
+}
+
 export function clearPlanningSessionConnection(storageScope: string): void {
   if (typeof window === 'undefined') return;
   window.sessionStorage.removeItem(scopedPlanningStorageKey(storageScope));
@@ -172,6 +205,9 @@ export function formatProviderError(payload: unknown, fallback: string): string 
     }
     if (data.code === 'planning_provider_unavailable') {
       return '规划模型暂不可用，请先连接可用的规划模型后重试。';
+    }
+    if (data.code === 'planning_model_unavailable') {
+      return '连接已通过，但未找到所选规划模型，请检查模型名后重试。';
     }
     return '规划暂时失败，输入和项目已保留，请稍后重试或更换规划模型。';
   }

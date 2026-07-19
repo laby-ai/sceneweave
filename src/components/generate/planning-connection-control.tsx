@@ -7,16 +7,18 @@ import {
   clearPlanningSessionConnection,
   DEFAULT_PLANNING_MODEL,
   getPlanningSessionConnectionSummary,
-  savePlanningSessionConnection,
+  validateAndSavePlanningSessionConnection,
 } from '@/lib/byok-client';
 
 interface PlanningConnectionControlProps {
   storageScope?: string;
+  requestHeaders?: Record<string, string>;
   onConnectionChange: () => void;
 }
 
 export function PlanningConnectionControl({
   storageScope = '',
+  requestHeaders,
   onConnectionChange,
 }: PlanningConnectionControlProps) {
   const [open, setOpen] = useState(false);
@@ -25,6 +27,7 @@ export function PlanningConnectionControl({
   const [apiKey, setApiKey] = useState('');
   const [model, setModel] = useState(DEFAULT_PLANNING_MODEL);
   const [error, setError] = useState('');
+  const [validating, setValidating] = useState(false);
 
   useEffect(() => {
     const summary = getPlanningSessionConnectionSummary(storageScope);
@@ -35,7 +38,7 @@ export function PlanningConnectionControl({
     setError('');
   }, [storageScope]);
 
-  const save = () => {
+  const save = async () => {
     if (!apiBase.trim() || !apiKey.trim() || !model.trim()) {
       setError('请填写 API Base、API Key 和规划模型。');
       return;
@@ -47,7 +50,18 @@ export function PlanningConnectionControl({
       setError('API Base 必须是有效的 HTTPS 地址。');
       return;
     }
-    savePlanningSessionConnection(storageScope, { apiBase, apiKey, model });
+    setValidating(true);
+    setError('');
+    const result = await validateAndSavePlanningSessionConnection(
+      storageScope,
+      { apiBase, apiKey, model },
+      requestHeaders,
+    );
+    setValidating(false);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
     setConfigured(true);
     setApiKey('');
     setError('');
@@ -110,8 +124,8 @@ export function PlanningConnectionControl({
                 <Trash2 className="h-3.5 w-3.5" /> 清除
               </button>
             ) : <span />}
-            <button type="button" onClick={save} className="rounded-lg bg-[#2f6bff] px-3.5 py-2 text-xs font-medium text-white transition hover:bg-[#245be0]">
-              保存到当前会话
+            <button type="button" onClick={save} disabled={validating} className="rounded-lg bg-[#2f6bff] px-3.5 py-2 text-xs font-medium text-white transition hover:bg-[#245be0] disabled:cursor-wait disabled:opacity-60">
+              {validating ? '正在验证…' : '验证并保存'}
             </button>
           </div>
         </div>
