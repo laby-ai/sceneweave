@@ -21,7 +21,11 @@ import {
   extractBYOKVideoConnection,
   type BYOKConnection,
 } from '@/lib/byok-provider';
-import { callHappyHorseVimaxVideo, recoverHappyHorseVimaxVideo } from '@/lib/skills/vimax-short-drama/happyhorse-vimax-video';
+import {
+  callHappyHorseVimaxVideo,
+  recoverHappyHorseVimaxVideo,
+  type HappyHorseVimaxSegment,
+} from '@/lib/skills/vimax-short-drama/happyhorse-vimax-video';
 import { callVimaxReferenceImages } from '@/lib/skills/vimax-short-drama/vimax-reference-assets';
 import {
   buildVimaxContinuityContract,
@@ -789,14 +793,41 @@ export async function POST(request: NextRequest) {
       if (body.recover === true && videoConnection?.provider !== 'happyhorse-dashscope') {
         throw new Error('当前视频供应商不支持按异步任务列表恢复。');
       }
+      const savedHappyHorseSegments = Array.isArray(task?.result?.vimaxHappyHorseSegments)
+        ? task.result.vimaxHappyHorseSegments as HappyHorseVimaxSegment[]
+        : [];
+      const persistHappyHorseSegment = (segment: HappyHorseVimaxSegment) => {
+        const latest = getTaskForOwner(canonical.taskId, owner);
+        const existing = Array.isArray(latest?.result?.vimaxHappyHorseSegments)
+          ? latest.result.vimaxHappyHorseSegments as HappyHorseVimaxSegment[]
+          : [];
+        const next = [...existing.filter(item => item.shotIndex !== segment.shotIndex), segment]
+          .sort((left, right) => left.shotIndex - right.shotIndex);
+        if (!updateTask(canonical.taskId, { result: { ...(latest?.result || {}), vimaxHappyHorseSegments: next } })) {
+          throw new Error('视频任务恢复信息保存失败，已停止继续提交后续镜头。');
+        }
+      };
       const result = body.recover === true && videoConnection?.provider === 'happyhorse-dashscope'
-        ? await recoverHappyHorseVimaxVideo(canonical.plan, videoConnection, { createdAfter: recoveryCreatedAfter })
+        ? await recoverHappyHorseVimaxVideo(
+          canonical.plan,
+          videoConnection,
+          { createdAfter: recoveryCreatedAfter },
+          savedHappyHorseSegments,
+        )
         : videoConnection?.provider === 'happyhorse-dashscope'
-          ? await callHappyHorseVimaxVideo(canonical.plan, preset, videoConnection, generationPreferences, productionPlan.continuity)
+          ? await callHappyHorseVimaxVideo(
+            canonical.plan,
+            preset,
+            videoConnection,
+            generationPreferences,
+            productionPlan.continuity,
+            persistHappyHorseSegment,
+          )
         : await callSeedanceVideo(canonical.plan, assets, preset, productionPlan.continuity, generationPreferences);
+      const completedTask = getTaskForOwner(canonical.taskId, owner);
       updateTask(canonical.taskId, {
         result: {
-          ...(task?.result || {}),
+          ...(completedTask?.result || {}),
           vimaxVideoResult: result,
         },
       });

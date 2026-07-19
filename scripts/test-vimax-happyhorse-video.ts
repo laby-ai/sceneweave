@@ -97,7 +97,7 @@ function readyProductionPlan(continuity: VimaxContinuityContract) {
 }
 
 async function main() {
-  const { createTask } = await import('../src/lib/task-manager');
+  const { createTask, getTaskForOwner } = await import('../src/lib/task-manager');
   const { persistVimaxPlanTask } = await import('../src/lib/skills/vimax-short-drama/vimax-plan-task');
   const { buildProductionBackedVimaxPlan } = await import('../src/lib/skills/vimax-short-drama/vimax-plan-artifacts');
   const [{ NextRequest }, route] = await Promise.all([
@@ -165,6 +165,19 @@ async function main() {
   assert.equal(payload.success, true);
   assert.equal(payload.model, 'happyhorse-1.1-t2v');
   assert.equal(payload.segments?.[0]?.taskId, 'happyhorse-task-a');
+  assert.deepEqual(
+    getTaskForOwner(taskId, owner)?.result?.vimaxHappyHorseSegments,
+    [{
+      shotIndex: 1,
+      shotTitle: '走出车站',
+      duration: 5,
+      taskId: 'happyhorse-task-a',
+      status: 'succeeded',
+      videoUrl: 'https://fixture.invalid/happyhorse-a.mp4',
+      lastFrameUrl: 'https://fixture.invalid/happyhorse-a-last.jpg',
+    }],
+    'each provider task id and last successful result must persist before the long request returns',
+  );
   assert.equal(calls.length, 2, 'one shot must submit once and poll once');
   const submitBody = JSON.parse(String(calls[0]?.init?.body || '{}'));
   assert.equal(submitBody.parameters.resolution, '720P');
@@ -199,8 +212,8 @@ async function main() {
   assert.equal(recoveryPayload.success, true);
   assert.equal(recoveryPayload.recovered, true);
   assert.equal(recoveryPayload.incurredCost, false);
-  assert.equal(recoveryPayload.segments?.[0]?.taskId, 'happyhorse-task-recovered');
-  assert.equal(workspaceListRejected, true, 'fixture must exercise the workspace task-list auth rejection');
+  assert.equal(recoveryPayload.segments?.[0]?.taskId, 'happyhorse-task-a');
+  assert.equal(workspaceListRejected, false, 'known provider task ids must bypass unsupported task enumeration');
   assert.equal(calls.filter(call => call.init?.method === 'POST').length, 1, 'recovery must never submit another provider job');
 
   const recoveryAfterRestart = await route.POST(new NextRequest('http://localhost/api/smart/vimax-agent-step', {
@@ -234,6 +247,7 @@ async function main() {
   assert.equal(restartedPayload.recovered, true);
   assert.notEqual(restartedPayload.taskId, 'task-removed-by-release-restart');
   assert.equal(restartedPayload.segments?.[0]?.taskId, 'happyhorse-task-recovered');
+  assert.equal(workspaceListRejected, true, 'missing task ids must exercise the workspace task-list fallback');
   assert.equal(calls.filter(call => call.init?.method === 'POST').length, 1, 'restart recovery must never resubmit provider work');
 
   console.log(JSON.stringify({

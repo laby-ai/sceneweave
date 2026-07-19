@@ -19,14 +19,17 @@ import {
   type VimaxContinuityContract,
 } from '@/lib/skills/vimax-short-drama/vimax-continuity-contract';
 
-interface HappyHorseVimaxSegment {
+export interface HappyHorseVimaxSegment {
   shotIndex: number;
   shotTitle: string;
   duration: number;
   taskId: string;
-  videoUrl: string;
+  status?: 'submitted' | 'succeeded';
+  videoUrl?: string;
   lastFrameUrl?: string;
 }
+
+type HappyHorseSegmentObserver = (segment: HappyHorseVimaxSegment) => void | Promise<void>;
 
 function clampDuration(value: unknown): number {
   return Math.max(1, Math.min(10, Math.floor(Number(value) || 5)));
@@ -61,6 +64,7 @@ function buildPrompt(
 }
 
 async function ensureLastFrame(segment: HappyHorseVimaxSegment): Promise<HappyHorseVimaxSegment> {
+  if (!segment.videoUrl) return segment;
   if (segment.lastFrameUrl) return segment;
   const extracted = await extractLastFrameForHandoff(segment.videoUrl);
   return extracted.lastFrameUrl ? { ...segment, lastFrameUrl: extracted.lastFrameUrl } : segment;
@@ -72,6 +76,7 @@ export async function callHappyHorseVimaxVideo(
   connection: BYOKConnection,
   options: { ratio?: string; resolution?: string },
   continuity: VimaxContinuityContract,
+  onSegmentState?: HappyHorseSegmentObserver,
 ) {
   const model = connection.videoModel || connection.model;
   if (!model) throw new Error('快乐马连接缺少视频模型。');
@@ -94,24 +99,34 @@ export async function callHappyHorseVimaxVideo(
       watermark: false,
       seed,
     });
-    const completed = await waitForVideoWithBYOK(connection, task.taskId, undefined, {
-      maxAttempts: 120,
-      intervalMs: 5000,
-    });
-    segments.push(await ensureLastFrame({
+    await onSegmentState?.({
       shotIndex: shot.index,
       shotTitle: shot.title || `Clip ${shot.index}`,
       duration,
       taskId: task.taskId,
+      status: 'submitted',
+    });
+    const completed = await waitForVideoWithBYOK(connection, task.taskId, undefined, {
+      maxAttempts: 120,
+      intervalMs: 5000,
+    });
+    const segment = await ensureLastFrame({
+      shotIndex: shot.index,
+      shotTitle: shot.title || `Clip ${shot.index}`,
+      duration,
+      taskId: task.taskId,
+      status: 'succeeded',
       videoUrl: completed.videoUrl,
       lastFrameUrl: completed.lastFrameUrl,
-    }));
+    });
+    segments.push(segment);
+    await onSegmentState?.(segment);
   }
 
   let videoUrl = segments[0]?.videoUrl;
   let merge: { bytes?: number; segmentCount?: number } = {};
   if (segments.length > 1) {
-    const merged = await mergeVideosWithLocalFfmpeg(segments.map(segment => segment.videoUrl));
+    const merged = await mergeVideosWithLocalFfmpeg(segments.map(segment => segment.videoUrl as string));
     videoUrl = merged.videoUrl;
     merge = { bytes: merged.bytes, segmentCount: merged.segmentCount };
   }
@@ -137,6 +152,7 @@ export async function recoverHappyHorseVimaxVideo(
   plan: VimaxAgentPlan,
   connection: BYOKConnection,
   options: { createdAfter: number; createdBefore?: number },
+  knownSegments: HappyHorseVimaxSegment[] = [],
 ) {
   const model = connection.videoModel || connection.model;
   if (!model) throw new Error('快乐马连接缺少视频模型。');
@@ -145,31 +161,42 @@ export async function recoverHappyHorseVimaxVideo(
     .slice(0, 8);
   if (!shots.length) throw new Error('缺少可用于恢复视频的分镜。');
 
-  const listUrl = buildHappyHorseVideoTaskListUrl(connection.apiBase, {
+  const knownByShot = new Map(knownSegments
+    .filter(segment => segment?.taskId)
+    .map(segment => [segment.shotIndex, segment] as const));
+  let selected = shots.map(shot => knownByShot.get(shot.index)).filter(Boolean) as HappyHorseVimaxSegment[];
+  if (selected.length !== shots.length) {
+    const listUrl = buildHappyHorseVideoTaskListUrl(connection.apiBase, {
     startTime: formatDashScopeTime(options.createdAfter - 2 * 60 * 1000),
     endTime: formatDashScopeTime(options.createdBefore || Date.now()),
     model,
   });
-  const requestInit: RequestInit = {
-    method: 'GET',
-    headers: { Authorization: `Bearer ${connection.apiKey}`, 'Content-Type': 'application/json' },
-  };
-  let response = await fetch(listUrl, requestInit);
-  let payload = await response.json().catch(() => ({}));
-  if ((response.status === 401 || response.status === 403)
-    && new URL(listUrl).hostname !== 'dashscope.aliyuncs.com') {
-    response = await fetch(buildHappyHorsePublicTaskListUrl(listUrl), requestInit);
-    payload = await response.json().catch(() => ({}));
+    const requestInit: RequestInit = {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${connection.apiKey}`, 'Content-Type': 'application/json' },
+    };
+    let response = await fetch(listUrl, requestInit);
+    let payload = await response.json().catch(() => ({}));
+    if ((response.status === 401 || response.status === 403)
+      && new URL(listUrl).hostname !== 'dashscope.aliyuncs.com') {
+      response = await fetch(buildHappyHorsePublicTaskListUrl(listUrl), requestInit);
+      payload = await response.json().catch(() => ({}));
+    }
+    if (!response.ok) {
+      throw new Error(`快乐马任务恢复失败：${getHappyHorseProviderErrorMessage(payload, response.status)}`);
+    }
+    const listed = parseHappyHorseVideoTaskList(payload)
+      .filter(item => item.model === model && item.status.toUpperCase() === 'SUCCEEDED');
+    if (listed.length < shots.length) {
+      throw new Error(`仅找回 ${listed.length}/${shots.length} 个已成功片段；未重新提交生成，请稍后再恢复。`);
+    }
+    selected = listed.slice(-shots.length).map((item, index) => ({
+      shotIndex: shots[index].index,
+      shotTitle: shots[index].title || `Clip ${shots[index].index}`,
+      duration: clampDuration(shots[index].duration),
+      taskId: item.taskId,
+    }));
   }
-  if (!response.ok) {
-    throw new Error(`快乐马任务恢复失败：${getHappyHorseProviderErrorMessage(payload, response.status)}`);
-  }
-  const listed = parseHappyHorseVideoTaskList(payload)
-    .filter(item => item.model === model && item.status.toUpperCase() === 'SUCCEEDED');
-  if (listed.length < shots.length) {
-    throw new Error(`仅找回 ${listed.length}/${shots.length} 个已成功片段；未重新提交生成，请稍后再恢复。`);
-  }
-  const selected = listed.slice(-shots.length);
   const segments: HappyHorseVimaxSegment[] = [];
   for (let index = 0; index < selected.length; index += 1) {
     const item = selected[index];
@@ -182,6 +209,7 @@ export async function recoverHappyHorseVimaxVideo(
       shotTitle: shots[index].title || `Clip ${shots[index].index}`,
       duration: clampDuration(shots[index].duration),
       taskId: item.taskId,
+      status: 'succeeded',
       videoUrl: status.videoUrl,
       lastFrameUrl: status.lastFrameUrl,
     });
@@ -190,7 +218,7 @@ export async function recoverHappyHorseVimaxVideo(
   let videoUrl = segments[0]?.videoUrl;
   let merge: { bytes?: number; segmentCount?: number; renderReport?: unknown } = {};
   if (segments.length > 1) {
-    const merged = await mergeVideosWithLocalFfmpeg(segments.map(segment => segment.videoUrl), {
+    const merged = await mergeVideosWithLocalFfmpeg(segments.map(segment => segment.videoUrl as string), {
       expectedDurationSeconds: segments.reduce((sum, segment) => sum + segment.duration, 0),
     });
     videoUrl = merged.videoUrl;
