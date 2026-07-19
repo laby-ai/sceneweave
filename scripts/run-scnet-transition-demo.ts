@@ -24,9 +24,11 @@ interface DemoState {
   shots: Array<{ taskId?: string; videoUrl?: string }>;
 }
 
+const videoModel = process.env.SCNET_VIDEO_MODEL?.trim() || 'Seedance2.0';
+
 const shots: DemoShot[] = [
   {
-    model: 'Seedance2.0',
+    model: videoModel,
     fileName: '01-seedance2-5s.mp4',
     prompt: [
       'Cinematic product shot in a clean pale-silver studio.',
@@ -37,7 +39,7 @@ const shots: DemoShot[] = [
     ].join(' '),
   },
   {
-    model: 'Seedance2.0',
+    model: videoModel,
     fileName: '02-seedance2-5s.mp4',
     prompt: [
       'The first frame is a cyan-white flash that completely fills the frame.',
@@ -49,7 +51,7 @@ const shots: DemoShot[] = [
     ].join(' '),
   },
   {
-    model: 'Seedance2.0',
+    model: videoModel,
     fileName: '03-seedance2-5s.mp4',
     prompt: [
       'The first frame is filled by the same turquoise silk ribbons sweeping smoothly from left to right.',
@@ -130,7 +132,9 @@ async function main() {
   const state = await loadState(statePath);
 
   const connection: BYOKConnection = {
-    provider: 'ark-plan',
+    provider: process.env.SCNET_VIDEO_PROVIDER?.trim() === 'happyhorse-dashscope'
+      ? 'happyhorse-dashscope'
+      : 'ark-plan',
     apiBase: (process.env.SCNET_API_BASE || 'https://api.scnet.cn/api/llm/v1').trim(),
     apiKey,
   };
@@ -150,7 +154,7 @@ async function main() {
     if (existing && existing.size >= 1024) {
       generated.push({
         model: shot.model,
-        taskId: '',
+        taskId: state.shots[index]?.taskId || '',
         outputPath,
         sourceUrl: state.shots[index]?.videoUrl,
         bytes: existing.size,
@@ -208,7 +212,7 @@ async function main() {
   await fs.writeFile(manifestPath, `${JSON.stringify({
     route: 'src/lib/byok-provider.ts',
     provider: 'SCNet',
-    model: 'Seedance2.0',
+    model: videoModel,
     ratio: '16:9',
     resolution: '720p',
     durationSeconds: 15,
