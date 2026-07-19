@@ -101,6 +101,7 @@ export async function callHappyHorseVimaxVideo(
   continuity: VimaxContinuityContract,
   referenceAssets: VimaxAgentReferenceAsset[] = [],
   onSegmentState?: HappyHorseSegmentObserver,
+  knownSegments: HappyHorseVimaxSegment[] = [],
 ) {
   const model = connection.videoModel || connection.model;
   if (!model) throw new Error('快乐马连接缺少视频模型。');
@@ -110,10 +111,37 @@ export async function callHappyHorseVimaxVideo(
   if (!shots.length) throw new Error('缺少可用于视频生成的分镜。');
 
   const segments: HappyHorseVimaxSegment[] = [];
+  const knownByShot = new Map(knownSegments
+    .filter(segment => segment?.taskId)
+    .map(segment => [segment.shotIndex, segment] as const));
   const seed = stableSeed(plan, preset);
   for (let index = 0; index < shots.length; index += 1) {
     const shot = shots[index];
     const duration = clampDuration(shot.duration);
+    const known = knownByShot.get(shot.index);
+    if (known) {
+      const completed = known.videoUrl
+        ? known
+        : await waitForVideoWithBYOK(connection, known.taskId, undefined, {
+          maxAttempts: 120,
+          intervalMs: 5000,
+        }).then(status => ({
+          ...known,
+          status: 'succeeded' as const,
+          videoUrl: status.videoUrl,
+          lastFrameUrl: status.lastFrameUrl,
+        }));
+      const segment = await ensureLastFrame({
+        ...completed,
+        shotIndex: shot.index,
+        shotTitle: shot.title || `Clip ${shot.index}`,
+        duration,
+        status: 'succeeded',
+      });
+      segments.push(segment);
+      await onSegmentState?.(segment);
+      continue;
+    }
     const referenceManifest = isHappyHorseR2VModel(model)
       ? buildHappyHorseR2VReferenceManifest({
         assets: referenceAssets,

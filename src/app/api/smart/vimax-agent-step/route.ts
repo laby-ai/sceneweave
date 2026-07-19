@@ -821,7 +821,7 @@ export async function POST(request: NextRequest) {
               preset,
               videoConnection,
               generationPreferences,
-              continuity, persistedAssets, persistSegment,
+              continuity, persistedAssets, persistSegment, savedHappyHorseSegments,
             )
             : await callSeedanceVideo(canonical.plan, assets, preset, continuity, generationPreferences),
       });

@@ -10,6 +10,8 @@ import {
   buildVimaxProductionPlan,
 } from '../src/lib/skills/vimax-short-drama/vimax-production-plan';
 import { resolveVimaxSkillRuntimeBinding } from '../src/lib/skills/vimax-short-drama/vimax-skill-runtime-binding';
+import { resolveVimaxSkillPresetForRuntime } from '../src/lib/skills/vimax-short-drama/vimax-skill-presets';
+import { callHappyHorseVimaxVideo } from '../src/lib/skills/vimax-short-drama/happyhorse-vimax-video';
 import type { VimaxAgentPlan } from '../src/lib/skills/vimax-short-drama/vimax-agent-contract';
 import {
   buildVimaxContinuityContract,
@@ -382,6 +384,58 @@ async function main() {
       url: 'https://fixture.invalid/rain-station.png',
     },
   ]);
+
+  const partialPlan: VimaxAgentPlan = {
+    ...plan,
+    shots: [plan.shots[0]],
+  };
+  const partialTaskId = createTask('storyboard', { prompt: partialPlan.summary, workflow: 'vimax-agent' }, owner);
+  const partialBuilt = buildProductionBackedVimaxPlan(partialPlan.summary, partialPlan, {
+    phase: 'plan', skillId: 'short-drama', duration: 5, segmentDuration: 5, segmentCount: 1,
+    ratio: '16:9', resolution: '720p', sceneType: 'drama', style: '电影感短剧',
+  }, partialTaskId);
+  const partialContinuity = buildVimaxContinuityContract({
+    productionProject: partialBuilt.productionProject,
+    assemblyPlan: partialBuilt.assemblyPlan,
+    providerHandoff: resolveVimaxProviderHandoffMode({
+      provider: 'happyhorse-dashscope',
+      model: 'happyhorse-1.1-r2v',
+    }),
+  });
+  const partialCallStart = calls.length;
+  const partialResult = await callHappyHorseVimaxVideo(
+    partialPlan,
+    resolveVimaxSkillPresetForRuntime('short-drama'),
+    {
+      provider: 'happyhorse-dashscope',
+      apiBase: 'https://workspace.example.com/api/v1',
+      apiKey: 'dummy-key',
+      videoModel: 'happyhorse-1.1-r2v',
+    },
+    { ratio: '16:9', resolution: '720p' },
+    partialContinuity,
+    [
+      { kind: 'character', label: '女记者正面定妆', url: 'https://fixture.invalid/reporter-front.png' },
+      { kind: 'scene', label: '雨夜车站', url: 'https://fixture.invalid/rain-station.png' },
+    ],
+    undefined,
+    [{
+      shotIndex: 1,
+      shotTitle: '走出车站',
+      duration: 5,
+      taskId: 'already-paid-shot-a',
+      status: 'succeeded',
+      videoUrl: 'https://fixture.invalid/already-paid-a.mp4',
+      lastFrameUrl: 'https://fixture.invalid/already-paid-a-last.jpg',
+    }],
+  );
+  assert.equal(partialResult.segmentCount, 1);
+  assert.equal(partialResult.segments[0]?.taskId, 'already-paid-shot-a');
+  assert.equal(
+    calls.slice(partialCallStart).filter(call => call.init?.method === 'POST').length,
+    0,
+    'continuation must not resubmit an already paid successful shot',
+  );
 
   console.log(JSON.stringify({
     ok: true,
