@@ -8,7 +8,7 @@ import {
   type VimaxCameraTree,
 } from '@/lib/skills/vimax-short-drama/vimax-camera-tree';
 
-export type VimaxProviderHandoffMode = 'frame-handoff' | 'text-anchors';
+export type VimaxProviderHandoffMode = 'frame-handoff' | 'reference-handoff' | 'text-anchors';
 
 export interface VimaxProviderHandoff {
   mode: VimaxProviderHandoffMode;
@@ -112,17 +112,20 @@ export function resolveVimaxProviderHandoffMode(input: ProviderHandoffInput): Vi
   const provider = compact(input.provider, 'unknown-provider');
   const model = compact(input.model, 'unknown-model');
   const normalized = `${provider} ${model}`.toLowerCase();
+  const supportsReferenceImages = /happyhorse-1\.1-r2v/.test(normalized);
   const supportsFirstFrame = /(ark-video|seedance)/.test(normalized)
     && !/(happyhorse|t2v-only)/.test(normalized);
 
   return {
-    mode: supportsFirstFrame ? 'frame-handoff' : 'text-anchors',
+    mode: supportsReferenceImages ? 'reference-handoff' : supportsFirstFrame ? 'frame-handoff' : 'text-anchors',
     provider,
     model,
     supportsFirstFrame,
-    supportsReferenceImages: supportsFirstFrame,
+    supportsReferenceImages: supportsReferenceImages || supportsFirstFrame,
     locked: true,
-    limitation: supportsFirstFrame
+    limitation: supportsReferenceImages
+      ? '使用已批准的角色、场景、道具参考图，并可把上一镜尾帧作为额外参考；这是多参考约束，不声称强制绑定下一镜首帧。'
+      : supportsFirstFrame
       ? '相邻镜头必须绑定上一镜尾帧作为下一镜首帧，并同时保留文本连续性锚点。'
       : '当前供应商仅支持文本生成视频；不能声称绑定首尾帧，只能使用稳定角色、场景、道具、动作和构图锚点。',
   };
@@ -218,7 +221,9 @@ export function buildVimaxContinuityPrompt(contract: VimaxContinuityContract, sh
   if (!shot) throw new Error(`连续性契约中不存在镜头 ${shotIndex + 1}`);
   const handoff = contract.providerHandoff.mode === 'frame-handoff'
     ? `【供应商交接】首帧交接：镜头 ${shotIndex + 1} 必须绑定上一镜尾帧；${contract.providerHandoff.limitation}`
-    : `【供应商交接】仅文本锚点：${contract.providerHandoff.limitation}`;
+    : contract.providerHandoff.mode === 'reference-handoff'
+      ? `【供应商交接】参考驱动交接：${contract.providerHandoff.limitation}`
+      : `【供应商交接】仅文本锚点：${contract.providerHandoff.limitation}`;
 
   return [
     `【连续性版本】${contract.artifactRevision}`,
@@ -264,7 +269,7 @@ export function parseVimaxContinuityContract(value: unknown): VimaxContinuityCon
     || value.version !== 'sceneweave-continuity-contract-v1'
     || typeof value.artifactRevision !== 'string'
     || !isRecord(value.providerHandoff)
-    || !['frame-handoff', 'text-anchors'].includes(String(value.providerHandoff.mode))
+    || !['frame-handoff', 'reference-handoff', 'text-anchors'].includes(String(value.providerHandoff.mode))
     || typeof value.providerHandoff.provider !== 'string'
     || typeof value.providerHandoff.model !== 'string'
     || typeof value.providerHandoff.supportsFirstFrame !== 'boolean'
@@ -281,7 +286,7 @@ export function parseVimaxContinuityContract(value: unknown): VimaxContinuityCon
       || typeof value.productionDirection.directorManual !== 'string'
       || typeof value.productionDirection.imageModel !== 'string'
       || typeof value.productionDirection.videoModel !== 'string'
-      || !['frame-handoff', 'text-anchors'].includes(String(value.productionDirection.mode))))
+      || !['frame-handoff', 'reference-handoff', 'text-anchors'].includes(String(value.productionDirection.mode))))
     || !Array.isArray(value.shots)) return undefined;
 
   const cameraTree = value.cameraTree === undefined ? undefined : parseVimaxCameraTree(value.cameraTree);

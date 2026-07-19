@@ -9,6 +9,8 @@ import {
   parseHappyHorseVideoTaskId,
 } from '../src/lib/happyhorse-video-provider';
 import { getVideoStatusWithBYOK, submitVideoWithBYOK } from '../src/lib/byok-provider';
+import { resolveVimaxProviderHandoffMode } from '../src/lib/skills/vimax-short-drama/vimax-continuity-contract';
+import { selectHappyHorseR2VReferenceImages } from '../src/lib/skills/vimax-short-drama/happyhorse-vimax-video';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -90,6 +92,32 @@ assert(
   'raw provider error must be mapped to a safe message',
 );
 
+const selectedReferences = selectHappyHorseR2VReferenceImages([
+  {
+    kind: 'shot-reference',
+    shotIndex: 2,
+    url: 'https://media.example.com/shot-2.png',
+    selectedSubjectViews: [{
+      subjectId: 'subject-1',
+      label: '女记者正面',
+      view: 'front',
+      viewId: 'subject-1-front',
+      url: 'https://media.example.com/character-front.png',
+    }],
+  },
+  { kind: 'scene', url: 'https://media.example.com/scene.png' },
+  { kind: 'shot-reference', shotIndex: 1, url: 'https://media.example.com/other-shot.png' },
+], 2, 'https://media.example.com/previous-tail.png');
+assert(
+  JSON.stringify(selectedReferences) === JSON.stringify([
+    'https://media.example.com/character-front.png',
+    'https://media.example.com/shot-2.png',
+    'https://media.example.com/scene.png',
+    'https://media.example.com/previous-tail.png',
+  ]),
+  'R2V must select current-shot assets, global assets, then the previous tail without cross-shot leakage',
+);
+
 async function verifyProviderDispatch() {
   const originalFetch = globalThis.fetch;
   const calls: Array<{ url: string; init?: RequestInit }> = [];
@@ -131,7 +159,56 @@ async function verifyProviderDispatch() {
   }
 }
 
-verifyProviderDispatch().then(() => {
+async function verifyR2VProviderDispatch() {
+  const originalFetch = globalThis.fetch;
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
+    calls.push({ url: String(url), init });
+    return new Response(JSON.stringify({ output: { task_id: 'task-r2v-a', task_status: 'PENDING' } }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  try {
+    const task = await submitVideoWithBYOK({
+      provider: 'happyhorse-dashscope',
+      apiBase: connection.apiBase,
+      apiKey: connection.apiKey,
+      videoModel: 'happyhorse-1.1-r2v',
+    }, {
+      prompt: '[Image 1] 沿用同一角色和服饰，承接上一镜动作继续向右行走。',
+      duration: 5,
+      ratio: '16:9',
+      resolution: '720P',
+      seed: 7,
+      referenceImages: [
+        'https://media.example.com/character-front.png',
+        'https://media.example.com/scene.png',
+      ],
+      lastFrameImage: 'https://media.example.com/previous-tail.png',
+    });
+    const submitBody = JSON.parse(String(calls[0]?.init?.body || '{}'));
+    assert(task.taskId === 'task-r2v-a', 'BYOK HappyHorse R2V task id mismatch');
+    assert(submitBody.model === 'happyhorse-1.1-r2v', 'R2V model mismatch');
+    assert(Array.isArray(submitBody.input?.media), 'R2V media array missing');
+    assert(submitBody.input.media.length === 3, 'R2V reference image count mismatch');
+    assert(submitBody.input.media.every((item: { type?: string }) => item.type === 'reference_image'), 'R2V media type mismatch');
+    assert(submitBody.input.media[2]?.url === 'https://media.example.com/previous-tail.png', 'previous tail reference missing');
+
+    const handoff = resolveVimaxProviderHandoffMode({
+      provider: 'happyhorse-dashscope',
+      model: 'happyhorse-1.1-r2v',
+    });
+    assert(handoff.mode === 'reference-handoff', 'R2V must use reference handoff mode');
+    assert(handoff.supportsFirstFrame === false, 'R2V must not claim forced first-frame support');
+    assert(handoff.supportsReferenceImages === true, 'R2V reference capability missing');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+verifyProviderDispatch().then(verifyR2VProviderDispatch).then(() => {
   console.log(JSON.stringify({
     ok: true,
     usedRealKey: false,
@@ -143,6 +220,9 @@ verifyProviderDispatch().then(() => {
       'task-status-and-result-parsing',
       'safe-provider-error-mapping',
       'byok-provider-submit-and-poll-dispatch',
+      'r2v-reference-media-dispatch',
+      'r2v-reference-handoff-capability',
+      'r2v-persisted-asset-and-tail-selection',
     ],
   }, null, 2));
 }).catch(error => {

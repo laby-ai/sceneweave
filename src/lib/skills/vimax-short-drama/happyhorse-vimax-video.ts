@@ -12,7 +12,11 @@ import {
   getHappyHorseProviderErrorMessage,
   parseHappyHorseVideoTaskList,
 } from '@/lib/happyhorse-video-provider';
-import type { VimaxAgentPlan } from '@/lib/skills/vimax-short-drama/vimax-agent-contract';
+import { isHappyHorseR2VModel, normalizeHappyHorseR2VReferenceImages } from '@/lib/happyhorse-r2v-adapter';
+import type {
+  VimaxAgentPlan,
+  VimaxAgentReferenceAsset,
+} from '@/lib/skills/vimax-short-drama/vimax-agent-contract';
 import type { VimaxSkillPreset } from '@/lib/skills/vimax-short-drama/vimax-skill-presets';
 import {
   buildVimaxContinuityPrompt,
@@ -30,6 +34,27 @@ export interface HappyHorseVimaxSegment {
 }
 
 type HappyHorseSegmentObserver = (segment: HappyHorseVimaxSegment) => void | Promise<void>;
+
+function referenceAssetUrls(asset: VimaxAgentReferenceAsset): string[] {
+  return [
+    ...(asset.selectedSubjectViews || []).map(view => view.url),
+    asset.url,
+  ].filter((url): url is string => Boolean(url));
+}
+
+export function selectHappyHorseR2VReferenceImages(
+  assets: VimaxAgentReferenceAsset[],
+  shotIndex: number,
+  previousLastFrameUrl?: string,
+): string[] {
+  const shotAssets = assets.filter(asset => asset.shotIndex === shotIndex);
+  const globalAssets = assets.filter(asset => asset.shotIndex === undefined);
+  return normalizeHappyHorseR2VReferenceImages([
+    ...shotAssets.flatMap(referenceAssetUrls),
+    ...globalAssets.flatMap(referenceAssetUrls),
+    ...(previousLastFrameUrl ? [previousLastFrameUrl] : []),
+  ]);
+}
 
 function clampDuration(value: unknown): number {
   return Math.max(1, Math.min(10, Math.floor(Number(value) || 5)));
@@ -76,6 +101,7 @@ export async function callHappyHorseVimaxVideo(
   connection: BYOKConnection,
   options: { ratio?: string; resolution?: string },
   continuity: VimaxContinuityContract,
+  referenceAssets: VimaxAgentReferenceAsset[] = [],
   onSegmentState?: HappyHorseSegmentObserver,
 ) {
   const model = connection.videoModel || connection.model;
@@ -90,6 +116,12 @@ export async function callHappyHorseVimaxVideo(
   for (let index = 0; index < shots.length; index += 1) {
     const shot = shots[index];
     const duration = clampDuration(shot.duration);
+    const referenceImages = isHappyHorseR2VModel(model)
+      ? selectHappyHorseR2VReferenceImages(referenceAssets, shot.index, segments[index - 1]?.lastFrameUrl)
+      : [];
+    if (isHappyHorseR2VModel(model) && referenceImages.length === 0) {
+      throw new Error(`镜头 ${shot.index} 缺少已批准参考图，未提交付费视频任务。`);
+    }
     const task = await submitVideoWithBYOK(connection, {
       model,
       prompt: buildPrompt(plan, shot, preset, continuity, index, shots[index - 1]),
@@ -98,6 +130,7 @@ export async function callHappyHorseVimaxVideo(
       resolution: options.resolution || '720P',
       watermark: false,
       seed,
+      ...(referenceImages.length > 0 ? { referenceImages } : {}),
     });
     await onSegmentState?.({
       shotIndex: shot.index,

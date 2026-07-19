@@ -22,6 +22,7 @@ import {
   extractBYOKVideoConnection,
   type BYOKConnection,
 } from '@/lib/byok-provider';
+import { isHappyHorseR2VModel } from '@/lib/happyhorse-r2v-adapter';
 import {
   callHappyHorseVimaxVideo,
   recoverHappyHorseVimaxVideo,
@@ -301,7 +302,7 @@ function buildVimaxPlanEnvelope(
       referenceAssets: Boolean((planConnection?.apiKey && planConnection.imageModel) || config.imageApiKey),
       video: Boolean(videoConnection?.videoModel && videoConnection.apiKey) || Boolean(config.imageApiKey),
     },
-    referenceAssetsRequired: videoConnection?.provider !== 'happyhorse-dashscope',
+    referenceAssetsRequired: videoConnection?.provider !== 'happyhorse-dashscope' || isHappyHorseR2VModel(videoModel),
     assets: plan.assets,
     shots: plan.shots,
     workflow,
@@ -820,8 +821,7 @@ export async function POST(request: NextRequest) {
               preset,
               videoConnection,
               generationPreferences,
-              continuity,
-              persistSegment,
+              continuity, persistedAssets, persistSegment,
             )
             : await callSeedanceVideo(canonical.plan, assets, preset, continuity, generationPreferences),
       });

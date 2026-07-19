@@ -81,14 +81,14 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   throw new Error(`Unexpected network call: ${url}`);
 }) as typeof fetch;
 
-function readyProductionPlan(continuity: VimaxContinuityContract) {
+function readyProductionPlan(continuity: VimaxContinuityContract, videoModel = 'happyhorse-1.1-t2v') {
   const base = buildVimaxProductionPlan({
     title: '快乐马短剧夹具',
     ratio: '16:9',
     resolution: '720p',
     planModel: VIMAX_PLAN_MODEL,
     imageModel: 'doubao-seedream-5-0-260128',
-    videoModel: 'happyhorse-1.1-t2v',
+    videoModel,
     providerReadiness: { plan: true, referenceAssets: true, video: true },
     assets: [{ kind: 'character', label: '女记者', prompt: '米色风衣，红色录音笔' }],
     shots: [{ index: 1, title: '走出车站', duration: 5, camera: '向右跟拍', prompt: '女记者走出车站' }],
@@ -104,7 +104,7 @@ function readyProductionPlan(continuity: VimaxContinuityContract) {
 }
 
 async function main() {
-  const { createTask, getTaskForOwner } = await import('../src/lib/task-manager');
+  const { createTask, getTaskForOwner, updateTask } = await import('../src/lib/task-manager');
   const { persistVimaxPlanTask } = await import('../src/lib/skills/vimax-short-drama/vimax-plan-task');
   const { buildProductionBackedVimaxPlan } = await import('../src/lib/skills/vimax-short-drama/vimax-plan-artifacts');
   const [{ NextRequest }, route] = await Promise.all([
@@ -288,14 +288,83 @@ async function main() {
   assert.equal(workspaceListRejected, true, 'missing task ids must exercise the workspace task-list fallback');
   assert.equal(calls.filter(call => call.init?.method === 'POST').length, 1, 'restart recovery must never resubmit provider work');
 
+  const r2vTaskId = createTask('storyboard', { prompt: plan.summary, workflow: 'vimax-agent' }, owner);
+  const r2vBuilt = buildProductionBackedVimaxPlan(plan.summary, plan, {
+    phase: 'plan', skillId: 'short-drama', duration: 5, segmentDuration: 5, segmentCount: 1,
+    ratio: '16:9', resolution: '720p', sceneType: 'drama', style: '电影感短剧',
+  }, r2vTaskId);
+  const r2vProductionPlan = readyProductionPlan(buildVimaxContinuityContract({
+    productionProject: r2vBuilt.productionProject,
+    assemblyPlan: r2vBuilt.assemblyPlan,
+    providerHandoff: resolveVimaxProviderHandoffMode({
+      provider: 'happyhorse-dashscope',
+      model: 'happyhorse-1.1-r2v',
+    }),
+  }), 'happyhorse-1.1-r2v');
+  persistVimaxPlanTask({
+    taskId: r2vTaskId,
+    prompt: plan.summary,
+    plan: r2vBuilt.plan,
+    productionProject: r2vBuilt.productionProject,
+    assemblyPlan: r2vBuilt.assemblyPlan,
+    productionPlan: r2vProductionPlan,
+  });
+  assert.ok(updateTask(r2vTaskId, {
+    result: {
+      ...(getTaskForOwner(r2vTaskId, owner)?.result || {}),
+      vimaxReferenceAssets: [
+        { kind: 'character', url: 'https://fixture.invalid/reporter-front.png' },
+        { kind: 'scene', url: 'https://fixture.invalid/rain-station.png' },
+      ],
+    },
+  }));
+  const r2vCallStart = calls.length;
+  const r2vResponse = await route.POST(new NextRequest('http://localhost/api/smart/vimax-agent-step', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-paper-host-embed': 'creation-agent',
+      'x-paper-host-guest-workspace': workspace,
+      'x-yh-provider': 'happyhorse-dashscope',
+      'x-yh-api-base': 'https://workspace.example.com/api/v1',
+      'x-yh-api-key': 'dummy-key',
+      'x-yh-video-model': 'happyhorse-1.1-r2v',
+    },
+    body: JSON.stringify({
+      taskId: r2vTaskId,
+      phase: 'video',
+      confirm: true,
+      background: true,
+      skillId: 'short-drama',
+      productionPlan: r2vProductionPlan,
+      plan,
+    }),
+  }));
+  const r2vPayload = await r2vResponse.json() as { backgroundTaskId?: string };
+  assert.equal(r2vResponse.status, 202);
+  assert.equal(typeof r2vPayload.backgroundTaskId, 'string');
+  await waitUntil(
+    () => getTaskForOwner(r2vPayload.backgroundTaskId as string, owner)?.status === 'completed',
+    'R2V background video task did not complete',
+  );
+  const r2vSubmit = calls.slice(r2vCallStart).find(call => call.init?.method === 'POST');
+  const r2vSubmitBody = JSON.parse(String(r2vSubmit?.init?.body || '{}'));
+  assert.equal(r2vSubmitBody.model, 'happyhorse-1.1-r2v');
+  assert.deepEqual(r2vSubmitBody.input.media, [
+    { type: 'reference_image', url: 'https://fixture.invalid/reporter-front.png' },
+    { type: 'reference_image', url: 'https://fixture.invalid/rain-station.png' },
+  ], 'R2V route must use the persisted approved project assets');
+  assert.match(r2vSubmitBody.input.prompt, /【供应商交接】参考驱动交接/);
+
   console.log(JSON.stringify({
     ok: true,
     usedRealKey: false,
     incurredCost: false,
     route: '/api/smart/vimax-agent-step',
-    providerSubmits: 1,
-    providerPolls: 2,
+    providerSubmits: 2,
+    providerPolls: 3,
     providerRecoveries: 1,
+    r2vPersistedReferences: 2,
   }));
 }
 

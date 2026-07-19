@@ -15,6 +15,10 @@ import {
   parseHappyHorseVideoStatus,
   parseHappyHorseVideoTaskId,
 } from '@/lib/happyhorse-video-provider';
+import {
+  buildHappyHorseR2VSubmitRequest,
+  isHappyHorseR2VModel,
+} from '@/lib/happyhorse-r2v-adapter';
 
 export type BYOKProviderType = 'openai-compatible' | 'ark-plan' | 'happyhorse-dashscope';
 
@@ -368,10 +372,7 @@ export async function submitVideoWithBYOK(
   }
 
   if (connection.provider === 'happyhorse-dashscope') {
-    if (params.firstFrameImage || params.lastFrameImage || params.referenceImages?.length) {
-      throw new Error('快乐马 1.1 当前文本生成视频契约不支持首尾帧或参考图，已停止而非静默忽略');
-    }
-    const request = buildHappyHorseVideoSubmitRequest({
+    const requestOptions = {
       apiBase: connection.apiBase,
       apiKey: connection.apiKey,
       model,
@@ -381,7 +382,18 @@ export async function submitVideoWithBYOK(
       resolution: params.resolution,
       watermark: params.watermark,
       seed: params.seed,
-    });
+    };
+    const references = [
+      ...(params.referenceImages || []),
+      ...(params.firstFrameImage ? [params.firstFrameImage] : []),
+      ...(params.lastFrameImage ? [params.lastFrameImage] : []),
+    ];
+    if (!isHappyHorseR2VModel(model) && references.length > 0) {
+      throw new Error('快乐马 1.1 当前文本生成视频契约不支持首尾帧或参考图，已停止而非静默忽略');
+    }
+    const request = isHappyHorseR2VModel(model)
+      ? buildHappyHorseR2VSubmitRequest({ ...requestOptions, referenceImages: references })
+      : buildHappyHorseVideoSubmitRequest(requestOptions);
     const response = await fetch(request.url, {
       method: 'POST',
       headers: request.headers,
