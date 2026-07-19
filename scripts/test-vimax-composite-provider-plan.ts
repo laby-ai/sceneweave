@@ -28,7 +28,24 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     nextAction: '确认计划',
   });
   if (body.stream === true) {
-    return new Response(`data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: '内部推理' } }] })}\n\ndata: ${JSON.stringify({ choices: [{ delta: { content: planContent } }] })}\n\ndata: [DONE]\n\n`, {
+    const streamPayload = `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: '内部推理' } }] })}\n\ndata: ${JSON.stringify({ choices: [{ delta: { content: planContent } }] })}\n\ndata: [DONE]\n\n`;
+    if (JSON.stringify(body.messages || '').includes('中断恢复')) {
+      let pullCount = 0;
+      return new Response(new ReadableStream({
+        pull(controller) {
+          if (pullCount === 0) {
+            controller.enqueue(new TextEncoder().encode(streamPayload));
+          } else {
+            controller.error(new Error('BodyStreamBuffer was aborted'));
+          }
+          pullCount += 1;
+        },
+      }), {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    }
+    return new Response(streamPayload, {
       status: 200,
       headers: { 'content-type': 'text/event-stream' },
     });
@@ -144,6 +161,21 @@ async function main() {
   assert.equal(streamed.status, 200);
   assert.match(streamText, /event: plan\.complete/);
   assert.doesNotMatch(streamText, /内部推理/, 'reasoning_content must not leak into the user stream');
+
+  const recoveredStream = await route.POST(new NextRequest('http://localhost/api/smart/vimax-agent-step', {
+    method: 'POST',
+    headers: {
+      ...taskHeaders,
+      'x-yh-provider': 'openai-compatible',
+      'x-yh-api-base': 'https://api.scnet.example/api/llm/v1',
+      'x-yh-api-key': 'scnet-fixture-key',
+      'x-yh-model': 'Kimi-K3',
+    },
+    body: JSON.stringify({ phase: 'plan', prompt: '流式中断恢复测试', skillId: 'short-drama', stream: true }),
+  }));
+  const recoveredText = await recoveredStream.text();
+  assert.match(recoveredText, /event: plan\.complete/, 'complete JSON must survive a trailing body-stream abort');
+  assert.doesNotMatch(recoveredText, /event: plan\.error/);
 
   console.log(JSON.stringify({ ok: true, route: '/api/smart/vimax-agent-step', providers: ['Kimi-K3', 'happyhorse-1.1-t2v'] }));
 }

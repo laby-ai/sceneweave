@@ -384,32 +384,45 @@ async function callArkTextStream(prompt: string, preset: VimaxSkillPreset, model
   const decoder = new TextDecoder();
   let buffer = '';
   let rawText = '';
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    let newlineIndex: number;
-    while ((newlineIndex = buffer.indexOf('\n')) >= 0) {
-      const line = buffer.slice(0, newlineIndex).trim();
-      buffer = buffer.slice(newlineIndex + 1);
-      if (!line.startsWith('data:')) continue;
-      const payload = line.slice(5).trim();
-      if (!payload || payload === '[DONE]') continue;
-      try {
-        const json = JSON.parse(payload);
-        const delta = json?.choices?.[0]?.delta?.content;
-        if (typeof delta === 'string' && delta) {
-          rawText += delta;
-          writer(delta);
+  let streamReadError: unknown;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let newlineIndex: number;
+      while ((newlineIndex = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, newlineIndex).trim();
+        buffer = buffer.slice(newlineIndex + 1);
+        if (!line.startsWith('data:')) continue;
+        const payload = line.slice(5).trim();
+        if (!payload || payload === '[DONE]') continue;
+        try {
+          const json = JSON.parse(payload);
+          const delta = json?.choices?.[0]?.delta?.content;
+          if (typeof delta === 'string' && delta) {
+            rawText += delta;
+            writer(delta);
+          }
+        } catch {
+          // 单条 SSE 分片可能不完整，忽略后等待后续拼接
         }
-      } catch {
-        // 单条 SSE 分片可能不完整，忽略后等待后续拼接
       }
     }
+  } catch (error) {
+    streamReadError = error;
   }
 
-  if (!rawText.trim()) throw new Error('Ark 未返回文本内容。');
-  return { model, plan: extractJsonObject(rawText), rawText };
+  if (!rawText.trim()) {
+    if (streamReadError) throw streamReadError;
+    throw new Error('Ark 未返回文本内容。');
+  }
+  try {
+    return { model, plan: extractJsonObject(rawText), rawText };
+  } catch (error) {
+    if (streamReadError) throw streamReadError;
+    throw error;
+  }
 }
 
 
