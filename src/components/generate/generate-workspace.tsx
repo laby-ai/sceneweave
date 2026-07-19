@@ -70,6 +70,7 @@ import {
   resolveVimaxProjectPresetId,
   resolveVimaxResultIteration,
 } from '@/lib/skills/vimax-short-drama/vimax-result-delivery';
+import { recoverVimaxTaskProject } from '@/lib/skills/vimax-short-drama/vimax-task-project-recovery';
 
 type CreationMode = 'agent' | 'image' | 'video' | 'music' | 'voice' | 'avatar' | 'motion';
 
@@ -115,6 +116,7 @@ interface GenerateWorkspaceProps {
   onNavigate?: (section: string, prompt?: string, transfer?: { imageRefs?: string[] }) => void;
   requestHeaders?: Record<string, string>;
   storageScope?: string;
+  resumeTaskId?: string;
   onAuthenticationRequired?: (reason: string) => void;
 }
 
@@ -125,6 +127,7 @@ export function GenerateWorkspace({
   onNavigate,
   requestHeaders,
   storageScope,
+  resumeTaskId,
   onAuthenticationRequired,
 }: GenerateWorkspaceProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -152,6 +155,7 @@ export function GenerateWorkspace({
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [restoredScope, setRestoredScope] = useState<string | null>(null);
   const restoredScopeRef = useRef<string | null>(null);
+  const recoveredTaskRef = useRef<string | null>(null);
   const [workspaceView, setWorkspaceView] = useState<VimaxWorkspaceView>('home');
   useEffect(() => {
     setSkillSelection({ scope: skillScope, id: loadVimaxSkillPreset(localStorage, skillScope).id });
@@ -259,6 +263,45 @@ export function GenerateWorkspace({
     restoredScopeRef.current = storageScope || '';
     setRestoredScope(restoredScopeRef.current);
   }, [cancelCurrentRun, restoreProjectSkillPreset, storageScope]);
+
+  useEffect(() => {
+    if (!resumeTaskId || restoredScope !== (storageScope || '')) return;
+    const recoveryKey = `${storageScope || ''}:${resumeTaskId}`;
+    if (recoveredTaskRef.current === recoveryKey) return;
+    recoveredTaskRef.current = recoveryKey;
+    const controller = new AbortController();
+    void clientApiFetch<{ task?: unknown }>(`/api/tasks/${encodeURIComponent(resumeTaskId)}`, {
+      headers: effectiveRequestHeaders,
+      signal: controller.signal,
+      redirectOnUnauthorized: false,
+    }).then(payload => {
+      const recovered = recoverVimaxTaskProject(payload.task);
+      if (!recovered) return;
+      cancelCurrentRun();
+      setIsLoading(false);
+      setActiveProjectId(recovered.project.id);
+      saveActiveVimaxProjectId(sessionStorage, storageScope, recovered.project.id);
+      setMessages(recovered.messages);
+      restoreProjectSkillPreset(recovered.messages);
+      setHistory(previous => {
+        const next = [recovered.project, ...previous.filter(item => item.id !== recovered.project.id)].slice(0, 20);
+        saveChatHistory(next, storageScope);
+        return next;
+      });
+      setScopedWorkspaceView('project');
+    }).catch(() => {
+      // The task route is owner-scoped; unknown or foreign task ids fail closed on the home view.
+    });
+    return () => controller.abort();
+  }, [
+    cancelCurrentRun,
+    effectiveRequestHeaders,
+    restoreProjectSkillPreset,
+    restoredScope,
+    resumeTaskId,
+    setScopedWorkspaceView,
+    storageScope,
+  ]);
 
   const startNewChat = useCallback(() => {
     cancelCurrentRun();

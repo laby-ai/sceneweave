@@ -67,6 +67,7 @@ const PAPER_HOST_GUEST_WORKSPACE_PATTERN = /^guest-creation-[a-z0-9-]{16,96}$/;
 export interface PaperHostEmbedContext {
   embedded: boolean;
   workspaceKey?: string;
+  resumeTaskId?: string;
   storageScope?: string;
   requestHeaders: Record<string, string>;
 }
@@ -94,6 +95,8 @@ export function buildPaperHostGuestRequestHeaders(search: string): Record<string
 export function resolvePaperHostEmbedContext(search: string): PaperHostEmbedContext {
   const params = new URLSearchParams(search);
   const workspace = params.get('workspaceKey')?.trim() || '';
+  const requestedTaskId = params.get('taskId')?.trim() || '';
+  const resumeTaskId = /^[a-z0-9:-]{8,128}$/i.test(requestedTaskId) ? requestedTaskId : undefined;
   if (params.get('embed') !== 'creation-agent' || !PAPER_HOST_GUEST_WORKSPACE_PATTERN.test(workspace)) {
     return {
       embedded: false,
@@ -103,6 +106,7 @@ export function resolvePaperHostEmbedContext(search: string): PaperHostEmbedCont
   return {
     embedded: true,
     workspaceKey: workspace,
+    resumeTaskId,
     storageScope: `paper-host:${workspace}`,
     requestHeaders: {
       'x-paper-host-embed': 'creation-agent',

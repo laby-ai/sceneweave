@@ -65,6 +65,7 @@ export function VimaxCreationAgentShell() {
         <GenerateWorkspace
           requestHeaders={context.requestHeaders}
           storageScope={context.storageScope}
+          resumeTaskId={context.resumeTaskId}
           onAuthenticationRequired={handleAuthenticationRequired}
         />
       </div>

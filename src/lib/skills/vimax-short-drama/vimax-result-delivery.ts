@@ -79,6 +79,7 @@ export function buildVimaxContinueEditPrompt(context: VimaxResultIterationContex
 
 function isSafeResultUrl(value: string | undefined): value is string {
   if (!value) return false;
+  if (/^\/sceneweave\/api\/final-videos\/[a-z0-9-]+$/i.test(value)) return true;
   try {
     const url = new URL(value);
     return url.protocol === 'https:' || url.protocol === 'http:';
