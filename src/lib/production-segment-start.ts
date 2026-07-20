@@ -1,6 +1,7 @@
 import type { BYOKConnection } from '@/lib/byok-provider';
 import { submitVideoWithBYOK, waitForVideoWithBYOK } from '@/lib/byok-provider';
 import { isHappyHorseR2VModel } from '@/lib/happyhorse-r2v-adapter';
+import { isHappyHorseI2VModel } from '@/lib/happyhorse-i2v-adapter';
 import type { ProductionAssemblyPlan, ProductionSegmentPlan } from '@/lib/production-assembly-plan';
 import { computeProductionArtifactRevision } from '@/lib/production-artifact-stale';
 import type { ProductionProject } from '@/lib/production-project';
@@ -12,6 +13,11 @@ import {
 } from '@/lib/skills/vimax-short-drama/happyhorse-r2v-reference-manifest';
 import type { VimaxAgentReferenceAsset } from '@/lib/skills/vimax-short-drama/vimax-agent-contract';
 import { buildVimaxContinuityPrompt } from '@/lib/skills/vimax-short-drama/vimax-continuity-contract';
+import {
+  compileVimaxCanonicalFirstFrame,
+  evaluateVimaxCanonicalFirstFrameReadiness,
+  type VimaxCanonicalFirstFrameState,
+} from '@/lib/skills/vimax-short-drama/vimax-canonical-first-frame';
 import { parseVimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 import {
   buildProductionSegmentStartPayload,
@@ -169,7 +175,8 @@ async function runSegmentProviderJob(params: {
     resolution,
     generateAudio,
   } = params;
-  const startPayload = buildProductionSegmentStartPayload(segment);
+  let runtimeSegment = segment;
+  let startPayload: ProductionSegmentStartPayload;
   let providerTaskId: string | undefined;
   let partialVideoUrl: string | undefined;
   let partialLastFrameUrl: string | undefined;
@@ -189,13 +196,79 @@ async function runSegmentProviderJob(params: {
       || videoModel
       || byokConnection.videoModel
       || byokConnection.model;
+    const artifactVersion = productionPlan?.continuity?.artifactRevision
+      || (productionProject ? computeProductionArtifactRevision(productionProject) : 'unknown');
+    if (resolvedVideoModel
+      && isHappyHorseI2VModel(resolvedVideoModel)
+      && segment.generationRoute?.canonicalFirstFrameRequired === true) {
+      const currentState = segment.expectedInputs.canonicalFirstFrame;
+      const currentReadiness = evaluateVimaxCanonicalFirstFrameReadiness({
+        state: currentState,
+        artifactVersion,
+        requiresPreviousLastFrame: segment.generationRoute?.requiresPreviousLastFrame ?? segment.index > 0,
+        previousLastFrameUrl: segment.expectedInputs.previousLastFrameUrl,
+      });
+      let canonicalFirstFrame: VimaxCanonicalFirstFrameState;
+      if (currentReadiness.ok) {
+        canonicalFirstFrame = currentState as VimaxCanonicalFirstFrameState;
+      } else {
+        try {
+          canonicalFirstFrame = await compileVimaxCanonicalFirstFrame({
+            segment,
+            artifactVersion,
+            referenceAssets,
+            connection: byokConnection,
+            continuityPrompt: providerContinuityPrompt,
+          });
+        } catch (error) {
+          const failedState: VimaxCanonicalFirstFrameState = {
+            version: 'sceneweave-canonical-first-frame-v1',
+            status: 'failed',
+            artifactVersion,
+            imageUrl: null,
+            sourcePreviousLastFrameUrl: segment.expectedInputs.previousLastFrameUrl,
+            sourceReferenceUrls: [],
+            error: redactProductionSegmentStartError(error),
+          };
+          const currentTask = getTaskFresh(childTaskId);
+          updateTask(childTaskId, {
+            result: { ...(currentTask?.result || {}), canonicalFirstFrame: failedState },
+          });
+          updateParentSegment(parentTaskId, segmentIndex, {
+            status: 'running',
+            expectedInputs: { ...segment.expectedInputs, canonicalFirstFrame: failedState },
+          });
+          throw error;
+        }
+      }
+      runtimeSegment = {
+        ...segment,
+        expectedInputs: {
+          ...segment.expectedInputs,
+          firstFrameUrl: canonicalFirstFrame.imageUrl,
+          canonicalFirstFrame,
+        },
+      };
+      const currentTask = getTaskFresh(childTaskId);
+      updateTask(childTaskId, {
+        result: { ...(currentTask?.result || {}), canonicalFirstFrame },
+      });
+      updateParentSegment(parentTaskId, segmentIndex, {
+        status: 'running',
+        expectedInputs: {
+          ...segment.expectedInputs,
+          firstFrameUrl: canonicalFirstFrame.imageUrl,
+          canonicalFirstFrame,
+        },
+      });
+    }
+    startPayload = buildProductionSegmentStartPayload(runtimeSegment);
     const storyboardShot = productionProject?.storyboard.shots.find(shot => shot.id === segment.shotId);
     const referenceManifest = resolvedVideoModel && isHappyHorseR2VModel(resolvedVideoModel)
       ? buildHappyHorseR2VReferenceManifest({
         assets: referenceAssets,
         shotIndex: storyboardShot?.index || segment.index + 1,
-        artifactRevision: productionPlan?.continuity?.artifactRevision
-          || (productionProject ? computeProductionArtifactRevision(productionProject) : 'unknown'),
+        artifactRevision: artifactVersion,
         previousLastFrameUrl: startPayload.firstFrameImage
           || startPayload.previousLastFrameImage
           || undefined,

@@ -14,6 +14,7 @@ import {
 import { buildBoundaryBridgePlan, buildSegmentBridgePlan } from './trailer-beat-sheet';
 import type { BoundaryBridgePlan, SegmentBridge, SegmentBridgePlan } from './trailer-beat-sheet';
 import type { VimaxShotGenerationRoute } from './skills/vimax-short-drama/vimax-shot-generation-route';
+import type { VimaxCanonicalFirstFrameState } from './skills/vimax-short-drama/vimax-canonical-first-frame';
 
 export interface ProductionSegmentAudioState {
   dialogue: string | null;
@@ -55,6 +56,7 @@ export interface ProductionSegmentPlan {
     boundaryBridgePrompt?: string | null;
     bridgeFirstFrameUrl?: string | null;
     bridgeStrategy?: 'transition-bridge' | 'direct-tail-frame-fallback' | null;
+    canonicalFirstFrame?: VimaxCanonicalFirstFrameState;
   };
   expectedOutputs: {
     videoUrl: string | null;

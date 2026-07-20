@@ -53,19 +53,21 @@ const routes = resolveVimaxShotGenerationRoutes({
 });
 
 assert.deepEqual(routes.map(route => route.mode), [
-  'multi-reference',
   'first-frame',
-  'multi-reference',
+  'first-frame',
+  'first-frame',
 ]);
 assert.deepEqual(routes.map(route => route.model), [
-  'happyhorse-1.1-r2v',
   'happyhorse-1.1-i2v',
-  'happyhorse-1.1-r2v',
+  'happyhorse-1.1-i2v',
+  'happyhorse-1.1-i2v',
 ]);
 assert.equal(routes[0].requestedBy, 'server-default');
-assert.equal(routes[1].requestedBy, 'planner');
+assert.equal(routes[1].requestedBy, 'server-default');
 assert.equal(routes[1].requiresPreviousLastFrame, true);
-assert.deepEqual(routes[1].referenceRoles, ['previous-tail']);
+assert.equal(routes[1].canonicalFirstFrameRequired, true);
+assert.deepEqual(routes[0].referenceRoles, ['subject', 'scene', 'prop']);
+assert.deepEqual(routes[1].referenceRoles, ['subject', 'scene', 'prop', 'previous-tail']);
 assert.deepEqual(routes[2].referenceRoles, ['subject', 'scene', 'prop', 'previous-tail']);
 
 const assemblyPlan = {
@@ -85,9 +87,9 @@ const recovered = JSON.parse(JSON.stringify(routed.assemblyPlan)) as {
 };
 assert.deepEqual(
   recovered.segments.map(segment => segment.generationRoute?.model),
-  ['happyhorse-1.1-r2v', 'happyhorse-1.1-i2v', 'happyhorse-1.1-r2v'],
+  ['happyhorse-1.1-i2v', 'happyhorse-1.1-i2v', 'happyhorse-1.1-i2v'],
 );
-assert.equal(recovered.segments[1].generationRoute?.reason, plan.shots[1].handoffReason);
+assert.match(recovered.segments[1].generationRoute?.reason || '', /权威首帧/);
 
 console.log(JSON.stringify({
   ok: true,

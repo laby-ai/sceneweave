@@ -25,7 +25,7 @@ class MemoryStorage implements Storage {
 
 assert.equal(DEFAULT_PLANNING_MODEL, 'qwen3.7-plus');
 assert.equal(DEFAULT_IMAGE_MODEL, 'wan2.7-image');
-assert.equal(DEFAULT_VIDEO_MODEL, 'happyhorse-1.1-r2v');
+assert.equal(DEFAULT_VIDEO_MODEL, 'happyhorse-1.1-i2v');
 assert.equal(BAILIAN_UNIVERSAL_API_HOST, 'https://dashscope.aliyuncs.com');
 assert.equal(BAILIAN_WORKSPACE_API_HOST, 'https://ws-k96mveli79hlkvto.cn-beijing.maas.aliyuncs.com');
 assert.deepEqual(resolveBailianApiBases(BAILIAN_WORKSPACE_API_HOST), {

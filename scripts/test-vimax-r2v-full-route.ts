@@ -295,6 +295,7 @@ async function main() {
       assemblyPlan: dualBuilt.assemblyPlan,
       provider: 'happyhorse-dashscope',
       configuredModel: 'happyhorse-1.1-r2v',
+      routingStrategy: 'legacy-dual-route',
     });
     const dualContinuity = buildVimaxContinuityContract({
       productionProject: dualBuilt.productionProject,

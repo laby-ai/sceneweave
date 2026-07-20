@@ -22,7 +22,7 @@ const PLANNING_SESSION_STORAGE_KEY = 'dreambox-planning-connection';
 const HAPPYHORSE_SESSION_STORAGE_KEY = 'dreambox-happyhorse-connection';
 export const DEFAULT_PLANNING_MODEL = 'qwen3.7-plus';
 export const DEFAULT_IMAGE_MODEL = 'wan2.7-image';
-export const DEFAULT_VIDEO_MODEL = 'happyhorse-1.1-r2v';
+export const DEFAULT_VIDEO_MODEL = 'happyhorse-1.1-i2v';
 export const BAILIAN_UNIVERSAL_API_HOST = 'https://dashscope.aliyuncs.com';
 export const BAILIAN_WORKSPACE_API_HOST = 'https://ws-k96mveli79hlkvto.cn-beijing.maas.aliyuncs.com';
 
