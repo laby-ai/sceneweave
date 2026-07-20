@@ -28,6 +28,7 @@ import {
   recoverHappyHorseVimaxVideo,
   type HappyHorseVimaxSegment,
 } from '@/lib/skills/vimax-short-drama/happyhorse-vimax-video';
+import { resolveAndPersistVimaxVideoReferenceAssets } from '@/lib/skills/vimax-short-drama/vimax-video-reference-assets';
 import { callVimaxReferenceImages } from '@/lib/skills/vimax-short-drama/vimax-reference-assets';
 import { callWithSanitizedVimaxPlanningFailure, resolveVimaxPlanningConnectionPhase, resolveVimaxPlanningReadinessFailure, sanitizeVimaxPlanningFailure } from '@/lib/skills/vimax-short-drama/vimax-planning-readiness';
 import {
@@ -785,9 +786,7 @@ export async function POST(request: NextRequest) {
       const persistedAssets = Array.isArray(task?.result?.vimaxReferenceAssets)
         ? task.result.vimaxReferenceAssets as VimaxAgentReferenceAsset[]
         : [];
-      const assets = Array.isArray(body.assets) && body.assets.length > 0
-        ? body.assets
-        : persistedAssets;
+      const assets = resolveAndPersistVimaxVideoReferenceAssets({ task, supplied: body.assets, persisted: persistedAssets });
       const generationPreferences = productionPlan.preferences;
       if (!productionPlan.continuity) {
         throw new Error('制作计划缺少连续性契约，请返回计划阶段重新确认。');

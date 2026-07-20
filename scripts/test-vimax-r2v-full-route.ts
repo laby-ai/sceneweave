@@ -74,7 +74,7 @@ async function main() {
     const { NextRequest } = await import('next/server');
     const route = await import('../src/app/api/smart/vimax-agent-step/route');
     const finalVideoRoute = await import('../src/app/api/final-videos/[id]/route');
-    const { createTask, getTaskForOwner, updateTask } = await import('../src/lib/task-manager');
+    const { createTask, getTaskForOwner } = await import('../src/lib/task-manager');
     const { buildProductionBackedVimaxPlan } = await import('../src/lib/skills/vimax-short-drama/vimax-plan-artifacts');
     const { persistVimaxPlanTask } = await import('../src/lib/skills/vimax-short-drama/vimax-plan-task');
 
@@ -138,16 +138,11 @@ async function main() {
       assemblyPlan: built.assemblyPlan,
       productionPlan,
     });
-    assert.ok(updateTask(taskId, {
-      result: {
-        ...(getTaskForOwner(taskId, owner)?.result || {}),
-        vimaxReferenceAssets: [
-          { kind: 'character', label: '女记者定妆', url: 'https://fixture.invalid/reporter.png' },
-          { kind: 'scene', label: '雨夜车站', url: 'https://fixture.invalid/station.png' },
-          { kind: 'prop', label: '红色录音笔', url: 'https://fixture.invalid/recorder.png' },
-        ],
-      },
-    }));
+    const requestAssets = [
+      { kind: 'character', label: '女记者定妆', url: 'https://fixture.invalid/reporter.png' },
+      { kind: 'scene', label: '雨夜车站', url: 'https://fixture.invalid/station.png' },
+      { kind: 'prop', label: '红色录音笔', url: 'https://fixture.invalid/recorder.png' },
+    ];
 
     const requestHeaders = {
       'content-type': 'application/json',
@@ -161,7 +156,7 @@ async function main() {
     const response = await route.POST(new NextRequest('http://localhost/api/smart/vimax-agent-step', {
       method: 'POST',
       headers: requestHeaders,
-      body: JSON.stringify({ taskId, phase: 'video', confirm: true, background: true }),
+      body: JSON.stringify({ taskId, phase: 'video', confirm: true, background: true, assets: requestAssets }),
     }));
     const accepted = await response.json() as { backgroundTaskId?: string };
     assert.equal(response.status, 202);
@@ -184,6 +179,7 @@ async function main() {
       'shot 3 must reserve the latest generated boundary new-camera image in its R2V reference set',
     );
     const parent = getTaskForOwner(taskId, owner);
+    assert.deepEqual(parent?.result?.vimaxReferenceAssets, requestAssets);
     const assemblyPlan = parent?.result?.assemblyPlan as ProductionAssemblyPlan;
     assert.deepEqual(assemblyPlan.segments.map(segment => segment.status), ['completed', 'completed', 'completed']);
     assert.deepEqual(
