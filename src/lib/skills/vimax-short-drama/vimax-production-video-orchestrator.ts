@@ -12,6 +12,16 @@ import {
 
 const TERMINAL_TASK_STATUSES = new Set(['completed', 'failed', 'cancelled']);
 
+export function isReusableVimaxBoundaryBridge(
+  assemblyPlan: ProductionAssemblyPlan | undefined,
+  boundaryIndex: number,
+) {
+  const boundary = assemblyPlan?.boundaryBridgePlan?.boundaries.find(item => item.index === boundaryIndex);
+  return boundary?.status === 'generated'
+    && Boolean(boundary.bridgeVideoUrl)
+    && Boolean(boundary.newCameraImageUrl);
+}
+
 async function waitForOwnedTask(owner: TaskOwner, taskId: string) {
   for (let attempt = 0; attempt < 1_800; attempt += 1) {
     const task = getTaskForOwner(taskId, owner);
@@ -71,6 +81,9 @@ export async function runVimaxProductionVideoOrchestrator(input: {
       });
     }
     if (index >= queue.childTaskIds.length - 1) continue;
+    const parentAfterSegment = getTaskForOwner(input.parentTaskId, input.owner);
+    const planAfterSegment = parentAfterSegment?.result?.assemblyPlan as ProductionAssemblyPlan | undefined;
+    if (isReusableVimaxBoundaryBridge(planAfterSegment, index)) continue;
     const bridge = startProductionBoundaryBridge({
       parentTaskId: input.parentTaskId,
       boundaryIndex: index,

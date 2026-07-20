@@ -83,6 +83,7 @@ async function main() {
     } = await import('../src/lib/task-manager');
     const { buildProductionBackedVimaxPlan } = await import('../src/lib/skills/vimax-short-drama/vimax-plan-artifacts');
     const { persistVimaxPlanTask } = await import('../src/lib/skills/vimax-short-drama/vimax-plan-task');
+    const { isReusableVimaxBoundaryBridge } = await import('../src/lib/skills/vimax-short-drama/vimax-production-video-orchestrator');
 
     const workspace = 'guest-creation-r2v-full-route-fixture';
     const owner = {
@@ -212,6 +213,8 @@ async function main() {
     assert.ok(assemblyPlan.boundaryBridgePlan?.boundaries.every(boundary => (
       boundary.bridgeVideoUrl && boundary.newCameraImageUrl
     )));
+    assert.equal(isReusableVimaxBoundaryBridge(assemblyPlan, 0), true);
+    assert.equal(isReusableVimaxBoundaryBridge(assemblyPlan, 1), true);
     const lastSuccessfulResult = parseVimaxProductionPlan(parent?.result?.productionPlan)?.render.lastSuccessfulResult;
     assert.match(lastSuccessfulResult?.videoUrl || '', /^\/api\/final-videos\/[0-9a-f-]{36}$/);
     assert.equal(lastSuccessfulResult?.renderReport?.segmentCount, 3);
