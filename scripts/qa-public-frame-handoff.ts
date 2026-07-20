@@ -9,6 +9,7 @@ import {
 
 const originalPublicBase = process.env.HUIYING_PUBLIC_ASSET_BASE_URL;
 const originalProjectBase = process.env.HUIYING_PROJECT_DOMAIN_DEFAULT;
+const originalPublicStore = process.env.HUIYING_PUBLIC_ASSET_STORE_PATH;
 
 async function main() {
   process.env.HUIYING_PUBLIC_ASSET_BASE_URL = 'http://localhost:5000';
@@ -21,6 +22,8 @@ async function main() {
   assert.equal(publicReady.ready, true, 'https public base should be accepted');
 
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'huiying-public-frame-'));
+  const publicStore = path.join(tempDir, 'durable-public-assets');
+  process.env.HUIYING_PUBLIC_ASSET_STORE_PATH = publicStore;
   const framePath = path.join(tempDir, 'last-frame.jpg');
   await fs.writeFile(framePath, Buffer.alloc(1024, 7));
   const url = await savePublicFrameForHandoff(framePath);
@@ -29,7 +32,7 @@ async function main() {
   assert(url, 'public frame URL missing');
   const fileName = new URL(url).pathname.split('/').pop();
   assert(fileName, 'public frame file name missing');
-  const generatedPath = path.join(process.cwd(), 'public', 'generated', 'frames', fileName);
+  const generatedPath = path.join(publicStore, 'generated', 'frames', fileName);
   const stat = await fs.stat(generatedPath);
   assert(stat.size === 1024, 'saved public frame size mismatch');
 
@@ -43,7 +46,7 @@ async function main() {
     checks: [
       'localhost is rejected for provider-readable handoff',
       'https public asset base is accepted',
-      'frame is copied to public/generated/frames and returns stable URL',
+      'frame is copied to the configured durable public store and returns stable URL',
     ],
   }, null, 2));
 }
@@ -54,6 +57,8 @@ main()
     else process.env.HUIYING_PUBLIC_ASSET_BASE_URL = originalPublicBase;
     if (originalProjectBase === undefined) delete process.env.HUIYING_PROJECT_DOMAIN_DEFAULT;
     else process.env.HUIYING_PROJECT_DOMAIN_DEFAULT = originalProjectBase;
+    if (originalPublicStore === undefined) delete process.env.HUIYING_PUBLIC_ASSET_STORE_PATH;
+    else process.env.HUIYING_PUBLIC_ASSET_STORE_PATH = originalPublicStore;
   })
   .catch(error => {
     console.error(error);

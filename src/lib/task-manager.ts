@@ -168,11 +168,16 @@ export interface BackgroundTask {
   startedAt?: number;
   completedAt?: number;
   lastUpdatedAt?: number; // 最后更新时间，用于判断僵尸任务
+  eventSeq?: number; // 单调递增的任务事件游标，用于断线后增量恢复
   // 服务端可信会话派生的所有权。旧任务没有 owner 时一律对用户接口隐藏。
   owner?: TaskOwner;
   idempotencyHash?: string;
   // 注意：abortController 不能序列化，不存储到文件
   abortController?: AbortController;
+}
+
+function nextTaskEventSeq(task: BackgroundTask): number {
+  return Math.max(0, Number.isSafeInteger(task.eventSeq) ? Number(task.eventSeq) : 0) + 1;
 }
 
 // 任务存储目录。HUIYING_TASKS_FILE 让 QA/本地探针可以隔离任务文件，避免污染真实任务中心。
@@ -244,6 +249,7 @@ function loadTasksFromFile(): Map<string, BackgroundTask> {
       // 恢复运行时不能序列化的字段
       taskMap.set(task.id, {
         ...task,
+        eventSeq: Math.max(1, Number.isSafeInteger(task.eventSeq) ? Number(task.eventSeq) : 1),
         abortController: undefined, // 重启后无法恢复
       });
     });
@@ -256,6 +262,43 @@ function loadTasksFromFile(): Map<string, BackgroundTask> {
     });
     return new Map();
   }
+}
+
+function taskHasSubmittedProviderJob(task: BackgroundTask) {
+  if (typeof task.result?.providerTaskId === 'string' && task.result.providerTaskId.trim()) return true;
+  return Array.isArray(task.result?.segments)
+    && task.result.segments.some(segment => typeof segment.providerTaskId === 'string' && segment.providerTaskId.trim());
+}
+
+function recoverInterruptedTask(task: BackgroundTask, timestamp: number): BackgroundTask {
+  const isAssemblySegment = task.config.workflow === 'production-assembly-segment';
+  const hasProviderJob = isAssemblySegment && taskHasSubmittedProviderJob(task);
+  if (isAssemblySegment && !hasProviderJob) {
+    return {
+      ...task,
+      status: 'pending',
+      progress: 0,
+      stage: '服务恢复，片段已回到队列',
+      message: '该片段尚未提交供应商，可从当前项目继续执行，不会重复扣费。',
+      error: undefined,
+      startedAt: undefined,
+      completedAt: undefined,
+      lastUpdatedAt: timestamp,
+      eventSeq: nextTaskEventSeq(task),
+      abortController: undefined,
+    };
+  }
+
+  return {
+    ...task,
+    status: 'failed',
+    stage: hasProviderJob ? '服务恢复，供应商任务待续查' : '服务重启，任务已安全停止',
+    error: hasProviderJob ? 'task_interrupted_with_provider_job' : 'task_interrupted_by_restart',
+    completedAt: timestamp,
+    lastUpdatedAt: timestamp,
+    eventSeq: nextTaskEventSeq(task),
+    abortController: undefined,
+  };
 }
 
 /**
@@ -304,15 +347,7 @@ function getTaskStore(): Map<string, BackgroundTask> {
       let recovered = false;
       for (const [taskId, task] of taskCache) {
         if (task.status === 'pending' || task.status === 'running') {
-          taskCache.set(taskId, {
-            ...task,
-            status: 'failed',
-            stage: '服务重启，任务已安全停止',
-            error: 'task_interrupted_by_restart',
-            completedAt: timestamp,
-            lastUpdatedAt: timestamp,
-            abortController: undefined,
-          });
+          taskCache.set(taskId, recoverInterruptedTask(task, timestamp));
           recovered = true;
         }
       }
@@ -383,6 +418,7 @@ export function createTask(
     status: 'pending',
     config: sanitizedConfig,
     progress: 0,
+    eventSeq: 1,
     createdAt: Date.now(),
     ...(owner ? { owner: { tenantId: owner.tenantId, memberId: owner.memberId } } : {}),
     ...(idempotencyHash ? { idempotencyHash } : {}),
@@ -479,6 +515,7 @@ export function updateTask(
     ...task, 
     ...updates,
     lastUpdatedAt: Date.now(), // 自动更新最后更新时间
+    eventSeq: nextTaskEventSeq(task),
   };
   store.set(taskId, updatedTask);
   saveTasksToFile(store);
@@ -501,6 +538,7 @@ export function startTask(taskId: string, abortController?: AbortController): bo
     ...task,
     status: 'running',
     startedAt: Date.now(),
+    eventSeq: nextTaskEventSeq(task),
     abortController: abortController || new AbortController(),
   };
   store.set(taskId, runningTask);
@@ -528,6 +566,7 @@ export function completeTask(taskId: string, result: TaskResult): boolean {
     stage: '已完成',
     result,
     completedAt: Date.now(),
+    eventSeq: nextTaskEventSeq(task),
     abortController: undefined,
   };
   store.set(taskId, completedTask);
@@ -560,6 +599,7 @@ export function failTask(taskId: string, error: string): boolean {
     stage: '生成失败',
     error,
     completedAt: Date.now(),
+    eventSeq: nextTaskEventSeq(task),
     abortController: undefined,
   };
   store.set(taskId, failedTask);
@@ -599,6 +639,7 @@ export function cancelTask(taskId: string): boolean {
     status: 'cancelled',
     stage: '已取消',
     completedAt: Date.now(),
+    eventSeq: nextTaskEventSeq(task),
     abortController: undefined,
   };
   store.set(taskId, cancelledTask);
@@ -662,6 +703,7 @@ export function retryTask(taskId: string): BackgroundTask | undefined {
       originalTaskId: task.config.originalTaskId || taskId,
     },
     lastUpdatedAt: Date.now(),
+    eventSeq: nextTaskEventSeq(task),
   };
 
   store.set(taskId, updatedTask);
@@ -709,9 +751,12 @@ export function cleanupExpiredTasks(): number {
         zombieTasks.push(taskId);
       }
     }
-    // pending 超过 15 分钟仍未启动，判定为失效任务
+    // pending 超过 15 分钟且期间没有被重新排队/重试，判定为失效任务。
+    // 分段任务可能等待上一镜与边界桥接超过 15 分钟；queue/retry 会刷新 lastUpdatedAt，
+    // 此时不能按最初 createdAt 把仍在当前编排里的下游镜头误判为失效。
     else if (task.status === 'pending') {
-      if (task.createdAt && (now - task.createdAt) > 15 * 60 * 1000) {
+      const lastActivity = task.lastUpdatedAt || task.createdAt;
+      if (lastActivity && (now - lastActivity) > 15 * 60 * 1000) {
         stalePending.push(taskId);
       }
     }
@@ -732,6 +777,7 @@ export function cleanupExpiredTasks(): number {
         stage: '任务超时',
         error: '任务运行超过30分钟无响应，可能已中断',
         completedAt: now,
+        eventSeq: nextTaskEventSeq(task),
         abortController: undefined,
       });
     }
@@ -747,6 +793,7 @@ export function cleanupExpiredTasks(): number {
         stage: '任务失效',
         error: '任务长时间未开始，已自动失效',
         completedAt: now,
+        eventSeq: nextTaskEventSeq(task),
         abortController: undefined,
       });
     }

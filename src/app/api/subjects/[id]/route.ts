@@ -1,27 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { resolveAccountSessionFromRequest } from '@/lib/account/account-session';
-import { deleteSubject, readSubjectImage } from '@/lib/subjects/subject-store';
+import { deleteSubject, listSubjects, readSubjectImage } from '@/lib/subjects/subject-store';
 import { getSubjectStoreRoot } from '@/lib/subjects/subject-store-readiness';
+import { resolvePaperHostCreationOwnerFromRequest } from '@/lib/task-access';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const SUBJECT_ROOT = getSubjectStoreRoot();
 
-async function owner(request: NextRequest) {
-  const session = await resolveAccountSessionFromRequest(request);
-  return session?.tenant_id && session.member?.id
-    ? { tenantId: session.tenant_id, memberId: session.member.id }
-    : null;
+async function accessToSubject(request: NextRequest, id: string) {
+  const access = await resolvePaperHostCreationOwnerFromRequest(request);
+  if (!access) return 'not_authenticated' as const;
+  if (access.sessionMode === 'member') return access;
+  const reference = (await listSubjects(SUBJECT_ROOT, access.owner)).find(item => item.id === id);
+  return reference?.context === 'creation-agent' ? access : null;
 }
 
 export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const identity = await owner(request);
-  if (!identity) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
+  const { id } = await context.params;
+  const access = await accessToSubject(request, id);
+  if (access === 'not_authenticated') return NextResponse.json({ error: access }, { status: 401 });
+  if (!access) return NextResponse.json({ error: 'subject_not_found' }, { status: 404 });
   try {
-    const { id } = await context.params;
-    const result = await readSubjectImage(SUBJECT_ROOT, identity, id);
+    const result = await readSubjectImage(SUBJECT_ROOT, access.owner, id);
     return new NextResponse(new Uint8Array(result.image), {
       headers: {
         'Content-Type': result.mimeType,
@@ -35,10 +37,10 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
 }
 
 export async function DELETE(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const identity = await owner(request);
-  if (!identity) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
   const { id } = await context.params;
-  if (!await deleteSubject(SUBJECT_ROOT, identity, id)) {
+  const access = await accessToSubject(request, id);
+  if (access === 'not_authenticated') return NextResponse.json({ error: access }, { status: 401 });
+  if (!access || !await deleteSubject(SUBJECT_ROOT, access.owner, id)) {
     return NextResponse.json({ error: 'subject_not_found' }, { status: 404 });
   }
   return NextResponse.json({ success: true });

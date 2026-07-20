@@ -16,6 +16,7 @@ const segmentPaths = [path.join(root, 'one.mp4'), path.join(root, 'two.mp4')];
 const appPort = 5199;
 const mediaPort = 5197;
 const accountPort = 5198;
+const basePath = '/sceneweave';
 
 function listen(server, port) {
   return new Promise((resolve, reject) => {
@@ -27,7 +28,7 @@ function listen(server, port) {
 async function waitForHealth() {
   for (let attempt = 0; attempt < 60; attempt += 1) {
     try {
-      const response = await fetch(`http://127.0.0.1:${appPort}/huiying/api/health`);
+      const response = await fetch(`http://127.0.0.1:${appPort}${basePath}/api/health`);
       if (response.ok) return response.json();
     } catch {
       // Candidate is still starting.
@@ -80,7 +81,7 @@ try {
       NODE_ENV: 'production',
       PORT: String(appPort),
       HOSTNAME: '127.0.0.1',
-      NEXT_PUBLIC_BASE_PATH: '/huiying',
+      NEXT_PUBLIC_BASE_PATH: basePath,
       HUIYING_OBSERVABILITY_HASH_KEY: 'fixture-observability-hash-key-32-bytes',
       ACCOUNT_CENTER_API_BASE: `http://127.0.0.1:${accountPort}`,
       HUIYING_FINAL_VIDEO_STORE_PATH: storeRoot,
@@ -97,7 +98,7 @@ try {
   assert.equal(health.runtimeReadiness.finalVideoStore.ready, true);
   assert.equal(health.runtimeReadiness.objectStorage.ready, false);
 
-  const composeResponse = await fetch(`http://127.0.0.1:${appPort}/huiying/api/film/compose`, {
+  const composeResponse = await fetch(`http://127.0.0.1:${appPort}${basePath}/api/film/compose`, {
     method: 'POST',
     headers: { Authorization: 'Bearer token-a', 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -117,7 +118,7 @@ try {
     .map(line => JSON.parse(line.slice(6)));
   const complete = events.find(event => event.stage === 'complete');
   assert.equal(complete.storage, 'shared-local');
-  assert.match(complete.videoUrl, /^\/huiying\/api\/final-videos\/[0-9a-f-]{36}$/);
+  assert.match(complete.videoUrl, /^\/sceneweave\/api\/final-videos\/[0-9a-f-]{36}$/);
 
   const privateUrl = `http://127.0.0.1:${appPort}${complete.videoUrl}`;
   const ownerResponse = await fetch(privateUrl, {
@@ -134,6 +135,38 @@ try {
   assert.equal((await fetch(privateUrl, { headers: { Authorization: 'Bearer token-b' } })).status, 404);
   assert.equal((await fetch(privateUrl)).status, 401);
 
+  const guestHeaders = {
+    'Content-Type': 'application/json',
+    'x-paper-host-embed': 'creation-agent',
+    'x-paper-host-guest-workspace': 'guest-creation-final-video-e2e-0001',
+  };
+  const guestComposeResponse = await fetch(`http://127.0.0.1:${appPort}${basePath}/api/film/compose`, {
+    method: 'POST',
+    headers: guestHeaders,
+    body: JSON.stringify({
+      shots: [
+        { id: 'one', videoUrl: `http://127.0.0.1:${mediaPort}/one.mp4`, duration: 1 },
+        { id: 'two', videoUrl: `http://127.0.0.1:${mediaPort}/two.mp4`, duration: 1 },
+      ],
+      requireDurableOutput: true,
+      enableVoice: false,
+      bgmType: 'none',
+    }),
+  });
+  assert.equal(guestComposeResponse.status, 200);
+  const guestEvents = (await guestComposeResponse.text())
+    .split('\n')
+    .filter(line => line.startsWith('data: '))
+    .map(line => JSON.parse(line.slice(6)));
+  const guestComplete = guestEvents.find(event => event.stage === 'complete');
+  assert.match(guestComplete.videoUrl, /^\/sceneweave\/api\/final-videos\/[0-9a-f-]{36}$/);
+  const guestPrivateUrl = `http://127.0.0.1:${appPort}${guestComplete.videoUrl}`;
+  assert.equal((await fetch(guestPrivateUrl, { headers: guestHeaders })).status, 200);
+  assert.equal((await fetch(guestPrivateUrl, {
+    headers: { ...guestHeaders, 'x-paper-host-guest-workspace': 'guest-creation-final-video-e2e-0002' },
+  })).status, 404);
+  assert.equal((await fetch(guestPrivateUrl)).status, 401);
+
   const finalFile = await findFinalVideo(storeRoot);
   assert((await stat(finalFile)).size > 1024);
 
@@ -142,6 +175,8 @@ try {
     composeStatus: composeResponse.status,
     ownerRangeStatus: ownerResponse.status,
     crossMemberStatus: 404,
+    guestOwnerStatus: 200,
+    crossGuestStatus: 404,
     unauthenticatedStatus: 401,
     usedRealKey: false,
     incurredCost: false,

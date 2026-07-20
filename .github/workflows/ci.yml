@@ -61,6 +61,7 @@ jobs:
           pnpm run test:member-subject-library
           pnpm run test:member-final-video-store
           pnpm run test:member-task-isolation
+          pnpm run test:member-bailian-profile
           pnpm run test:provider-independence
 
       - name: Check mobile Film contracts
@@ -92,4 +93,4 @@ jobs:
       - name: Check real browser user journey
         run: |
           pnpm exec playwright install --with-deps chromium
-          pnpm run qa:v8-user-journey
+          pnpm run qa:creation-agent-user-journey

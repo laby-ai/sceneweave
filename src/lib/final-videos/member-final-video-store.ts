@@ -124,15 +124,33 @@ export async function saveMemberFinalVideoFromUrl(root: string, owner: FinalVide
   }
 }
 
-export async function mergeMemberFinalVideos(root: string, owner: FinalVideoOwner, segmentUrls: string[]) {
+export async function mergeMemberFinalVideos(
+  root: string,
+  owner: FinalVideoOwner,
+  segmentUrls: string[],
+  options: {
+    expectedDurationSeconds?: number;
+    segmentDurationsSeconds?: number[];
+    boundaryBridgeUrls?: string[];
+  } = {},
+) {
   const id = randomUUID();
   const directory = ownerDirectory(root, owner);
   await mkdir(directory, { recursive: true });
   const result = await mergeVideosWithLocalFfmpeg(segmentUrls, {
     outputDirectory: directory,
     outputFileName: `${id}.mp4`,
+    expectedDurationSeconds: options.expectedDurationSeconds,
+    segmentDurationsSeconds: options.segmentDurationsSeconds,
+    boundaryBridgeUrls: options.boundaryBridgeUrls,
   });
-  return { id, filePath: result.outputPath, bytes: result.bytes, segmentCount: result.segmentCount };
+  return {
+    id,
+    filePath: result.outputPath,
+    bytes: result.bytes,
+    segmentCount: result.segmentCount,
+    renderReport: result.renderReport,
+  };
 }
 
 export async function readMemberFinalVideo(root: string, owner: FinalVideoOwner, id: string) {

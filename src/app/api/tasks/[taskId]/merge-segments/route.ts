@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { mergeVideosWithLocalFfmpeg } from '@/lib/local-video-merge';
 import { archiveCompletedVideoTaskById } from '@/lib/production-video-task-archive-service';
+import { assertVimaxProductionRenderCheckpoint } from '@/lib/skills/vimax-short-drama/vimax-render-delivery-lock';
 import { getTaskForOwner, getTaskFresh, updateTask } from '@/lib/task-manager';
-import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
+import { resolvePaperHostCreationOwnerFromRequest } from '@/lib/task-access';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -25,8 +26,9 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ taskId: string }> },
 ) {
-  const owner = await resolveTaskOwnerFromRequest(request);
-  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
+  const access = await resolvePaperHostCreationOwnerFromRequest(request);
+  if (!access) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
+  const { owner } = access;
   const { taskId } = await params;
   const task = getTaskForOwner(taskId, owner);
 
@@ -50,6 +52,22 @@ export async function POST(
     }, { status: 400 });
   }
 
+  if (task.result?.productionPlan) {
+    try {
+      assertVimaxProductionRenderCheckpoint(task.result.productionPlan, {
+        productionProject: task.result.productionProject,
+        assemblyPlan: task.result.assemblyPlan,
+      });
+    } catch (error) {
+      return NextResponse.json({
+        success: false,
+        error: error instanceof Error ? error.message : '当前版本尚未通过成片合成确认。',
+        usedRealKey: false,
+        incurredCost: false,
+      }, { status: 409 });
+    }
+  }
+
   updateTask(taskId, {
     status: 'running',
     stage: '正在重试本地合成...',
@@ -59,7 +77,10 @@ export async function POST(
   });
 
   try {
-    const mergeResult = await mergeVideosWithLocalFfmpeg(segmentUrls);
+    const expectedDurationSeconds = typeof task.result?.assemblyPlan?.totalDuration === 'number'
+      ? task.result.assemblyPlan.totalDuration
+      : undefined;
+    const mergeResult = await mergeVideosWithLocalFfmpeg(segmentUrls, { expectedDurationSeconds });
     const latestTask = getTaskFresh(taskId) || task;
     const updatedTask = updateTask(taskId, {
       status: 'completed',
@@ -75,6 +96,7 @@ export async function POST(
           method: 'local-ffmpeg',
           outputPath: mergeResult.outputPath,
           bytes: mergeResult.bytes,
+          renderReport: mergeResult.renderReport,
           recoveredAt: new Date().toISOString(),
         },
       },

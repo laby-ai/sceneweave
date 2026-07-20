@@ -89,6 +89,11 @@ function describeFetchError(error: unknown) {
 }
 
 function resolveFfmpegPath() {
+  const configuredPath = process.env.FFMPEG_BIN?.trim();
+  if (configuredPath) {
+    return configuredPath;
+  }
+
   if (ffmpegStaticPath && existsSync(ffmpegStaticPath)) {
     return ffmpegStaticPath;
   }
@@ -99,7 +104,7 @@ function resolveFfmpegPath() {
     return cwdFallback;
   }
 
-  throw new Error('本地 FFmpeg 不可用');
+  return platformBinary;
 }
 
 async function downloadVideo(videoUrl: string, targetPath: string) {

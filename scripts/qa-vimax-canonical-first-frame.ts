@@ -1,0 +1,174 @@
+import assert from 'node:assert/strict';
+
+import type { ProductionSegmentPlan } from '../src/lib/production-assembly-plan';
+import {
+  buildVimaxCanonicalFirstFrameSpec,
+  compileVimaxCanonicalFirstFrame,
+  evaluateVimaxCanonicalFirstFrameReadiness,
+} from '../src/lib/skills/vimax-short-drama/vimax-canonical-first-frame';
+
+const segment = {
+  index: 1,
+  shotId: 'shot-2',
+  dependencies: {
+    characterAssetIds: ['character-red-hood'],
+    sceneAssetIds: ['scene-forest'],
+    propAssetIds: ['prop-lantern'],
+  },
+  expectedInputs: {
+    previousLastFrameUrl: 'https://example.invalid/shot-1-tail.jpg',
+  },
+  shotFrameContract: {
+    firstFrame: { description: '小红帽从画面左侧向右跑入森林深处。' },
+    motionDescription: '保持向右运动，抬起灯笼照向钟楼。',
+    handoff: { entryContinuity: '承接上一镜跑动终态。' },
+    visualStoryEvidence: { conflictEvidence: '远处钟楼灯光熄灭。' },
+  },
+} as unknown as ProductionSegmentPlan;
+
+const spec = buildVimaxCanonicalFirstFrameSpec({
+  segment,
+  artifactVersion: 'rev-test-2',
+  referenceAssets: [
+    {
+      kind: 'shot',
+      shotIndex: 2,
+      url: 'https://example.invalid/shot-2-approved.jpg',
+      selectedSubjectViews: [{
+        subjectId: 'red-hood',
+        label: '小红帽',
+        view: 'side',
+        viewId: 'red-hood-side-v3',
+        url: 'https://example.invalid/red-hood-side-v3.jpg',
+      }],
+    },
+  ],
+});
+
+assert.deepEqual(spec.referenceImages, [
+  'https://example.invalid/shot-1-tail.jpg',
+  'https://example.invalid/shot-2-approved.jpg',
+  'https://example.invalid/red-hood-side-v3.jpg',
+]);
+assert.equal(spec.sourcePreviousLastFrameUrl, 'https://example.invalid/shot-1-tail.jpg');
+assert.equal(spec.artifactVersion, 'rev-test-2');
+assert.match(spec.prompt, /向右/);
+assert.match(spec.prompt, /批准版本/);
+
+assert.deepEqual(evaluateVimaxCanonicalFirstFrameReadiness({
+  state: {
+    version: 'sceneweave-canonical-first-frame-v1',
+    status: 'ready',
+    artifactVersion: 'rev-test-2',
+    imageUrl: 'https://example.invalid/compiled-shot-2.jpg',
+    sourcePreviousLastFrameUrl: 'https://example.invalid/shot-1-tail.jpg',
+    sourceReferenceUrls: spec.referenceImages,
+  },
+  artifactVersion: 'rev-test-2',
+  requiresPreviousLastFrame: true,
+  previousLastFrameUrl: 'https://example.invalid/shot-1-tail.jpg',
+}), { ok: true, imageUrl: 'https://example.invalid/compiled-shot-2.jpg' });
+
+const stale = evaluateVimaxCanonicalFirstFrameReadiness({
+  state: {
+    version: 'sceneweave-canonical-first-frame-v1',
+    status: 'ready',
+    artifactVersion: 'rev-old',
+    imageUrl: 'https://example.invalid/compiled-shot-2.jpg',
+    sourcePreviousLastFrameUrl: 'https://example.invalid/shot-1-tail.jpg',
+    sourceReferenceUrls: spec.referenceImages,
+  },
+  artifactVersion: 'rev-test-2',
+  requiresPreviousLastFrame: true,
+  previousLastFrameUrl: 'https://example.invalid/shot-1-tail.jpg',
+});
+assert.equal(stale.ok, false);
+assert.equal(stale.code, 'canonical-first-frame-stale');
+
+const missingTail = buildVimaxCanonicalFirstFrameSpec({
+  segment: {
+    ...segment,
+    expectedInputs: { ...segment.expectedInputs, previousLastFrameUrl: null },
+  },
+  artifactVersion: 'rev-test-2',
+  referenceAssets: [],
+});
+assert.equal(missingTail.ready, false);
+assert.ok(missingTail.blockers.includes('previous-tail-missing'));
+
+const originalFetch = global.fetch;
+void (async () => {
+  let imageProviderCalls = 0;
+  global.fetch = (async (_input, init) => {
+    imageProviderCalls += 1;
+    const body = JSON.parse(String(init?.body || '{}')) as {
+      input?: { messages?: Array<{ content?: Array<{ image?: string; text?: string }> }> };
+    };
+    assert.deepEqual(
+      body.input?.messages?.[0]?.content?.filter(item => item.image).map(item => item.image),
+      spec.referenceImages,
+    );
+    return Response.json({
+      output: { choices: [{ message: { content: [{ type: 'image', image: 'https://example.invalid/compiled-shot-2.jpg' }] } }] },
+    });
+  }) as typeof fetch;
+  const compiled = await compileVimaxCanonicalFirstFrame({
+    segment,
+    artifactVersion: 'rev-test-2',
+    referenceAssets: [{
+      kind: 'shot',
+      shotIndex: 2,
+      url: 'https://example.invalid/shot-2-approved.jpg',
+      selectedSubjectViews: [{
+        subjectId: 'red-hood', label: '小红帽', view: 'side', viewId: 'red-hood-side-v3',
+        url: 'https://example.invalid/red-hood-side-v3.jpg',
+      }],
+    }],
+    continuityPrompt: '角色与服饰批准版本 v3，保持从左向右。',
+    connection: {
+      provider: 'happyhorse-dashscope',
+      apiBase: 'https://example.invalid/compatible-mode/v1',
+      apiKey: 'redacted-test-key',
+      imageModel: 'wan2.7-image',
+      videoModel: 'happyhorse-1.1-i2v',
+    },
+  });
+  assert.equal(compiled.imageUrl, 'https://example.invalid/compiled-shot-2.jpg');
+  assert.equal(imageProviderCalls, 1);
+
+  let blockedProviderCalls = 0;
+  global.fetch = (async () => {
+    blockedProviderCalls += 1;
+    throw new Error('provider must not be called');
+  }) as typeof fetch;
+  await assert.rejects(() => compileVimaxCanonicalFirstFrame({
+    segment: {
+      ...segment,
+      expectedInputs: { ...segment.expectedInputs, previousLastFrameUrl: null },
+    },
+    artifactVersion: 'rev-test-2',
+    referenceAssets: [],
+    connection: {
+      provider: 'happyhorse-dashscope',
+      apiBase: 'https://example.invalid/compatible-mode/v1',
+      apiKey: 'redacted-test-key',
+      imageModel: 'wan2.7-image',
+      videoModel: 'happyhorse-1.1-i2v',
+    },
+  }), /权威首帧素材未就绪/);
+  global.fetch = originalFetch;
+  assert.equal(blockedProviderCalls, 0, 'missing canonical inputs must fail before image or video provider submission');
+
+  console.log(JSON.stringify({
+    ok: true,
+    imageProviderCalls,
+    blockedProviderCalls,
+    videoProviderCalls: 0,
+    incurredCost: false,
+    route: 'canonical-first-frame-to-i2v',
+  }));
+})().catch(error => {
+  global.fetch = originalFetch;
+  console.error(error);
+  process.exitCode = 1;
+});

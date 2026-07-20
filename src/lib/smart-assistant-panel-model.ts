@@ -112,6 +112,14 @@ export interface ChatMessage {
     costState: 'incurred' | 'not-yet' | 'blocked';
     nextAction: string;
     taskId?: string;
+    generationSettings?: {
+      planModel: string;
+      imageModel: string;
+      videoModel: string;
+      ratio: string;
+      resolution: string;
+    };
+    productionPlan?: import('@/lib/skills/vimax-short-drama/vimax-production-plan').VimaxProductionPlan;
     assets?: Array<{
       kind: 'script' | 'character' | 'scene' | 'prop' | 'shot' | 'reference';
       label: string;
@@ -119,6 +127,9 @@ export interface ChatMessage {
       url?: string;
       /** 关联到的分镜序号；用于把参考图归位到对应 Clip 下。 */
       shotIndex?: number;
+      /** 角色定妆注册表中的稳定主体与朝向。 */
+      subjectId?: string;
+      subjectView?: 'front' | 'side' | 'back';
       status: 'planned' | 'generated' | 'blocked';
     }>;
     shots?: Array<{
@@ -127,6 +138,10 @@ export interface ChatMessage {
       duration: number;
       camera: string;
       prompt: string;
+      /** 规划模型给出的语义衔接意图；实际执行路线由服务端解析。 */
+      handoffIntent?: 'strict-frame' | 'reference-flexible';
+      /** 展示给用户的逐镜衔接理由。 */
+      handoffReason?: string;
       /** 该 Clip 的参考首帧图（reference_assets 阶段回填）。 */
       referenceUrl?: string;
       /** 该 Clip 的成片视频（video 阶段回填）。 */
@@ -164,18 +179,22 @@ export interface ChatHistoryEntry {
 const CHAT_STORAGE_KEY = 'dreambox-smart-chat-history';
 const MESSAGES_STORAGE_KEY = 'dreambox-smart-messages';
 
+const scopedStorageKey = (key: string, scope?: string) => (
+  scope ? `${key}:${scope}` : key
+);
+
 export const genId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
 
-export function loadChatHistory(): ChatHistoryEntry[] {
+export function loadChatHistory(scope?: string): ChatHistoryEntry[] {
   try {
-    const data = localStorage.getItem(CHAT_STORAGE_KEY);
+    const data = localStorage.getItem(scopedStorageKey(CHAT_STORAGE_KEY, scope));
     return data ? JSON.parse(data) : [];
   } catch {
     return [];
   }
 }
 
-export function saveChatHistory(history: ChatHistoryEntry[]) {
+export function saveChatHistory(history: ChatHistoryEntry[], scope?: string) {
   try {
     const slimHistory = history.map(historyEntry => ({
       ...historyEntry,
@@ -194,7 +213,7 @@ export function saveChatHistory(history: ChatHistoryEntry[]) {
         vimaxAgent: message.vimaxAgent,
       })),
     }));
-    localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(slimHistory.slice(0, 20)));
+    localStorage.setItem(scopedStorageKey(CHAT_STORAGE_KEY, scope), JSON.stringify(slimHistory.slice(0, 20)));
   } catch {
     try {
       const trimmed = history.slice(0, 5);
@@ -207,25 +226,25 @@ export function saveChatHistory(history: ChatHistoryEntry[]) {
           timestamp: message.timestamp,
         })),
       }));
-      localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(slimHistory));
+      localStorage.setItem(scopedStorageKey(CHAT_STORAGE_KEY, scope), JSON.stringify(slimHistory));
     } catch {
       // Ignore storage failures so chat remains usable in private/full storage modes.
     }
   }
 }
 
-export function loadMessages(): ChatMessage[] | null {
+export function loadMessages(scope?: string): ChatMessage[] | null {
   try {
-    const data = localStorage.getItem(MESSAGES_STORAGE_KEY);
+    const data = localStorage.getItem(scopedStorageKey(MESSAGES_STORAGE_KEY, scope));
     return data ? JSON.parse(data) : null;
   } catch {
     return null;
   }
 }
 
-export function saveMessages(messages: ChatMessage[]) {
+export function saveMessages(messages: ChatMessage[], scope?: string) {
   try {
-    localStorage.setItem(MESSAGES_STORAGE_KEY, JSON.stringify(messages.slice(-50)));
+    localStorage.setItem(scopedStorageKey(MESSAGES_STORAGE_KEY, scope), JSON.stringify(messages.slice(-50)));
   } catch {
     // Ignore storage failures.
   }

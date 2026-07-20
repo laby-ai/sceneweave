@@ -76,13 +76,15 @@ export function computeProductionArtifactRevision(project: ProductionProject) {
       shot.prompt,
       shot.subtitleText,
       shot.narrationText,
-      shot.status,
     ].map(compact).join(':'))
     .join('|');
   return `rev-${stableHash([
     project.id,
     project.prompt,
     project.style,
+    project.creativeDirection?.artStyle,
+    project.creativeDirection?.directorManual,
+    project.creativeDirection?.revision,
     project.ratio,
     project.sceneType,
     project.storyBible.premise,

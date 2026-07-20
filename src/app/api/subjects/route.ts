@@ -2,20 +2,14 @@ import { isIP } from 'node:net';
 import { lookup } from 'node:dns/promises';
 import { NextRequest, NextResponse } from 'next/server';
 
-import { resolveAccountSessionFromRequest } from '@/lib/account/account-session';
 import { createSubject, listSubjects, type SubjectOwner, type SubjectType } from '@/lib/subjects/subject-store';
 import { getSubjectStoreRoot } from '@/lib/subjects/subject-store-readiness';
+import { resolvePaperHostCreationOwnerFromRequest } from '@/lib/task-access';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const SUBJECT_ROOT = getSubjectStoreRoot();
-
-function ownerFromSession(session: Awaited<ReturnType<typeof resolveAccountSessionFromRequest>>): SubjectOwner | null {
-  return session?.tenant_id && session.member?.id
-    ? { tenantId: session.tenant_id, memberId: session.member.id }
-    : null;
-}
 
 function isPrivateAddress(address: string): boolean {
   if (address === '::1' || address.startsWith('fc') || address.startsWith('fd') || address.startsWith('fe80:')) return true;
@@ -97,27 +91,36 @@ function publicSubject(record: Awaited<ReturnType<typeof listSubjects>>[number])
     type: record.type,
     source: record.source,
     createdAt: record.createdAt,
+    context: record.context,
     imageUrl: `${basePath}/api/subjects/${encodeURIComponent(record.id)}`,
   };
 }
 
 export async function GET(request: NextRequest) {
-  const owner = ownerFromSession(await resolveAccountSessionFromRequest(request));
-  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
-  return NextResponse.json({ success: true, subjects: (await listSubjects(SUBJECT_ROOT, owner)).map(publicSubject) });
+  const access = await resolvePaperHostCreationOwnerFromRequest(request);
+  if (!access) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
+  const records = await listSubjects(SUBJECT_ROOT, access.owner as SubjectOwner);
+  const visible = access.sessionMode === 'guest'
+    ? records.filter(record => record.context === 'creation-agent')
+    : records;
+  return NextResponse.json({ success: true, subjects: visible.map(publicSubject) });
 }
 
 export async function POST(request: NextRequest) {
-  const owner = ownerFromSession(await resolveAccountSessionFromRequest(request));
-  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
+  const access = await resolvePaperHostCreationOwnerFromRequest(request);
+  if (!access) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
   try {
-    const body = await request.json() as { name?: string; type?: SubjectType; referenceUrl?: string; source?: 'generated' | 'uploaded' };
+    const body = await request.json() as { name?: string; type?: SubjectType; referenceUrl?: string; source?: 'generated' | 'uploaded'; context?: 'creation-agent' };
+    if (access.sessionMode === 'guest' && body.context !== 'creation-agent') {
+      return NextResponse.json({ error: 'guest_subject_context_not_allowed' }, { status: 403 });
+    }
     if (!body.referenceUrl || typeof body.referenceUrl !== 'string') throw new Error('subject_image_required');
     const downloaded = await downloadSubjectImage(request, body.referenceUrl);
-    const subject = await createSubject(SUBJECT_ROOT, owner, {
+    const subject = await createSubject(SUBJECT_ROOT, access.owner as SubjectOwner, {
       name: body.name || '',
       type: body.type as SubjectType,
       source: body.source === 'uploaded' ? 'uploaded' : 'generated',
+      ...(body.context === 'creation-agent' ? { context: body.context } : {}),
       ...downloaded,
     });
     return NextResponse.json({ success: true, subject: publicSubject(subject) }, { status: 201 });

@@ -5,7 +5,7 @@ import {
   type BackgroundTask,
   type TaskStatus,
 } from '@/lib/task-manager';
-import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
+import { resolvePaperHostCreationOwnerFromRequest } from '@/lib/task-access';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -76,17 +76,27 @@ function serializeTask(task: BackgroundTask) {
   };
 }
 
-function formatSse(event: string, data: unknown): string {
-  return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+function readAfterSeq(request: NextRequest): number {
+  const raw = request.nextUrl.searchParams.get('afterSeq')
+    || request.headers.get('last-event-id')
+    || '0';
+  const value = Number(raw);
+  return Number.isSafeInteger(value) && value >= 0 ? value : 0;
+}
+
+function formatSse(event: string, data: unknown, id?: number): string {
+  return `${id ? `id: ${id}\n` : ''}event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ taskId: string }> }
 ) {
-  const owner = await resolveTaskOwnerFromRequest(request);
-  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
+  const access = await resolvePaperHostCreationOwnerFromRequest(request);
+  if (!access) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
+  const { owner } = access;
   const { taskId } = await params;
+  const afterSeq = readAfterSeq(request);
 
   cleanupExpiredTasks();
   if (!getTaskForOwner(taskId, owner)) {
@@ -101,29 +111,33 @@ export async function GET(
   }
 
   const encoder = new TextEncoder();
+  let cancelStream: (() => void) | undefined;
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       let closed = false;
+      let lastSentSeq = afterSeq;
       const timers: {
         interval?: ReturnType<typeof setInterval>;
         timeout?: ReturnType<typeof setTimeout>;
       } = {};
 
-      const send = (event: string, data: unknown) => {
+      const send = (event: string, data: unknown, id?: number) => {
         if (closed) return;
-        controller.enqueue(encoder.encode(formatSse(event, data)));
+        controller.enqueue(encoder.encode(formatSse(event, data, id)));
       };
 
-      const close = () => {
+      const stop = (closeController: boolean) => {
         if (closed) return;
         closed = true;
         if (timers.interval) clearInterval(timers.interval);
         if (timers.timeout) clearTimeout(timers.timeout);
         request.signal.removeEventListener('abort', handleAbort);
-        controller.close();
+        if (closeController) controller.close();
       };
 
-      const handleAbort = () => close();
+      const close = () => stop(true);
+      const handleAbort = () => stop(false);
+      cancelStream = () => stop(false);
 
       const emitTask = () => {
         cleanupExpiredTasks();
@@ -139,15 +153,23 @@ export async function GET(
           return;
         }
 
+        const seq = Math.max(1, Number.isSafeInteger(task.eventSeq) ? Number(task.eventSeq) : 1);
+        if (seq <= lastSentSeq) {
+          if (TERMINAL_STATUSES.has(task.status)) close();
+          return;
+        }
+
         const payload = {
           success: true,
+          seq,
           task: serializeTask(task),
         };
 
-        send('task', payload);
+        lastSentSeq = seq;
+        send('task', payload, seq);
 
         if (TERMINAL_STATUSES.has(task.status)) {
-          send('done', payload);
+          send('done', payload, seq);
           close();
         }
       };
@@ -156,6 +178,7 @@ export async function GET(
       controller.enqueue(encoder.encode(`retry: ${STREAM_INTERVAL_MS}\n\n`));
 
       emitTask();
+      if (closed) return;
       timers.interval = setInterval(emitTask, STREAM_INTERVAL_MS);
       timers.timeout = setTimeout(() => {
         send('heartbeat', {
@@ -165,6 +188,9 @@ export async function GET(
         });
         close();
       }, STREAM_MAX_MS);
+    },
+    cancel() {
+      cancelStream?.();
     },
   });
 

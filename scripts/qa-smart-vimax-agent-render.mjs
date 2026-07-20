@@ -14,8 +14,13 @@ const workspace = read('src/components/smart/smart-assistant-chat-workspace.tsx'
 const generateWorkspace = read('src/components/generate/generate-workspace.tsx');
 const model = read('src/lib/smart-assistant-panel-model.ts');
 const route = read('src/app/api/smart/vimax-agent-step/route.ts');
+const referenceAssets = read('src/lib/skills/vimax-short-drama/vimax-reference-assets.ts');
+const byokProvider = read('src/lib/byok-provider.ts');
+const planArtifacts = read('src/lib/skills/vimax-short-drama/vimax-plan-artifacts.ts');
+const agentContract = read('src/lib/skills/vimax-short-drama/vimax-agent-contract.ts');
 // ViMAX 已抽成 Agent 驱动的 skill；编排逻辑应在 skill 内，面板只负责唤起。
 const skill = read('src/lib/skills/vimax-short-drama/use-vimax-short-drama-skill.ts');
+const preferences = read('src/lib/skills/vimax-short-drama/vimax-generation-preferences.ts');
 const panelAndSkill = panel + skill;
 
 check('chat-message-has-vimax-agent-contract', /vimaxAgent\?:/.test(model));
@@ -24,22 +29,78 @@ check('vimax-uses-real-vimax-agent-route', /\/api\/smart\/vimax-agent-step/.test
 check('vimax-does-not-use-old-director-chain', !/fetch\('\/api\/smart\/director-chain'/.test(panelAndSkill));
 check('vimax-has-seedream-confirm-step', /确认分镜，生成参考图/.test(panelAndSkill));
 check('vimax-generate-page-uses-user-duration', /parseVimaxDurationSpec/.test(generateWorkspace) && /segmentDuration: durationSpec\.segmentDuration/.test(generateWorkspace) && /segmentCount: durationSpec\.segmentCount/.test(generateWorkspace) && !/handlePlanStep\(\{\s*prompt:\s*text,\s*duration:\s*60/.test(generateWorkspace));
+check(
+  'vimax-project-first-layout-has-no-history-sidebar',
+  /VimaxProjectHome/.test(generateWorkspace)
+    && /VimaxProjectBar/.test(generateWorkspace)
+    && !/<aside/.test(generateWorkspace),
+  'home and project views must use the same Vimax workspace without a history sidebar',
+);
+check(
+  'vimax-project-view-is-workspace-scoped-and-recoverable',
+  /restoreVimaxWorkspaceView/.test(generateWorkspace)
+    && /saveVimaxWorkspaceView/.test(generateWorkspace)
+    && /summarizeVimaxProjects/.test(generateWorkspace)
+    && /openHistoryProject/.test(generateWorkspace),
+  'project selection must restore existing scoped Vimax history',
+);
+check(
+  'vimax-home-and-project-share-the-existing-composer',
+  /composer=\{renderDock\(\)\}/.test(generateWorkspace)
+    && /workspaceView === 'home'/.test(generateWorkspace)
+    && /handlePlanStep/.test(generateWorkspace),
+  'home submit and project continuation must stay on the mature Vimax chain',
+);
+check(
+  'vimax-completed-result-can-continue-or-regenerate-without-overwrite',
+  /resolveVimaxResultIteration/.test(generateWorkspace)
+    && /handleResultIteration/.test(generateWorkspace)
+    && /继续编辑/.test(generateWorkspace)
+    && /再生成/.test(generateWorkspace),
+  'a selected completed result must feed the existing composer or start a new attempt on the same Vimax route',
+);
+check(
+  'vimax-generation-preferences-reach-plan-and-video',
+  /selectedRatio/.test(generateWorkspace)
+    && /selectedQuality/.test(generateWorkspace)
+    && /resolveVimaxGenerationSettings/.test(generateWorkspace)
+    && /buildVimaxPlanRequest/.test(skill)
+    && /generationSettings\.ratio/.test(skill)
+    && /generationSettings\.resolution/.test(skill)
+    && /QUALITY_TO_RESOLUTION/.test(preferences),
+  'model, ratio and quality controls must affect the existing Vimax requests',
+);
+check(
+  'vimax-shot-routing-is-visible-without-stale-call-counts',
+  /严格接镜/.test(generateWorkspace)
+    && /参考创作/.test(generateWorkspace)
+    && /shot\.handoffReason/.test(generateWorkspace)
+    && !/3 个镜头共 5 次调用/.test(generateWorkspace),
+  'the workspace must explain each persisted shot route without exposing the retired fixed bridge-call model',
+);
 check('workspace-renders-stage-card', /msg\.vimaxAgent/.test(workspace) && /真实 AgentPlan/.test(workspace) && /Seedream 参考素材/.test(workspace));
 check('route-calls-real-ark-text-model', /chat\/completions/.test(route) && /ARK_API_KEY/.test(route) && /usedRealKey:\s*true/.test(route));
-check('route-calls-real-seedream-image-model', /images\/generations/.test(route) && /doubao-seedream-5\.0-lite/.test(route));
+check(
+  'route-calls-real-configured-image-model',
+  /callVimaxReferenceImages/.test(route)
+    && /imageWithBYOK/.test(referenceAssets)
+    && /multimodal-generation\/generation/.test(byokProvider)
+    && /wan2\.7-image/.test(preferences),
+  'reference generation must follow the configured provider adapter instead of a hard-coded image endpoint',
+);
 check('route-does-not-return-free-fake-result', !/usedRealKey:\s*false|incurredCost:\s*false|dry-run|不产生费用/.test(route));
 check('route-fails-explicitly-before-video-cost', /视频生成阶段需要用户在界面显式确认费用/.test(route));
 check(
   'route-uses-embedded-vimax-production-pipeline',
-  /buildProductionProject/.test(route)
-    && /buildProductionAssemblyPlan/.test(route)
-    && /generateShotsFromUserPrompt/.test(route)
-    && /buildProductionBackedVimaxPlan/.test(route)
-    && /ViMAX ShotFrameContract/.test(route)
-    && /ViMAX Variation/.test(route),
+  /buildProductionBackedVimaxPlan/.test(route)
+    && /buildProductionProject/.test(planArtifacts)
+    && /buildProductionAssemblyPlan/.test(planArtifacts)
+    && /generateShotsFromUserPrompt/.test(planArtifacts)
+    && /【首尾帧契约】/.test(planArtifacts)
+    && /【镜头变化】/.test(planArtifacts),
   'short-drama skill must not bypass the embedded ViMAX-style production artifacts',
 );
-check('route-honors-requested-vimax-segment-count', /segmentCount\?: number/.test(route) && /targetSegmentCount/.test(route) && /Array\.from\(\{ length: targetSegmentCount \}/.test(route));
+check('route-honors-requested-vimax-segment-count', /segmentCount\?: number/.test(agentContract) && /targetSegmentCount/.test(planArtifacts) && /Array\.from\(\{ length: targetSegmentCount \}/.test(planArtifacts));
 check(
   'route-uses-sequential-last-frame-handoff',
   /previousLastFrameUrl/.test(route)

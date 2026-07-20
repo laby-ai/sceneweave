@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { evaluateStoryReadability } from './story-readability-score.mjs';
+import { requireParityAuthHeaders } from './open-source-demo-parity-auth.mjs';
 import { getTrailerScriptPreset } from './trailer-script-presets.mjs';
 
 const baseUrl = process.env.HUIYING_BASE_URL || 'http://localhost:5000';
@@ -12,6 +13,7 @@ const lockFile = `${tasksFile}.qa.lock`;
 const presetId = process.env.HUIYING_PARITY_TRAILER_PRESET || 'last-train';
 const presetSeconds = Number(process.env.HUIYING_PARITY_SECONDS || '30');
 const preset = getTrailerScriptPreset(presetId, presetSeconds);
+const authHeaders = requireParityAuthHeaders();
 
 let lockFd = null;
 
@@ -45,8 +47,11 @@ function releaseLock() {
   if (fs.existsSync(lockFile)) fs.rmSync(lockFile, { force: true });
 }
 
-async function fetchJson(url, options) {
-  const res = await fetch(url, options);
+async function fetchJson(url, options = {}) {
+  const res = await fetch(url, {
+    ...options,
+    headers: { ...authHeaders, ...(options.headers || {}) },
+  });
   const text = await res.text();
   let json;
   try {

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { patchProductionStoryboardShotFromCanvas } from '@/lib/production-storyboard-writeback';
 import { getTaskForOwner } from '@/lib/task-manager';
-import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
+import { resolvePaperHostCreationOwnerFromRequest } from '@/lib/task-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,8 +9,9 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ taskId: string; shotId: string }> },
 ) {
-  const owner = await resolveTaskOwnerFromRequest(request);
-  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
+  const access = await resolvePaperHostCreationOwnerFromRequest(request);
+  if (!access) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
+  const { owner } = access;
   try {
     const { taskId, shotId } = await params;
     if (!getTaskForOwner(taskId, owner)) {

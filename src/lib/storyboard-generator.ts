@@ -668,6 +668,10 @@ export function extractUserInputEntities(prompt: string): UserInputEntities {
   ];
   const directSubject = explicitSubjects.find(item => p.includes(item));
   if (directSubject) subject = directSubject;
+  const namedRole = p.match(
+    /(?:\d{1,2}岁)?(?:中国)?(?:女|男)?(?:记者|急救员|审计师|剪辑师|导演|编剧|制片人|摄影师|经理|负责人|总监|店员|学生|医生|侦探|演员)([\u4e00-\u9fa5]{2,4})(?=[，。！？；、\s]|穿|在|正|手|拿|握|走|站|来到|$)/,
+  );
+  if (namedRole?.[1]) subject = namedRole[1];
   const subjectPatterns = [
     /([\u4e00-\u9fa5]{0,10}(急救员|审计师|剪辑师|导演|编剧|制片人|摄影师|品牌经理|市场经理|投放经理|运营负责人|创意总监|店员|学生|医生|记者|侦探|演员|调律者|漂泊旅人|机甲少女))/,
     /^(?:一位?|一名?|一个?)([^，。！？\s]{2,8})(?:女性|男性|女生|男生|女孩|男孩|人|女士|先生|老人|青年|少年|儿童|青年女子|年轻男子)/,
@@ -710,7 +714,9 @@ export function extractUserInputEntities(prompt: string): UserInputEntities {
     .map(item => ({ item, index: p.indexOf(item) }))
     .filter(item => item.index >= 0)
     .sort((a, b) => a.index - b.index || b.item.length - a.item.length)[0]?.item;
-  if (directLocation) location = directLocation;
+  const detailedStation = p.match(/((?:雨夜|深夜|夜晚)?(?:废弃|老旧|空旷)?[\u4e00-\u9fa5]{0,6}(?:火车站|车站|站台))/)?.[1];
+  if (detailedStation) location = detailedStation;
+  else if (directLocation) location = directLocation;
   else if (/海|沙滩|海岸|海滨|海边|海洋|大海/.test(p)) location = '海岸场景';
   else if (/山|山峰|山顶|山脉|高山|悬崖/.test(p)) location = '巍峨的山脉或山顶，云雾缭绕';
   else if (/森林|树林|丛林|树|林间/.test(p)) location = '茂密的森林，阳光透过树叶洒落斑驳光影';
@@ -761,6 +767,8 @@ export function extractUserInputEntities(prompt: string): UserInputEntities {
     '倒跳楼层数字',
     '旧录像带',
     '录像带',
+    '红色录音笔',
+    '录音笔',
     '胶片',
     '投放报表',
     '碎片素材',
@@ -791,6 +799,7 @@ export function extractUserInputEntities(prompt: string): UserInputEntities {
   ];
   for (const kw of objectKeywords) {
     if (kw === '胶片' && /无关宇宙胶片|抽象宇宙胶片|纯氛围蒙太奇/.test(p)) continue;
+    if (kw === '画' && !/(?:一幅|一张|油画|挂画|画作|画框|壁画)/.test(p)) continue;
     if (p.includes(kw)) objects.push(kw);
   }
 

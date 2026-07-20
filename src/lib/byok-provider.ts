@@ -1,6 +1,34 @@
 import { normalizeBYOKApiBase } from '@/lib/byok-url';
+import {
+  buildSCNetVideoSubmitRequest,
+  buildSCNetVideoTaskUrl,
+  getSCNetProviderErrorMessage,
+  isSCNetVideoApiBase,
+  parseSCNetVideoStatus,
+  parseSCNetVideoTaskId,
+  sanitizeSCNetProviderError,
+} from '@/lib/scnet-video-provider';
+import {
+  buildHappyHorseVideoSubmitRequest,
+  buildHappyHorseVideoTaskUrl,
+  getHappyHorseProviderErrorMessage,
+  parseHappyHorseVideoStatus,
+  parseHappyHorseVideoTaskId,
+} from '@/lib/happyhorse-video-provider';
+import {
+  buildHappyHorseR2VSubmitRequest,
+  isHappyHorseR2VModel,
+} from '@/lib/happyhorse-r2v-adapter';
+import {
+  buildHappyHorseI2VSubmitRequest,
+  isHappyHorseI2VModel,
+} from '@/lib/happyhorse-i2v-adapter';
+import {
+  buildMemberBailianConnections,
+  resolveMemberBailianProfile,
+} from '@/lib/account/member-bailian-profile';
 
-export type BYOKProviderType = 'openai-compatible' | 'ark-plan';
+export type BYOKProviderType = 'openai-compatible' | 'ark-plan' | 'happyhorse-dashscope';
 
 export interface BYOKConnection {
   provider: BYOKProviderType;
@@ -28,6 +56,8 @@ export interface BYOKImageParams {
   model?: string;
   size?: string;
   n?: number;
+  referenceImages?: string[];
+  signal?: AbortSignal;
 }
 
 export interface BYOKVideoParams {
@@ -42,6 +72,7 @@ export interface BYOKVideoParams {
   firstFrameImage?: string;
   lastFrameImage?: string;
   referenceImages?: string[];
+  seed?: number;
 }
 
 export interface BYOKVideoTask {
@@ -72,6 +103,18 @@ function buildImageGenerationsUrl(apiBase: string): string {
   return apiBaseHasVersionPath(apiBase) ? `${apiBase}/images/generations` : `${apiBase}/v1/images/generations`;
 }
 
+function isBailianWanImageModel(model: string): boolean {
+  return /^wan2\.7-image(?:-pro)?$/i.test(model.trim());
+}
+
+function buildBailianWanImageUrl(apiBase: string): string {
+  const parsed = new URL(apiBase);
+  const pathname = parsed.pathname
+    .replace(/\/(?:compatible-mode\/v1|api\/v1)\/?$/, '')
+    .replace(/\/$/, '');
+  return `${parsed.origin}${pathname}/api/v1/services/aigc/multimodal-generation/generation`;
+}
+
 function buildArkVideoTasksUrl(apiBase: string): string {
   const base = apiBase.replace(/\/+$/, '');
   if (/\/contents\/generations\/tasks$/.test(base)) return base;
@@ -96,7 +139,7 @@ function payloadError(payload: unknown, status: number): string {
     : `HTTP ${status}`;
 }
 
-export function extractBYOKConnection(headers: Headers): BYOKConnection | undefined {
+function extractExplicitBYOKConnection(headers: Headers): BYOKConnection | undefined {
   const provider = headers.get('x-yh-provider')?.trim();
   const apiBase = headers.get('x-yh-api-base')?.trim();
   const apiKey = headers.get('x-yh-api-key')?.trim();
@@ -104,8 +147,26 @@ export function extractBYOKConnection(headers: Headers): BYOKConnection | undefi
   const imageModel = headers.get('x-yh-image-model')?.trim() || undefined;
   const videoModel = headers.get('x-yh-video-model')?.trim() || undefined;
 
-  if (provider && apiBase && apiKey && (provider === 'openai-compatible' || provider === 'ark-plan')) {
+  if (
+    provider && apiBase && apiKey &&
+    (provider === 'openai-compatible' || provider === 'ark-plan' || provider === 'happyhorse-dashscope')
+  ) {
     return { provider, apiBase: normalizeBYOKApiBase(apiBase), apiKey, model, imageModel, videoModel };
+  }
+
+  return undefined;
+}
+
+function extractEnvironmentBYOKConnection(): BYOKConnection | undefined {
+  const scnetKey = (process.env.SCNET_API_KEY || '').trim();
+  const scnetEnabled = (process.env.SCNET_VIDEO_ENABLED || '').trim().toLowerCase() === 'true';
+  if (scnetEnabled && scnetKey) {
+    return {
+      provider: 'ark-plan',
+      apiBase: (process.env.SCNET_API_BASE || 'https://api.scnet.cn/api/llm/v1').trim(),
+      apiKey: scnetKey,
+      videoModel: (process.env.SCNET_VIDEO_MODEL || 'Seedance2.0').trim(),
+    };
   }
 
   // Server-side default ARK fallback: use env-configured ARK key for direct Volcano access.
@@ -125,6 +186,48 @@ export function extractBYOKConnection(headers: Headers): BYOKConnection | undefi
   }
 
   return undefined;
+}
+
+export function extractBYOKConnection(headers: Headers): BYOKConnection | undefined {
+  return extractExplicitBYOKConnection(headers) || extractEnvironmentBYOKConnection();
+}
+
+function extractExplicitBYOKVideoConnection(headers: Headers): BYOKConnection | undefined {
+  const provider = headers.get('x-yh-video-provider')?.trim();
+  const apiBase = headers.get('x-yh-video-api-base')?.trim();
+  const apiKey = headers.get('x-yh-video-api-key')?.trim();
+  const videoModel = headers.get('x-yh-video-model')?.trim() || undefined;
+  if (
+    provider && apiBase && apiKey
+    && (provider === 'openai-compatible' || provider === 'ark-plan' || provider === 'happyhorse-dashscope')
+  ) {
+    return { provider, apiBase: normalizeBYOKApiBase(apiBase), apiKey, videoModel };
+  }
+  return undefined;
+}
+
+export function extractBYOKVideoConnection(headers: Headers): BYOKConnection | undefined {
+  return extractExplicitBYOKVideoConnection(headers) || extractBYOKConnection(headers);
+}
+
+export async function resolveBYOKConnectionsForRequest(request: Request): Promise<{
+  planning?: BYOKConnection;
+  video?: BYOKConnection;
+}> {
+  const explicitPlanning = extractExplicitBYOKConnection(request.headers);
+  const explicitVideo = extractExplicitBYOKVideoConnection(request.headers);
+  if (explicitPlanning || explicitVideo) {
+    return {
+      planning: explicitPlanning || extractEnvironmentBYOKConnection(),
+      video: explicitVideo || explicitPlanning || extractEnvironmentBYOKConnection(),
+    };
+  }
+
+  const profile = await resolveMemberBailianProfile(request);
+  if (profile) return buildMemberBailianConnections(profile);
+
+  const fallback = extractEnvironmentBYOKConnection();
+  return { planning: fallback, video: fallback };
 }
 
 export async function chatWithBYOK(
@@ -180,19 +283,40 @@ export async function imageWithBYOK(
     throw new Error('BYOK 图片调用缺少默认模型');
   }
 
-  const url = buildImageGenerationsUrl(connection.apiBase);
+  const bailianWan = isBailianWanImageModel(model);
+  const url = bailianWan
+    ? buildBailianWanImageUrl(connection.apiBase)
+    : buildImageGenerationsUrl(connection.apiBase);
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${connection.apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
+    body: JSON.stringify(bailianWan ? {
+      model,
+      input: {
+        messages: [{
+          role: 'user',
+          content: [
+            ...(params.referenceImages || []).slice(0, 9).map(image => ({ image })),
+            { text: params.prompt },
+          ],
+        }],
+      },
+      parameters: {
+        size: params.size?.replace(/x/i, '*') || '2K',
+        n: params.n ?? 1,
+        watermark: false,
+      },
+    } : {
       model,
       prompt: params.prompt,
       size: params.size || '1024x1024',
       n: params.n ?? 1,
+      ...(params.referenceImages?.length ? { reference_images: params.referenceImages.slice(0, 3) } : {}),
     }),
+    signal: params.signal,
   });
 
   const payload = await parseResponsePayload(response);
@@ -208,7 +332,16 @@ export async function imageWithBYOK(
       ? (payload as { data: Array<{ url?: string; b64_json?: string }> }).data[0]
       : undefined;
 
-  const imageUrl = firstImage?.url || (firstImage?.b64_json ? `data:image/png;base64,${firstImage.b64_json}` : '');
+  const wanContent = bailianWan && typeof payload === 'object' && payload && 'output' in payload
+    ? (payload as {
+        output?: { choices?: Array<{ message?: { content?: Array<{ type?: string; image?: string; image_url?: string; url?: string }> } }> };
+      }).output?.choices?.[0]?.message?.content
+    : undefined;
+  const wanImage = wanContent?.find(item => item.type === 'image' && (item.image || item.image_url || item.url));
+
+  const imageUrl = wanImage?.image || wanImage?.image_url || wanImage?.url
+    || firstImage?.url
+    || (firstImage?.b64_json ? `data:image/png;base64,${firstImage.b64_json}` : '');
   if (!imageUrl) {
     throw new Error('BYOK 图片调用未返回图像');
   }
@@ -317,13 +450,97 @@ export async function submitVideoWithBYOK(
   connection: BYOKConnection,
   params: BYOKVideoParams
 ): Promise<BYOKVideoTask> {
-  if (connection.provider !== 'ark-plan') {
-    throw new Error('当前 BYOK 视频生成仅支持 Ark Plan，请在设置页选择 Ark Plan 并填写视频模型');
-  }
-
   const model = params.model || connection.videoModel || connection.model;
   if (!model) {
     throw new Error('BYOK 视频调用缺少视频模型');
+  }
+
+  if (connection.provider === 'happyhorse-dashscope') {
+    const requestOptions = {
+      apiBase: connection.apiBase,
+      apiKey: connection.apiKey,
+      model,
+      prompt: params.prompt,
+      duration: params.duration,
+      ratio: params.ratio,
+      resolution: params.resolution,
+      watermark: params.watermark,
+      seed: params.seed,
+    };
+    const references = [
+      ...(params.referenceImages || []),
+      ...(params.firstFrameImage ? [params.firstFrameImage] : []),
+      ...(params.lastFrameImage ? [params.lastFrameImage] : []),
+    ];
+    if (isHappyHorseI2VModel(model)) {
+      if (!params.firstFrameImage) {
+        throw new Error('快乐马首帧视频缺少首帧图片，未提交付费任务');
+      }
+      if ((params.referenceImages?.length || 0) > 0 || params.lastFrameImage) {
+        throw new Error('快乐马首帧视频只能使用一个首帧，不接受普通参考图或尾帧');
+      }
+    } else if (!isHappyHorseR2VModel(model) && references.length > 0) {
+      throw new Error('快乐马 1.1 当前文本生成视频契约不支持首尾帧或参考图，已停止而非静默忽略');
+    }
+    const request = isHappyHorseI2VModel(model)
+      ? buildHappyHorseI2VSubmitRequest({ ...requestOptions, firstFrameImage: params.firstFrameImage || '' })
+      : isHappyHorseR2VModel(model)
+        ? buildHappyHorseR2VSubmitRequest({ ...requestOptions, referenceImages: references })
+        : buildHappyHorseVideoSubmitRequest(requestOptions);
+    const response = await fetch(request.url, {
+      method: 'POST',
+      headers: request.headers,
+      body: JSON.stringify(request.body),
+    });
+    const payload = await parseResponsePayload(response);
+    if (!response.ok) {
+      throw new Error(`快乐马视频提交失败：${getHappyHorseProviderErrorMessage(payload, response.status)}`);
+    }
+    const taskId = parseHappyHorseVideoTaskId(payload);
+    if (!taskId) throw new Error('快乐马视频提交未返回任务 ID');
+    return {
+      taskId,
+      model,
+      provider: 'byok',
+      statusUrl: buildHappyHorseVideoTaskUrl(connection.apiBase, taskId),
+    };
+  }
+
+  if (connection.provider !== 'ark-plan') {
+    throw new Error('当前 BYOK 视频生成仅支持 Ark Plan 或快乐马工作空间');
+  }
+
+  if (isSCNetVideoApiBase(connection.apiBase)) {
+    if (params.firstFrameImage || params.lastFrameImage || params.referenceImages?.length) {
+      throw new Error('SCNet 当前接入仅支持文本生成视频，暂不静默忽略首尾帧或参考图');
+    }
+    const request = buildSCNetVideoSubmitRequest({
+      apiBase: connection.apiBase,
+      apiKey: connection.apiKey,
+      model,
+      prompt: params.prompt,
+      duration: params.duration ?? 5,
+      ratio: params.ratio || '16:9',
+      resolution: params.resolution || '720p',
+      watermark: params.watermark ?? false,
+    });
+    const response = await fetch(request.url, {
+      method: 'POST',
+      headers: request.headers,
+      body: JSON.stringify(request.body),
+    });
+    const payload = await parseResponsePayload(response);
+    if (!response.ok) {
+      throw new Error(`SCNet 视频提交失败：${sanitizeSCNetProviderError(getSCNetProviderErrorMessage(payload, response.status), connection.apiKey)}`);
+    }
+    const taskId = parseSCNetVideoTaskId(payload);
+    if (!taskId) throw new Error('SCNet 视频提交未返回任务 ID');
+    return {
+      taskId,
+      model,
+      provider: 'byok',
+      statusUrl: buildSCNetVideoTaskUrl(connection.apiBase, taskId),
+    };
   }
 
   const taskUrl = buildArkVideoTasksUrl(connection.apiBase);
@@ -379,8 +596,41 @@ export async function getVideoStatusWithBYOK(
   connection: BYOKConnection,
   taskId: string
 ): Promise<BYOKVideoStatus> {
+  if (connection.provider === 'happyhorse-dashscope') {
+    const response = await fetch(buildHappyHorseVideoTaskUrl(connection.apiBase, taskId), {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${connection.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    const payload = await parseResponsePayload(response);
+    if (!response.ok) {
+      throw new Error(`快乐马视频查询失败：${getHappyHorseProviderErrorMessage(payload, response.status)}`);
+    }
+    const status = parseHappyHorseVideoStatus(payload);
+    return status.status === 'failed'
+      ? { ...status, error: getHappyHorseProviderErrorMessage(payload, response.status) }
+      : status;
+  }
+
   if (connection.provider !== 'ark-plan') {
-    throw new Error('当前 BYOK 视频查询仅支持 Ark Plan');
+    throw new Error('当前 BYOK 视频查询仅支持 Ark Plan 或快乐马工作空间');
+  }
+
+  if (isSCNetVideoApiBase(connection.apiBase)) {
+    const response = await fetch(buildSCNetVideoTaskUrl(connection.apiBase, taskId), {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${connection.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    const payload = await parseResponsePayload(response);
+    if (!response.ok) {
+      throw new Error(`SCNet 视频查询失败：${sanitizeSCNetProviderError(getSCNetProviderErrorMessage(payload, response.status), connection.apiKey)}`);
+    }
+    return parseSCNetVideoStatus(payload);
   }
 
   const taskUrl = `${buildArkVideoTasksUrl(connection.apiBase)}/${encodeURIComponent(taskId)}`;

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { extractBYOKConnection } from '@/lib/byok-provider';
-import { buildBYOKConfigErrorPayload, isBYOKConfigError } from '@/lib/byok-response';
+import { resolveBYOKConnectionsForRequest } from '@/lib/byok-provider';
+import { buildBYOKConfigErrorPayload, byokConfigErrorStatus, isBYOKConfigError } from '@/lib/byok-response';
 import {
   ProductionBoundaryBridgeStartError,
   redactProductionBoundaryBridgeError,
@@ -19,14 +19,14 @@ export async function POST(request: NextRequest) {
 
     if (body.dryRun === false && body.allowRealCost === true) {
       try {
-        byokConnection = extractBYOKConnection(request.headers);
+        byokConnection = (await resolveBYOKConnectionsForRequest(request)).video;
       } catch (error) {
         if (isBYOKConfigError(error)) {
           return NextResponse.json({
             ...buildBYOKConfigErrorPayload(error),
             usedRealKey: false,
             incurredCost: false,
-          }, { status: 400 });
+          }, { status: byokConfigErrorStatus(error) });
         }
         throw error;
       }

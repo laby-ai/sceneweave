@@ -247,6 +247,14 @@ async function main() {
             shotId: 'shot-2',
             duration: 10,
             prompt: 'Second dry-run bridge shot',
+            generationRoute: {
+              mode: 'first-frame',
+              requestedBy: 'planner',
+              reason: '第二镜延续同一动作，必须承接上一镜尾帧。',
+              model: 'happyhorse-1.1-i2v',
+              requiresPreviousLastFrame: true,
+              referenceRoles: [],
+            },
             status: 'queued',
             dependencies: {
               characterAssetIds: ['character-protagonist'],
@@ -508,6 +516,44 @@ async function main() {
     String(secondDryRun.startPayload.providerPromptPreview).includes('连续性硬约束'),
     'second provider prompt should front-load continuity hard constraint'
   );
+
+  const originalFetch = global.fetch;
+  let duplicateProviderCalls = 0;
+  global.fetch = (() => {
+    duplicateProviderCalls += 1;
+    return new Promise<Response>(() => undefined);
+  }) as typeof fetch;
+  assert(taskManager.startTask(secondChildTaskId), 'fixture should claim the child task before the duplicate request');
+  let duplicateStartError: unknown;
+  try {
+    startService.startProductionAssemblySegment(
+      {
+        childTaskId: secondChildTaskId,
+        dryRun: false,
+        allowRealCost: true,
+      },
+      {
+        provider: 'ark-plan',
+        apiBase: 'https://example.invalid/api/v3',
+        apiKey: 'ark-redacted-local-test',
+        videoModel: 'doubao-seedance-1-5-pro-251215',
+      },
+    );
+  } catch (error) {
+    duplicateStartError = error;
+  } finally {
+    global.fetch = originalFetch;
+  }
+  assert(
+    duplicateStartError instanceof startService.ProductionSegmentStartError,
+    'a segment already claimed by another request must reject the duplicate start',
+  );
+  assert(duplicateStartError.status === 409, 'duplicate segment start should return 409');
+  assert(
+    duplicateStartError.details.code === 'segment-job-already-active',
+    'duplicate segment start should expose a stable recovery code',
+  );
+  assert(duplicateProviderCalls === 0, 'duplicate segment start must not submit another provider job');
   assert(
     String(secondDryRun.startPayload.providerPrompt).includes('本段不是上一段重复') &&
       String(secondDryRun.startPayload.providerPrompt).includes('不得整段停留在上一段场景'),
@@ -629,6 +675,7 @@ async function main() {
       'isolated-huiying-tasks-file',
       'dry-run-updates-child-and-parent',
       'real-cost-guard-blocks-provider-call',
+      'duplicate-segment-claim-blocks-provider-submit',
       'dry-run-start-payload-uses-shot-frame-contract',
       'dry-run-start-payload-persists-audio-state',
       'dry-run-start-payload-builds-provider-safe-prompt',

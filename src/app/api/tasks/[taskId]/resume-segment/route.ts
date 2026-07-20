@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { extractBYOKConnection } from '@/lib/byok-provider';
-import { buildBYOKConfigErrorPayload, isBYOKConfigError } from '@/lib/byok-response';
+import { resolveBYOKConnectionsForRequest } from '@/lib/byok-provider';
+import { buildBYOKConfigErrorPayload, byokConfigErrorStatus, isBYOKConfigError } from '@/lib/byok-response';
 import { appendMissingLegacySegmentSnapshots } from '@/lib/legacy-segment-plan-rebuild';
 import { restoreLegacySegmentProviderVideo } from '@/lib/legacy-segment-resume-provider';
 import { summarizeLegacySegmentTask } from '@/lib/legacy-segment-task-summary';
@@ -226,14 +226,14 @@ export async function POST(
 
   let byokConnection;
   try {
-    byokConnection = extractBYOKConnection(request.headers);
+    byokConnection = (await resolveBYOKConnectionsForRequest(request)).video;
   } catch (error) {
     if (isBYOKConfigError(error)) {
       return NextResponse.json({
         ...buildBYOKConfigErrorPayload(error),
         usedRealKey: false,
         incurredCost: false,
-      }, { status: 400 });
+      }, { status: byokConfigErrorStatus(error) });
     }
     throw error;
   }
@@ -317,7 +317,10 @@ export async function POST(
     }
 
     const segmentUrls = getSegmentUrls(completedSegments);
-    const mergeResult = await mergeVideosWithLocalFfmpeg(segmentUrls);
+    const expectedDurationSeconds = typeof task.result?.assemblyPlan?.totalDuration === 'number'
+      ? task.result.assemblyPlan.totalDuration
+      : undefined;
+    const mergeResult = await mergeVideosWithLocalFfmpeg(segmentUrls, { expectedDurationSeconds });
     updateTaskSegments(taskId, completedSegments, {
       videoUrl: mergeResult.videoUrl,
       mergeRecovery: {
@@ -325,6 +328,7 @@ export async function POST(
         recoveredSegmentIndex: resolvedSegmentIndex,
         outputPath: mergeResult.outputPath,
         bytes: mergeResult.bytes,
+        renderReport: mergeResult.renderReport,
         recoveredAt: new Date().toISOString(),
       },
     }, {

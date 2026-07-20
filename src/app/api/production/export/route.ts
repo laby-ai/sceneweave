@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { buildProductionCutDraftJson } from '@/lib/production-export-package';
+import {
+  buildProductionCutDraftJson,
+  ProductionCutDraftVersionError,
+  resolveLastSuccessfulFinalVideoAsset,
+} from '@/lib/production-export-package';
+import {
+  assertVimaxProductionDraftDelivery,
+} from '@/lib/skills/vimax-short-drama/vimax-production-plan';
+import { assertVimaxProductionFinalDelivery } from '@/lib/skills/vimax-short-drama/vimax-render-delivery-lock';
 import { getTaskForOwner } from '@/lib/task-manager';
-import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
+import { resolvePaperHostCreationOwnerFromRequest } from '@/lib/task-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,8 +19,9 @@ function attachmentName(taskId: string) {
 }
 
 export async function GET(request: NextRequest) {
-  const owner = await resolveTaskOwnerFromRequest(request);
-  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
+  const access = await resolvePaperHostCreationOwnerFromRequest(request);
+  if (!access) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
+  const { owner } = access;
   try {
     const taskId = request.nextUrl.searchParams.get('taskId')?.trim();
     const format = request.nextUrl.searchParams.get('format') || 'cut-draft-json';
@@ -55,6 +64,40 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const finalVideo = resolveLastSuccessfulFinalVideoAsset(task);
+    if (task.result?.productionPlan && finalVideo) {
+      try {
+        const videoUrl = typeof finalVideo.metadata?.videoUrl === 'string' ? finalVideo.metadata.videoUrl : '';
+        const artifactVersion = typeof finalVideo.metadata?.artifactVersion === 'string'
+          ? finalVideo.metadata.artifactVersion
+          : '';
+        const plan = assertVimaxProductionFinalDelivery(task.result.productionPlan, {
+          productionProject: task.result.productionProject,
+          videoUrl,
+        });
+        if (artifactVersion !== plan.render.lastSuccessfulResult?.artifactVersion) {
+          throw new Error('成片资产版本与最后一次成功交付不一致。');
+        }
+      } catch (error) {
+        return NextResponse.json({
+          success: false,
+          error: error instanceof Error ? error.message : '当前成片尚未通过交付检查。',
+          usedRealKey: false,
+          incurredCost: false,
+        }, { status: 409 });
+      }
+    } else if (task.result?.productionPlan) {
+      try {
+        assertVimaxProductionDraftDelivery(task.result.productionPlan);
+      } catch (error) {
+        return NextResponse.json({
+          success: false,
+          error: error instanceof Error ? error.message : '制作草稿尚未准备完成。',
+          usedRealKey: false,
+          incurredCost: false,
+        }, { status: 409 });
+      }
+    }
     const exportPackage = buildProductionCutDraftJson(task);
     return NextResponse.json(
       {
@@ -72,6 +115,17 @@ export async function GET(request: NextRequest) {
       },
     );
   } catch (error) {
+    if (error instanceof ProductionCutDraftVersionError) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: error.message,
+          usedRealKey: false,
+          incurredCost: false,
+        },
+        { status: 409 },
+      );
+    }
     console.error('[ProductionExport] cut draft export failed:', error);
     return NextResponse.json(
       {

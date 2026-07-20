@@ -153,28 +153,50 @@ async function main() {
     const eventsRoute = await readFile(path.join(process.cwd(), 'src/app/api/tasks/[taskId]/events/route.ts'), 'utf8');
     const mergeRoute = await readFile(path.join(process.cwd(), 'src/app/api/tasks/[taskId]/merge-segments/route.ts'), 'utf8');
     const resumeRoute = await readFile(path.join(process.cwd(), 'src/app/api/tasks/[taskId]/resume-segment/route.ts'), 'utf8');
-    for (const source of [detailRoute, eventsRoute, mergeRoute, resumeRoute]) {
-      assert.match(source, /resolveTaskOwnerFromRequest/);
+    for (const source of [detailRoute, eventsRoute]) {
+      assert.match(source, /resolvePaperHostCreationOwnerFromRequest/);
       assert.match(source, /getTaskForOwner/);
     }
+    assert.match(mergeRoute, /resolvePaperHostCreationOwnerFromRequest/);
+    assert.match(mergeRoute, /getTaskForOwner/);
+    assert.match(resumeRoute, /resolveTaskOwnerFromRequest/);
+    assert.match(resumeRoute, /getTaskForOwner/);
 
-    const taskSideChannels = [
+    const trustedSessionTaskRoutes = [
       'src/app/api/production/archive-video-task/route.ts',
-      'src/app/api/production/projects/[taskId]/storyboard/[shotId]/route.ts',
-      'src/app/api/production/projects/[taskId]/assets/[assetId]/route.ts',
       'src/app/api/video/detect-sdk/route.ts',
-      'src/app/api/smart/vimax-agent-step/route.ts',
     ];
-    for (const relativePath of taskSideChannels) {
+    for (const relativePath of trustedSessionTaskRoutes) {
       const source = await readFile(path.join(process.cwd(), relativePath), 'utf8');
       assert.match(source, /resolveTaskOwnerFromRequest/, `${relativePath} must require the trusted account session`);
+    }
+
+    const paperHostCreationTaskRoutes = [
+      'src/app/api/production/projects/[taskId]/storyboard/[shotId]/route.ts',
+      'src/app/api/production/projects/[taskId]/assets/[assetId]/route.ts',
+      'src/app/api/smart/vimax-agent-step/route.ts',
+    ];
+    for (const relativePath of paperHostCreationTaskRoutes) {
+      const source = await readFile(path.join(process.cwd(), relativePath), 'utf8');
+      assert.match(source, /resolvePaperHostCreationOwnerFromRequest/, `${relativePath} must derive the member or scoped creation workspace owner`);
     }
 
     const apiRoutes = await collectRouteFiles(path.join(process.cwd(), 'src/app/api'));
     for (const file of apiRoutes) {
       const source = await readFile(file, 'utf8');
       if (/\b(createTask|getTask|getTaskFresh|getAllTasks|TaskMonitor)\s*\(/.test(source)) {
-        assert.match(source, /resolveTaskOwnerFromRequest/, `${path.relative(process.cwd(), file)} must derive task access from the trusted session`);
+        const relativePath = path.relative(process.cwd(), file);
+        const paperHostCreationRoutes = new Set([
+          path.join('src', 'app', 'api', 'production', 'dry-run', 'route.ts'),
+          path.join('src', 'app', 'api', 'smart', 'vimax-agent-step', 'route.ts'),
+          path.join('src', 'app', 'api', 'tasks', '[taskId]', 'route.ts'),
+          path.join('src', 'app', 'api', 'tasks', '[taskId]', 'events', 'route.ts'),
+          path.join('src', 'app', 'api', 'tasks', '[taskId]', 'merge-segments', 'route.ts'),
+        ]);
+        const expectedResolver = paperHostCreationRoutes.has(relativePath)
+          ? /resolvePaperHostCreationOwnerFromRequest/
+          : /resolveTaskOwnerFromRequest/;
+        assert.match(source, expectedResolver, `${relativePath} must derive task access from the trusted session`);
       }
     }
 

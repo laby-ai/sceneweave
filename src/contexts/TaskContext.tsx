@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { BackgroundTask, TaskStatus, TaskContextType } from '@/types/task';
-import { clientApiFetch, clientApiPath } from '@/lib/client-api';
+import { ClientRequestError, clientApiFetch, clientApiPath } from '@/lib/client-api';
 
 const TaskContext = createContext<TaskContextType | undefined>(undefined);
 
@@ -25,6 +25,9 @@ type DeleteTasksResponse = {
 
 const TASK_SYNC_TIMEOUT_MS = 15_000;
 const TASK_MUTATION_TIMEOUT_MS = 20_000;
+
+export const shouldSyncGlobalTasks = (pathname: string) =>
+  !pathname.replace(/\/$/, '').endsWith('/embed/creation-agent');
 
 const isTerminalTask = (task: BackgroundTask) =>
   ['completed', 'failed', 'cancelled'].includes(task.status);
@@ -135,6 +138,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     try {
       const data = await clientApiFetch<TasksListResponse>('/api/tasks', {
         timeoutMs: TASK_SYNC_TIMEOUT_MS,
+        redirectOnUnauthorized: false,
       });
       const serverTasks: BackgroundTask[] = Array.isArray(data.tasks) ? data.tasks : [];
       const cleanupCount = typeof data.cleanupCount === 'number' ? data.cleanupCount : 0;
@@ -191,6 +195,10 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         
         lastSyncTimeRef.current = now;
     } catch (error) {
+      if (error instanceof ClientRequestError && error.code === 'unauthorized') {
+        setLastSyncError(null);
+        return;
+      }
       console.error('[TaskContext] 从服务端同步任务失败:', error);
       setLastSyncError(error instanceof Error ? error.message : '任务同步失败，请稍后重试');
     } finally {
@@ -249,6 +257,11 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       log('初始化 TaskContext...');
+      if (!shouldSyncGlobalTasks(window.location.pathname)) {
+        setTasks([]);
+        setInitialized(true);
+        return;
+      }
       const stored = localStorage.getItem(STORAGE_KEY);
       let initialTasks: BackgroundTask[] = [];
       

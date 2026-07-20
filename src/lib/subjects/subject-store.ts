@@ -12,6 +12,7 @@ export type SubjectRecord = {
   createdAt: string;
   imagePath: string;
   mimeType: string;
+  context?: 'creation-agent';
 };
 
 export type SubjectOwner = { tenantId: string; memberId: string };
@@ -68,7 +69,8 @@ function isSubjectRecord(value: unknown): value is SubjectRecord {
     && ['generated', 'uploaded'].includes(item.source || '')
     && typeof item.createdAt === 'string'
     && typeof item.imagePath === 'string'
-    && typeof item.mimeType === 'string';
+    && typeof item.mimeType === 'string'
+    && (item.context === undefined || item.context === 'creation-agent');
 }
 
 async function writeRegistry(root: string, owner: SubjectOwner, records: SubjectRecord[]): Promise<void> {
@@ -107,6 +109,7 @@ export async function createSubject(root: string, owner: SubjectOwner, input: {
   source: SubjectRecord['source'];
   image: Buffer;
   mimeType: string;
+  context?: SubjectRecord['context'];
 }): Promise<SubjectRecord> {
   return withOwnerWrite(root, owner, async () => {
   const name = input.name.trim().slice(0, 80);
@@ -131,6 +134,7 @@ export async function createSubject(root: string, owner: SubjectOwner, input: {
     createdAt: new Date().toISOString(),
     imagePath,
     mimeType: input.mimeType,
+    ...(input.context ? { context: input.context } : {}),
   };
   await writeRegistry(root, owner, [record, ...(await readRegistry(root, owner))]);
   return record;

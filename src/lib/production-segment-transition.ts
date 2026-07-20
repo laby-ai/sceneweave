@@ -178,9 +178,11 @@ export function evaluateProductionSegmentTransition(
     };
   }
 
-  const usesDirectPreviousTail = firstFrameUrl === previousLastFrameUrl
+  const requiresGeneratedBoundaryBridge = segment.expectedInputs.bridgeStrategy === 'transition-bridge';
+  const usesDirectPreviousTail = !requiresGeneratedBoundaryBridge
+    && firstFrameUrl === previousLastFrameUrl
     && previousInputUrl === previousLastFrameUrl;
-  const usesGeneratedBoundaryBridge = segment.expectedInputs.bridgeStrategy === 'transition-bridge'
+  const usesGeneratedBoundaryBridge = requiresGeneratedBoundaryBridge
     && firstFrameUrl === segment.expectedInputs.bridgeFirstFrameUrl
     && previousInputUrl === previousLastFrameUrl
     && boundaryBridge?.status === 'generated'
@@ -201,7 +203,9 @@ export function evaluateProductionSegmentTransition(
       storyContractReady: storyReadiness.pass,
       storyContractBlockers: storyReadiness.blockers,
       storyContractWarnings: storyReadiness.warnings,
-      reason: `第 ${segmentIndex + 1} 段既没有直接使用第 ${segmentIndex} 段 lastFrameUrl，也没有使用已生成 boundary bridge 的 new-camera image，拒绝仅靠 prompt 衔接。`,
+      reason: requiresGeneratedBoundaryBridge
+        ? `第 ${segmentIndex + 1} 段要求边界桥接，但 bridgeVideoUrl/newCameraImageUrl 尚未生成并写回，拒绝提前启动。`
+        : `第 ${segmentIndex + 1} 段既没有直接使用第 ${segmentIndex} 段 lastFrameUrl，也没有使用已生成 boundary bridge 的 new-camera image，拒绝仅靠 prompt 衔接。`,
     };
   }
 

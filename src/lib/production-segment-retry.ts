@@ -1,9 +1,12 @@
 import type { ProductionAssemblyPlan, ProductionSegmentPlan } from '@/lib/production-assembly-plan';
 import type { ProductionProject } from '@/lib/production-project';
+import { assertVimaxProductionOperation } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 import {
   createTask,
+  getTaskForOwner,
   getTaskFresh,
   retryTask,
+  type TaskOwner,
   updateTask,
 } from '@/lib/task-manager';
 
@@ -37,15 +40,19 @@ export class ProductionSegmentRetryError extends Error {
   }
 }
 
-function getSegmentLocator(input: RetryProductionSegmentInput) {
+function scopedTask(taskId: string, owner?: TaskOwner) {
+  return owner ? getTaskForOwner(taskId, owner) : getTaskFresh(taskId);
+}
+
+function getSegmentLocator(input: RetryProductionSegmentInput, owner?: TaskOwner) {
   if (input.childTaskId) {
-    const childTask = getTaskFresh(input.childTaskId);
+    const childTask = scopedTask(input.childTaskId, owner);
     const parentTaskId = typeof childTask?.config?.parentTaskId === 'string'
       ? childTask.config.parentTaskId
-      : undefined;
+      : input.parentTaskId;
     const segmentIndex = typeof childTask?.config?.assemblySegmentIndex === 'number'
       ? childTask.config.assemblySegmentIndex
-      : Number(childTask?.config?.assemblySegmentIndex);
+      : Number(childTask?.config?.assemblySegmentIndex ?? input.segmentIndex);
     return { childTask, parentTaskId, segmentIndex };
   }
 
@@ -92,9 +99,10 @@ function createSegmentTask(
 function updateParentForRetry(
   parentTaskId: string,
   segmentIndex: number,
-  childTaskId: string
+  childTaskId: string,
+  owner?: TaskOwner,
 ) {
-  const parentTask = getTaskFresh(parentTaskId);
+  const parentTask = scopedTask(parentTaskId, owner);
   const assemblyPlan = parentTask?.result?.assemblyPlan as ProductionAssemblyPlan | undefined;
   if (!parentTask?.result || !assemblyPlan) return null;
 
@@ -178,9 +186,10 @@ function updateParentForRetry(
 }
 
 export function retryProductionAssemblySegment(
-  input: RetryProductionSegmentInput
+  input: RetryProductionSegmentInput,
+  owner?: TaskOwner,
 ): RetryProductionSegmentResult {
-  const { childTask, parentTaskId, segmentIndex } = getSegmentLocator(input);
+  const { childTask, parentTaskId, segmentIndex } = getSegmentLocator(input, owner);
 
   if (!parentTaskId || !Number.isFinite(segmentIndex)) {
     throw new ProductionSegmentRetryError(
@@ -189,12 +198,12 @@ export function retryProductionAssemblySegment(
     );
   }
 
-  const parentTask = getTaskFresh(parentTaskId);
+  const parentTask = scopedTask(parentTaskId, owner);
   const assemblyPlan = parentTask?.result?.assemblyPlan as ProductionAssemblyPlan | undefined;
   const productionProject = parentTask?.result?.productionProject as ProductionProject | undefined;
   const segment = assemblyPlan?.segments.find(item => item.index === segmentIndex);
   const resolvedChildTask = childTask || (segment?.expectedOutputs.taskId
-    ? getTaskFresh(segment.expectedOutputs.taskId)
+    ? scopedTask(segment.expectedOutputs.taskId, owner)
     : undefined);
 
   if (!parentTask?.result || !assemblyPlan || !productionProject || !segment) {
@@ -202,6 +211,22 @@ export function retryProductionAssemblySegment(
       '父任务、制作项目或片段计划不存在，请先运行导演链和 assembly-plan。',
       404
     );
+  }
+
+  if (parentTask.result.productionPlan) {
+    try {
+      assertVimaxProductionOperation(
+        parentTask.result.productionPlan,
+        'segments.retry-failed',
+        ['ready', 'delivery-ready'],
+      );
+    } catch (error) {
+      throw new ProductionSegmentRetryError(
+        error instanceof Error ? error.message : '当前制作流程尚不能重试片段。',
+        409,
+        { parentTaskId, segmentIndex },
+      );
+    }
   }
 
   if (resolvedChildTask && resolvedChildTask.config?.workflow !== 'production-assembly-segment') {
@@ -243,7 +268,7 @@ export function retryProductionAssemblySegment(
     retryCount = retriedTask.config.retryCount || 0;
   }
 
-  const updatedParent = updateParentForRetry(parentTaskId, segmentIndex, childTaskId!);
+  const updatedParent = updateParentForRetry(parentTaskId, segmentIndex, childTaskId!, owner);
   if (!updatedParent) {
     throw new ProductionSegmentRetryError('父任务状态更新失败，请刷新任务中心后重试。', 500);
   }

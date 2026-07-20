@@ -9,7 +9,13 @@ import {
   startTask,
   updateTaskProgress,
 } from '@/lib/task-manager';
-import { resolveTaskOwnerFromRequest } from '@/lib/task-access';
+import { resolvePaperHostCreationOwnerFromRequest } from '@/lib/task-access';
+import { listSubjects } from '@/lib/subjects/subject-store';
+import { getSubjectStoreRoot } from '@/lib/subjects/subject-store-readiness';
+import {
+  buildCreationProductionPlan,
+  normalizeCreationPipeline,
+} from '@/lib/creation-agent/creation-production-plan';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,6 +27,8 @@ interface DryRunBody {
   style?: string;
   sceneType?: string;
   ratio?: string;
+  workflow?: string;
+  referenceIds?: string[];
 }
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
@@ -31,8 +39,9 @@ function toNumber(value: unknown, fallback: number) {
 }
 
 export async function POST(request: NextRequest) {
-  const owner = await resolveTaskOwnerFromRequest(request);
-  if (!owner) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
+  const access = await resolvePaperHostCreationOwnerFromRequest(request);
+  if (!access) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
+  const { owner, sessionMode } = access;
   try {
     const body = (await request.json().catch(() => ({}))) as DryRunBody;
     const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
@@ -44,11 +53,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const referenceIds = Array.isArray(body.referenceIds)
+      ? [...new Set(body.referenceIds.filter(id => typeof id === 'string' && /^[0-9a-f-]{36}$/i.test(id)))].slice(0, 8)
+      : [];
+    const ownedReferences = referenceIds.length > 0
+      ? (await listSubjects(getSubjectStoreRoot(), owner)).filter(reference => referenceIds.includes(reference.id))
+      : [];
+    if (ownedReferences.length !== referenceIds.length
+      || (sessionMode === 'guest' && ownedReferences.some(reference => reference.context !== 'creation-agent'))) {
+      return NextResponse.json({ success: false, error: 'reference_not_found' }, { status: 400 });
+    }
+
     const duration = clamp(toNumber(body.duration, 60), 5, 120);
     const segmentDuration = clamp(toNumber(body.segmentDuration, 10), 3, 15);
     const style = body.style || '电影感短剧';
     const sceneType = body.sceneType || 'drama';
     const ratio = body.ratio || '16:9';
+    const pipelineId = normalizeCreationPipeline(body.workflow);
 
     const taskId = createTask('storyboard', {
       prompt,
@@ -57,6 +78,7 @@ export async function POST(request: NextRequest) {
       ratio,
       sceneType,
       workflow: 'production-dry-run',
+      referenceIds,
     }, owner);
 
     startTask(taskId);
@@ -104,6 +126,7 @@ export async function POST(request: NextRequest) {
         status: 'planned',
       })),
     });
+    const productionPlan = buildCreationProductionPlan(productionProject, pipelineId);
 
     const flow = {
       mode: 'dry-run',
@@ -141,6 +164,7 @@ export async function POST(request: NextRequest) {
       productionFlow: flow,
       project,
       productionProject,
+      productionPlan,
     });
 
     const task = publicTask(getTask(taskId));
@@ -149,10 +173,17 @@ export async function POST(request: NextRequest) {
       success: true,
       usedRealKey: false,
       incurredCost: false,
+      sessionMode,
+      references: ownedReferences.map(reference => ({
+        id: reference.id,
+        name: reference.name,
+        context: reference.context,
+      })),
       taskId,
       task,
       project,
       productionProject,
+      productionPlan,
       flow,
       shots,
     });

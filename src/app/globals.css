@@ -354,3 +354,77 @@
 .theme-checkbox:checked + .theme-switch .celestial-body .crater {
   opacity: 1;
 }
+
+/* Creation Agent is the current Huiying product surface. The scoped bridge
+   keeps legacy light utility colors inside the imported workflow readable
+   without changing the hidden legacy home or canvas routes. */
+.creation-agent-dark {
+  color-scheme: dark;
+  background: #07090f;
+}
+
+.creation-agent-dark [class*="bg-white"],
+.creation-agent-dark [class*="bg-[#f"],
+.creation-agent-dark [class*="bg-[#e"] {
+  background-color: #121722 !important;
+}
+
+.creation-agent-dark [class*="border-[#a"],
+.creation-agent-dark [class*="border-[#b"],
+.creation-agent-dark [class*="border-[#c"],
+.creation-agent-dark [class*="border-[#d"],
+.creation-agent-dark [class*="border-[#e"] {
+  border-color: rgba(148, 163, 184, 0.22) !important;
+}
+
+.creation-agent-dark [class*="text-[#1"],
+.creation-agent-dark [class*="text-[#2"],
+.creation-agent-dark [class*="text-[#3"] {
+  color: #f3f6fb !important;
+}
+
+.creation-agent-dark [class*="text-[#4"],
+.creation-agent-dark [class*="text-[#5"],
+.creation-agent-dark [class*="text-[#6"],
+.creation-agent-dark [class*="text-[#7"],
+.creation-agent-dark [class*="text-[#8"],
+.creation-agent-dark [class*="text-[#9"],
+.creation-agent-dark [class*="text-[#a"],
+.creation-agent-dark [class*="text-[#b"] {
+  color: #aab4c4 !important;
+}
+
+.creation-agent-dark [class*="bg-[#2f6bff]"],
+.creation-agent-dark [class*="bg-[#245"],
+.creation-agent-dark [class*="bg-[#235"] {
+  background-color: #356df3 !important;
+}
+
+.creation-agent-dark [class*="bg-[#edf3ff]"],
+.creation-agent-dark [class*="bg-[#eef4ff]"],
+.creation-agent-dark [class*="bg-[#f0f4ff]"],
+.creation-agent-dark [class*="bg-[#f3f7ff]"] {
+  background-color: rgba(53, 109, 243, 0.14) !important;
+}
+
+.creation-agent-dark [class*="text-[#2f6bff]"],
+.creation-agent-dark [class*="text-[#215bd8]"],
+.creation-agent-dark [class*="text-[#3653E7]"] {
+  color: #78a2ff !important;
+}
+
+.creation-agent-dark [class*="text-[#c"],
+.creation-agent-dark [class*="text-[#8a4b4b]"],
+.creation-agent-dark [class*="text-[#9a4545]"] {
+  color: #fb8f9b !important;
+}
+
+.creation-agent-dark [class*="text-[#16825b]"] {
+  color: #6ee7b7 !important;
+}
+
+.creation-agent-dark input,
+.creation-agent-dark textarea,
+.creation-agent-dark select {
+  caret-color: #8fb1ff;
+}

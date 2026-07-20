@@ -16,6 +16,7 @@ export interface SegmentAssetWritebackPatch {
   completedAt?: string;
   expectedInputs?: Partial<ProductionSegmentPlan['expectedInputs']>;
   expectedOutputs?: Partial<ProductionSegmentPlan['expectedOutputs']>;
+  artifactReadiness?: ProductionSegmentPlan['artifactReadiness'];
 }
 
 export interface SegmentAssetWritebackParams {
@@ -113,15 +114,21 @@ function updateNextSegmentHandoff(
             '开头先复现上一段的目标、冲突、道具状态、情绪和出口画面，再推进本段唯一新信息。',
           ].join('')
         : segment.expectedInputs.storyContinuityPrompt,
-      boundaryBridgeId: segment.expectedInputs.boundaryBridgeId,
-      boundaryBridgePrompt: segment.expectedInputs.boundaryBridgePrompt
-        ? [
-            segment.expectedInputs.boundaryBridgePrompt,
-            `已取得片段 ${completedSegment.index + 1} 的尾帧，可先生成或校验边界桥接，再启动本段主体。`,
-          ].join('\n')
-        : segment.expectedInputs.boundaryBridgePrompt,
-      bridgeFirstFrameUrl: lastFrameUrl || segment.expectedInputs.bridgeFirstFrameUrl,
-      bridgeStrategy: segment.expectedInputs.bridgeStrategy || 'transition-bridge',
+      boundaryBridgeId: segment.generationRoute ? null : segment.expectedInputs.boundaryBridgeId,
+      boundaryBridgePrompt: segment.generationRoute
+        ? null
+        : segment.expectedInputs.boundaryBridgePrompt
+          ? [
+              segment.expectedInputs.boundaryBridgePrompt,
+              `已取得片段 ${completedSegment.index + 1} 的尾帧，可先生成或校验边界桥接，再启动本段主体。`,
+            ].join('\n')
+          : segment.expectedInputs.boundaryBridgePrompt,
+      bridgeFirstFrameUrl: segment.generationRoute
+        ? null
+        : lastFrameUrl || segment.expectedInputs.bridgeFirstFrameUrl,
+      bridgeStrategy: segment.generationRoute
+        ? 'direct-tail-frame-fallback' as const
+        : segment.expectedInputs.bridgeStrategy || 'transition-bridge',
     };
     return {
       ...segment,
@@ -315,6 +322,7 @@ function buildVideoSegmentAsset(segment: ProductionSegmentPlan): ProductionAsset
       duration: segment.duration,
       completedAt: segment.completedAt,
       prompt: segment.prompt,
+      artifactVersion: segment.artifactReadiness?.sourceRevision,
     },
   };
 }

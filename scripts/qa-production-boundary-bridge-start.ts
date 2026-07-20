@@ -3,6 +3,9 @@ import {
   buildProductionBoundaryBridgeStartPayload,
   ProductionBoundaryBridgeStartError,
 } from '../src/lib/production-boundary-bridge-start';
+import type { ProductionAssemblyPlan } from '../src/lib/production-assembly-plan';
+import type { ShotFrameContract } from '../src/lib/production-shot-frame-contract';
+import type { StorySegmentContract } from '../src/lib/production-story-segment-contract';
 import { buildProductionSegmentStartPayload } from '../src/lib/production-segment-start-payload';
 import { evaluateProductionSegmentTransition } from '../src/lib/production-segment-transition';
 
@@ -23,14 +26,14 @@ function makeAudioState(index: number) {
   };
 }
 
-function makeStorySegmentContract(index: number) {
+function makeStorySegmentContract(index: number): StorySegmentContract {
   const audioState = makeAudioState(index);
   return {
     version: 'yh-story-segment-contract-v1',
     reference: {
       primary: 'Toonflow-app',
       secondary: ['ViMAX', 'ArcReel'],
-      sourceMechanism: 'FlowData.videoDesc + storyboard/assets-video writeback + 承接上镜',
+      sourceMechanism: 'FlowData.videoDesc + storyboard/assets/video writeback + dependency claim gate',
     },
     segmentId: `five-dynasties-segment-${index + 1}`,
     index,
@@ -85,12 +88,12 @@ function makeStorySegmentContract(index: number) {
   };
 }
 
-function makeShotFrameContract(index: number) {
+function makeShotFrameContract(index: number): ShotFrameContract {
   return {
     version: 'yh-shot-frame-contract-v1',
     reference: {
       primary: 'ViMAX',
-      sourceMechanism: 'ShotDescription.ff_desc + lf_desc + transition video new-camera image',
+      sourceMechanism: 'ShotDescription.ff_desc.lf_desc.visible_char_idxs.variation_type',
     },
     shotId: `shot-${index + 1}`,
     shotIndex: index,
@@ -128,7 +131,11 @@ function makeShotFrameContract(index: number) {
   };
 }
 
-function makeSegment(index: number, status: 'queued' | 'completed', lastFrameUrl: string | null) {
+function makeSegment(
+  index: number,
+  status: 'queued' | 'completed',
+  lastFrameUrl: string | null,
+): ProductionAssemblyPlan['segments'][number] {
   const audioState = makeAudioState(index);
   return {
     id: `five-dynasties-segment-${index + 1}`,
@@ -177,7 +184,7 @@ function makeSegment(index: number, status: 'queued' | 'completed', lastFrameUrl
   };
 }
 
-function makeAssemblyPlan(includeLastFrame = true): any {
+function makeAssemblyPlan(includeLastFrame = true): ProductionAssemblyPlan {
   const lastFrameUrl = includeLastFrame ? 'https://example.invalid/seg1-last.jpg' : null;
   return {
     version: 'yh-assembly-plan-v1',
@@ -191,7 +198,16 @@ function makeAssemblyPlan(includeLastFrame = true): any {
     segmentCount: 2,
     segmentDurationHint: 10,
     status: 'partial',
-    readiness: { pass: true, blockers: [], warnings: [] },
+    readiness: {
+      version: 'yh-assembly-readiness-v1',
+      pass: true,
+      checkedAt: '2026-07-20T00:00:00.000Z',
+      source: 'shot-frame-contract',
+      blockerCount: 0,
+      warningCount: 0,
+      issues: [],
+      nextAction: '可以继续。',
+    },
     bridgePlan: undefined,
     boundaryBridgePlan: {
       version: 'yh-boundary-bridge-plan-v1',
@@ -284,7 +300,38 @@ assert(transitionReadiness.ok === true, `generated boundary bridge should satisf
 assert(transitionReadiness.firstFrameUrl === 'https://example.invalid/boundary-1-2-new-camera.jpg', 'transition gate should use bridge new-camera image as first frame');
 assert(transitionReadiness.previousLastFrameUrl === 'https://example.invalid/seg1-last.jpg', 'transition gate should preserve previous source tail');
 
-const nextStartPayload = buildProductionSegmentStartPayload(nextSegment as any);
+const directTailWithoutBridge = {
+  ...writeback.assemblyPlan,
+  boundaryBridgePlan: {
+    ...writeback.assemblyPlan.boundaryBridgePlan!,
+    boundaries: writeback.assemblyPlan.boundaryBridgePlan!.boundaries.map(boundary => ({
+      ...boundary,
+      status: 'ready' as const,
+      bridgeVideoUrl: null,
+      bridgeLastFrameUrl: null,
+      newCameraImageUrl: null,
+    })),
+  },
+  segments: writeback.assemblyPlan.segments.map(segment => segment.index === 1
+    ? {
+        ...segment,
+        expectedInputs: {
+          ...segment.expectedInputs,
+          firstFrameUrl: 'https://example.invalid/seg1-last.jpg',
+          previousLastFrameUrl: 'https://example.invalid/seg1-last.jpg',
+          bridgeFirstFrameUrl: 'https://example.invalid/seg1-last.jpg',
+          bridgeStrategy: 'transition-bridge' as const,
+        },
+      }
+    : segment),
+};
+const blockedDirectTail = evaluateProductionSegmentTransition(directTailWithoutBridge, 1);
+assert(
+  blockedDirectTail.ok === false,
+  'transition-bridge must not degrade to a direct previous-tail handoff before the bridge artifact exists',
+);
+
+const nextStartPayload = buildProductionSegmentStartPayload(nextSegment);
 assert(nextStartPayload.firstFrameImage === 'https://example.invalid/boundary-1-2-new-camera.jpg', 'segment start payload should submit bridge new-camera image');
 assert(nextStartPayload.firstFrameSource === 'boundary-new-camera', 'segment start payload should mark boundary-new-camera source');
 assert(nextStartPayload.previousLastFrameImage === 'https://example.invalid/seg1-last.jpg', 'segment start payload should preserve previous tail as continuity memory');

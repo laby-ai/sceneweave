@@ -35,6 +35,7 @@ export type ClientApiOptions = RequestInit & {
 export function detectClientBasePath(): string {
   const configured = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
   if (configured) return configured;
+  if (typeof window !== 'undefined' && (window.location.pathname === '/sceneweave' || window.location.pathname.startsWith('/sceneweave/'))) return '/sceneweave';
   if (typeof window !== 'undefined' && window.location.pathname.startsWith('/huiying')) return '/huiying';
   return '';
 }

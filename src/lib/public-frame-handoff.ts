@@ -25,6 +25,11 @@ function readEnv(name: string) {
   return process.env[name]?.trim() || undefined;
 }
 
+function resolvePublicAssetStore() {
+  const configured = readEnv('HUIYING_PUBLIC_ASSET_STORE_PATH');
+  return configured ? path.resolve(configured) : path.join(process.cwd(), 'public');
+}
+
 function normalizePublicBaseUrl(value: string | undefined) {
   if (!value) return undefined;
   try {
@@ -61,7 +66,7 @@ export async function savePublicFrameForHandoff(framePath: string): Promise<stri
   const readiness = getPublicFrameHandoffReadiness();
   if (!readiness.ready || !readiness.baseUrl) return undefined;
 
-  const publicDir = path.join(process.cwd(), 'public', 'generated', 'frames');
+  const publicDir = path.join(resolvePublicAssetStore(), 'generated', 'frames');
   const fileName = `last-frame-${Date.now()}-${Math.random().toString(16).slice(2)}.jpg`;
   const targetPath = path.join(publicDir, fileName);
   await fs.mkdir(publicDir, { recursive: true });
