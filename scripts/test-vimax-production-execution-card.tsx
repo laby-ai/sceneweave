@@ -47,7 +47,9 @@ assert.match(deliveryHtml, /下载制作草稿/);
 assert.doesNotMatch(deliveryHtml, /Vimax|ViMAX|SceneWeave|OpenMontage|LibTV/);
 const cardSource = readFileSync(new URL('../src/components/generate/vimax-production-plan-card.tsx', import.meta.url), 'utf8');
 assert.match(cardSource, /clientApiFetch<ExportResponse>\(exportPath/);
+assert.match(cardSource, /clientApiPath\(\`\/api\/tasks/);
+assert.doesNotMatch(cardSource, /fetch\(\`\/api\/tasks/);
 assert.match(cardSource, /headers: requestHeaders/);
 assert.doesNotMatch(cardSource, /<a[\s\S]*api\/production\/export/);
 
-console.log(JSON.stringify({ ok: true, script: 'test-vimax-production-execution-card', checks: 15 }));
+console.log(JSON.stringify({ ok: true, script: 'test-vimax-production-execution-card', checks: 17 }));

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-import { clientApiFetch } from '@/lib/client-api';
+import { clientApiFetch, clientApiPath } from '@/lib/client-api';
 import { buildVimaxProductionGovernanceView } from '@/lib/skills/vimax-short-drama/vimax-production-governance';
 import { parseVimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 import type { VimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
@@ -39,7 +39,7 @@ export function VimaxProductionPlanCard({ plan, taskId, requestHeaders, onPlanCh
   useEffect(() => {
     if (!taskId) return;
     let active = true;
-    void fetch(`/api/tasks/${encodeURIComponent(taskId)}`, { headers: requestHeaders })
+    void fetch(clientApiPath(`/api/tasks/${encodeURIComponent(taskId)}`), { headers: requestHeaders })
       .then(response => response.ok ? response.json() : null)
       .then(data => {
         const recovered = parseVimaxProductionPlan(data?.task?.result?.productionPlan);
@@ -62,7 +62,7 @@ export function VimaxProductionPlanCard({ plan, taskId, requestHeaders, onPlanCh
     setPendingAction(action);
     setActionError('');
     try {
-      const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, {
+      const response = await fetch(clientApiPath(`/api/tasks/${encodeURIComponent(taskId)}`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...requestHeaders },
         body: JSON.stringify({ action }),
