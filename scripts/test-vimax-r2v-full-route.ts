@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, rm } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -74,7 +74,13 @@ async function main() {
     const { NextRequest } = await import('next/server');
     const route = await import('../src/app/api/smart/vimax-agent-step/route');
     const finalVideoRoute = await import('../src/app/api/final-videos/[id]/route');
-    const { createTask, getTaskForOwner } = await import('../src/lib/task-manager');
+    const {
+      cleanupExpiredTasks,
+      createTask,
+      getTaskForOwner,
+      reloadTaskStoreForTest,
+      updateTask,
+    } = await import('../src/lib/task-manager');
     const { buildProductionBackedVimaxPlan } = await import('../src/lib/skills/vimax-short-drama/vimax-plan-artifacts');
     const { persistVimaxPlanTask } = await import('../src/lib/skills/vimax-short-drama/vimax-plan-task');
 
@@ -83,6 +89,23 @@ async function main() {
       tenantId: 'paper-host-guest',
       memberId: `guest-${createHash('sha256').update(workspace).digest('hex').slice(0, 32)}`,
     };
+    const waitingTaskId = createTask('video', {
+      workflow: 'production-assembly-segment',
+      noAutoStart: true,
+    }, owner);
+    const persistedTasks = JSON.parse(await readFile(taskFile, 'utf8')) as Array<{
+      id: string;
+      createdAt: number;
+      lastUpdatedAt?: number;
+    }>;
+    const waitingTask = persistedTasks.find(task => task.id === waitingTaskId);
+    assert.ok(waitingTask);
+    waitingTask.createdAt = Date.now() - 20 * 60 * 1000;
+    await writeFile(taskFile, JSON.stringify(persistedTasks, null, 2), 'utf8');
+    reloadTaskStoreForTest();
+    updateTask(waitingTaskId, { message: '上一镜完成后继续当前编排' });
+    cleanupExpiredTasks();
+    assert.equal(getTaskForOwner(waitingTaskId, owner)?.status, 'pending');
     const plan: VimaxAgentPlan = {
       title: '雨夜录音笔',
       summary: '同一位米色风衣女记者在雨夜车站追查红色录音笔里的秘密。',

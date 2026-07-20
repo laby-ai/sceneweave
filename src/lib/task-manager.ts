@@ -751,9 +751,12 @@ export function cleanupExpiredTasks(): number {
         zombieTasks.push(taskId);
       }
     }
-    // pending 超过 15 分钟仍未启动，判定为失效任务
+    // pending 超过 15 分钟且期间没有被重新排队/重试，判定为失效任务。
+    // 分段任务可能等待上一镜与边界桥接超过 15 分钟；queue/retry 会刷新 lastUpdatedAt，
+    // 此时不能按最初 createdAt 把仍在当前编排里的下游镜头误判为失效。
     else if (task.status === 'pending') {
-      if (task.createdAt && (now - task.createdAt) > 15 * 60 * 1000) {
+      const lastActivity = task.lastUpdatedAt || task.createdAt;
+      if (lastActivity && (now - lastActivity) > 15 * 60 * 1000) {
         stalePending.push(taskId);
       }
     }
