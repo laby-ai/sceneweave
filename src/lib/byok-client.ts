@@ -163,23 +163,7 @@ export async function validateAndSaveBailianSessionConnections(
     });
     return { ok: true, videoReady: true };
   }
-  if (workspacePlanning.code !== 'planning_provider_permission_denied') return workspacePlanning;
-
-  const universalBases = resolveBailianApiBases(BAILIAN_UNIVERSAL_API_HOST);
-  const universalPlanning = await validateAndSavePlanningSessionConnection(storageScope, {
-    apiBase: universalBases.planningApiBase,
-    apiKey: config.apiKey,
-    model: config.model || DEFAULT_PLANNING_MODEL,
-    imageModel: config.imageModel || DEFAULT_IMAGE_MODEL,
-  }, requestHeaders);
-  if (!universalPlanning.ok) return universalPlanning;
-
-  clearHappyHorseSessionConnection(storageScope);
-  return {
-    ok: true,
-    videoReady: false,
-    warning: '规划与参考图已连接；当前 API Key 不属于快乐马视频工作空间，视频生成暂未启用。',
-  };
+  return workspacePlanning;
 }
 
 export function clearBailianSessionConnections(storageScope: string): void {

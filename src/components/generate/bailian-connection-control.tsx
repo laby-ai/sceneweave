@@ -97,7 +97,7 @@ export function BailianConnectionControl({
           <div className="mb-3 flex items-start justify-between gap-3">
             <div>
               <p className="text-sm font-semibold">百炼模型设置</p>
-              <p className="mt-1 text-xs leading-5 text-[#7a828e]">平台会自动选择可用的百炼端点；密钥仅保存在当前访客会话。</p>
+              <p className="mt-1 text-xs leading-5 text-[#7a828e]">固定使用当前百炼工作空间与下列模型，不切换端点或降级模型；密钥仅保存在当前访客会话。</p>
             </div>
             <button type="button" onClick={() => setOpen(false)} className="rounded-md p-1 text-[#8a929e] hover:bg-[#f4f6f8]" aria-label="关闭模型设置">
               <X className="h-4 w-4" />

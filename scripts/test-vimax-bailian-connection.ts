@@ -82,36 +82,28 @@ try {
     apiKey: 'old-workspace-key',
     videoModel: DEFAULT_VIDEO_MODEL,
   }));
-  let fallbackValidationCalls = 0;
+  let deniedValidationCalls = 0;
   globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
-    fallbackValidationCalls += 1;
+    deniedValidationCalls += 1;
     const request = new Headers(init?.headers);
     const apiBase = request.get('x-yh-api-base');
-    if (apiBase === `${BAILIAN_WORKSPACE_API_HOST}/compatible-mode/v1`) {
-      return Response.json({
-        ready: false,
-        provider: 'planning',
-        code: 'planning_provider_permission_denied',
-        error: 'workspace endpoint access denied',
-      });
-    }
-    assert.equal(apiBase, `${BAILIAN_UNIVERSAL_API_HOST}/compatible-mode/v1`);
-    return Response.json({ ready: true });
+    assert.equal(apiBase, `${BAILIAN_WORKSPACE_API_HOST}/compatible-mode/v1`);
+    return Response.json({
+      ready: false,
+      provider: 'planning',
+      code: 'planning_provider_permission_denied',
+      error: 'workspace endpoint access denied',
+    });
   }) as typeof fetch;
-  const universalResult = await validateAndSaveBailianSessionConnections('guest-bailian-universal', {
-    apiKey: 'universal-fixture-key',
+  const deniedResult = await validateAndSaveBailianSessionConnections('guest-bailian-universal', {
+    apiKey: 'workspace-fixture-key',
   });
-  assert.equal(universalResult.ok, true);
-  if (!universalResult.ok) throw new Error('universal Bailian fallback should connect');
-  assert.equal(universalResult.videoReady, false);
-  assert.match(universalResult.warning || '', /规划与参考图已连接/);
-  assert.equal(fallbackValidationCalls, 2);
-  const universalHeaders = getBYOKRequestHeaders('guest-bailian-universal');
-  assert.equal(universalHeaders['x-yh-api-base'], `${BAILIAN_UNIVERSAL_API_HOST}/compatible-mode/v1`);
-  assert.equal(universalHeaders['x-yh-model'], DEFAULT_PLANNING_MODEL);
-  assert.equal(universalHeaders['x-yh-image-model'], DEFAULT_IMAGE_MODEL);
-  assert.equal(universalHeaders['x-yh-video-provider'], undefined);
-  assert.equal(universalHeaders['x-yh-video-api-key'], undefined);
+  assert.equal(deniedResult.ok, false);
+  assert.equal(deniedValidationCalls, 1, 'workspace denial must not trigger a universal endpoint fallback');
+  const preservedHeaders = getBYOKRequestHeaders('guest-bailian-universal');
+  assert.equal(preservedHeaders['x-yh-provider'], undefined);
+  assert.equal(preservedHeaders['x-yh-video-api-base'], `${BAILIAN_WORKSPACE_API_HOST}/api/v1`);
+  assert.equal(preservedHeaders['x-yh-video-api-key'], 'old-workspace-key');
 
   window.sessionStorage.setItem('dreambox-planning-connection:guest-bailian', JSON.stringify({
     provider: 'openai-compatible',
@@ -175,15 +167,14 @@ try {
   assert.doesNotMatch(connectionUi, />\s*API Host\s*</);
   assert.doesNotMatch(connectionUi, /setApiHost|apiHost,/);
   assert.match(connectionUi, />\s*API Key\s*</);
-  assert.match(connectionUi, /规划已连接/);
-  assert.match(connectionUi, /需视频工作空间权限/);
+  assert.doesNotMatch(connectionUi, /自动选择可用的百炼端点/);
 } finally {
   globalThis.fetch = originalFetch;
 }
 
 process.stdout.write(`${JSON.stringify({
   ok: true,
-  path: 'one Bailian key -> universal planning fallback or workspace video access',
+  path: 'one Bailian workspace key -> fixed models on the fixed workspace only',
   planningModel: DEFAULT_PLANNING_MODEL,
   imageModel: DEFAULT_IMAGE_MODEL,
   videoModel: DEFAULT_VIDEO_MODEL,
