@@ -247,6 +247,14 @@ async function main() {
             shotId: 'shot-2',
             duration: 10,
             prompt: 'Second dry-run bridge shot',
+            generationRoute: {
+              mode: 'first-frame',
+              requestedBy: 'planner',
+              reason: '第二镜延续同一动作，必须承接上一镜尾帧。',
+              model: 'happyhorse-1.1-i2v',
+              requiresPreviousLastFrame: true,
+              referenceRoles: [],
+            },
             status: 'queued',
             dependencies: {
               characterAssetIds: ['character-protagonist'],

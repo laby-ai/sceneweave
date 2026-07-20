@@ -25,6 +25,7 @@ import {
 } from '@/lib/byok-provider';
 import { isHappyHorseR2VModel } from '@/lib/happyhorse-r2v-adapter';
 import { applyVimaxShotGenerationRoutes } from '@/lib/skills/vimax-short-drama/vimax-shot-generation-route';
+import { buildVimaxPlanMessages } from '@/lib/skills/vimax-short-drama/vimax-plan-prompt';
 import {
   recoverHappyHorseVimaxVideo,
   type HappyHorseVimaxSegment,
@@ -60,36 +61,6 @@ function getArkConfig() {
   const videoModel = process.env.ARK_VIDEO_MODEL || 'doubao-seedance-1-5-pro-251215';
   const selectorModel = process.env.HUIYING_VIMAX_SELECTOR_MODEL || process.env.ARK_VISION_MODEL;
   return { apiKey, apiBase, textModel, selectorModel, imageApiKey, imageApiBase, imageModel, videoModel };
-}
-function buildPlanSystemPrompt(preset: VimaxSkillPreset) {
-  return [
-  `你是创作工作台的“${preset.name}”制作 Agent，只输出 JSON，不要任何解释、验收话术、QA 语言或兜底路径。`,
-  `当前预设目标：${preset.description}。场景类型=${preset.sceneType}；视觉风格=${preset.style}。`,
-  '严格按照下面的 schema 输出，字段名和类型都不能改，assets 和 shots 必须是数组，不能写成对象：',
-  '{',
-  '  "title": "作品标题，string",',
-  '  "summary": "一句话创作梗概，string",',
-  '  "assets": [',
-  '    { "kind": "character|scene|prop|reference", "label": "资产名称 string", "prompt": "用于图像模型的画面描述 string" }',
-  '  ],',
-  '  "shots": [',
-  '    { "index": 1, "title": "镜头标题 string", "duration": 6, "camera": "运镜描述 string", "prompt": "画面内容描述 string", "handoffIntent": "strict-frame|reference-flexible", "handoffReason": "与上一镜的叙事和视觉关系 string", "continuityPriorities": ["action|screen-direction|subject|scene|prop"] }',
-  '  ],',
-  '  "nextAction": "下一步建议 string"',
-  '}',
-  'duration 必须是数字（秒），不能是 "0-5s" 这种字符串区间。',
-  preset.id === 'storyboard-director'
-    ? 'assets 给 3-6 个（角色/场景/道具/参考帧），shots 给 4-8 个；本预设只交付分镜与参考素材，不进入视频生成。'
-    : 'assets 给 3-6 个（角色/场景/道具/参考帧），shots 给 4-8 个，全部用于后续视频生成。',
-  '输出硬性要求：只输出一个 JSON 对象，不要 markdown 代码块、不要注释、不要前后多余文字；',
-  '所有字符串值里的双引号和换行必须转义（\\" 和 \\n）；对象与数组元素之间必须有逗号，结尾不要多余逗号；务必输出完整闭合的 JSON。',
-].join('\n');
-}
-function buildPlanMessages(prompt: string, preset: VimaxSkillPreset) {
-  return [
-    { role: 'system', content: buildPlanSystemPrompt(preset) },
-    { role: 'user', content: `请严格按 brief 指定的总时长、clip 数量和每段时长生成“${preset.name}”制作计划；如果 brief 写了 30 秒、6 个 5 秒 clip，就必须返回 6 个 duration=5 的 shots。只返回符合上面 schema 的 JSON：\n${prompt}` },
-  ];
 }
 function assertPrompt(prompt: unknown): string {
   const text = typeof prompt === 'string' ? prompt.trim() : '';
@@ -244,7 +215,7 @@ async function callArkText(prompt: string, preset: VimaxSkillPreset, modelOverri
       model,
       temperature: 0.2,
       maxTokens: 4000,
-      messages: buildPlanMessages(prompt, preset) as Array<{ role: 'system' | 'user'; content: string }>,
+      messages: buildVimaxPlanMessages(prompt, preset),
     });
     return { model: result.model, plan: extractJsonObject(result.content), rawText: result.content };
   }
@@ -262,7 +233,7 @@ async function callArkText(prompt: string, preset: VimaxSkillPreset, modelOverri
       model,
       temperature: 0.2,
       max_tokens: 4000,
-      messages: buildPlanMessages(prompt, preset),
+      messages: buildVimaxPlanMessages(prompt, preset),
     }),
   });
 
@@ -391,7 +362,7 @@ async function callArkTextStream(prompt: string, preset: VimaxSkillPreset, model
       temperature: 0.2,
       max_tokens: 4000,
       stream: true,
-      messages: buildPlanMessages(prompt, preset),
+      messages: buildVimaxPlanMessages(prompt, preset),
     }),
   });
 
