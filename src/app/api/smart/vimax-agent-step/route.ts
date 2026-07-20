@@ -24,6 +24,7 @@ import {
   type BYOKConnection,
 } from '@/lib/byok-provider';
 import { isHappyHorseR2VModel } from '@/lib/happyhorse-r2v-adapter';
+import { applyVimaxShotGenerationRoutes } from '@/lib/skills/vimax-short-drama/vimax-shot-generation-route';
 import {
   recoverHappyHorseVimaxVideo,
   type HappyHorseVimaxSegment,
@@ -72,7 +73,7 @@ function buildPlanSystemPrompt(preset: VimaxSkillPreset) {
   '    { "kind": "character|scene|prop|reference", "label": "资产名称 string", "prompt": "用于图像模型的画面描述 string" }',
   '  ],',
   '  "shots": [',
-  '    { "index": 1, "title": "镜头标题 string", "duration": 6, "camera": "运镜描述 string", "prompt": "画面内容描述 string" }',
+  '    { "index": 1, "title": "镜头标题 string", "duration": 6, "camera": "运镜描述 string", "prompt": "画面内容描述 string", "handoffIntent": "strict-frame|reference-flexible", "handoffReason": "与上一镜的叙事和视觉关系 string", "continuityPriorities": ["action|screen-direction|subject|scene|prop"] }',
   '  ],',
   '  "nextAction": "下一步建议 string"',
   '}',
@@ -107,6 +108,8 @@ function asStr(value: unknown, fallback = ''): string {
 }
 
 const ALLOWED_ASSET_KINDS = ['script', 'character', 'scene', 'prop', 'shot', 'reference'];
+const ALLOWED_HANDOFF_INTENTS = ['strict-frame', 'reference-flexible'] as const;
+const ALLOWED_CONTINUITY_PRIORITIES = ['action', 'screen-direction', 'subject', 'scene', 'prop'] as const;
 
 /**
  * 从数组字段里抽出「已完整闭合」的对象，忽略被截断的尾部对象。
@@ -173,6 +176,17 @@ function normalizePlan(parsed: LooseRecord): VimaxAgentPlan {
       duration: asNum(shot.duration, 6),
       camera: asStr(shot.camera, '固定镜头'),
       prompt: asStr(shot.prompt),
+      handoffIntent: ALLOWED_HANDOFF_INTENTS.includes(asStr(shot.handoffIntent) as typeof ALLOWED_HANDOFF_INTENTS[number])
+        ? asStr(shot.handoffIntent) as typeof ALLOWED_HANDOFF_INTENTS[number]
+        : undefined,
+      handoffReason: asStr(shot.handoffReason).trim() || undefined,
+      continuityPriorities: Array.isArray(shot.continuityPriorities)
+        ? shot.continuityPriorities
+          .map(item => asStr(item))
+          .filter((item): item is typeof ALLOWED_CONTINUITY_PRIORITIES[number] => (
+            ALLOWED_CONTINUITY_PRIORITIES.includes(item as typeof ALLOWED_CONTINUITY_PRIORITIES[number])
+          ))
+        : undefined,
     })),
     nextAction: asStr(parsed.nextAction, '确认分镜后进入参考素材生成。'),
   };
@@ -276,12 +290,19 @@ function buildVimaxPlanEnvelope(
   planConnection?: BYOKConnection,
   videoConnection?: BYOKConnection,
 ) {
-  const { plan, productionProject, assemblyPlan } = buildProductionBackedVimaxPlan(prompt, basePlan, body, taskId);
+  const built = buildProductionBackedVimaxPlan(prompt, basePlan, body, taskId);
   const config = getArkConfig();
   const workflow = resolveVimaxSkillRuntimeBinding({ skillId: body.skillId });
   const planModel = planConnection?.model || model;
   const imageModel = planConnection?.imageModel || config.imageModel;
   const videoModel = videoConnection?.videoModel || config.videoModel;
+  const { plan, assemblyPlan } = applyVimaxShotGenerationRoutes({
+    plan: built.plan,
+    assemblyPlan: built.assemblyPlan,
+    provider: videoConnection?.provider || 'ark-video-v3',
+    configuredModel: videoModel,
+  });
+  const productionProject = built.productionProject;
   const continuity = buildVimaxContinuityContract({
     productionProject,
     assemblyPlan,

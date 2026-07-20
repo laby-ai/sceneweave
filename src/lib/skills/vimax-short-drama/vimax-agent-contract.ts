@@ -1,4 +1,8 @@
 import type { VimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
+import type {
+  VimaxContinuityPriority,
+  VimaxShotHandoffIntent,
+} from '@/lib/skills/vimax-short-drama/vimax-shot-generation-route';
 
 export type VimaxAgentPhase = 'planning_readiness' | 'planning_connection_validate' | 'plan' | 'reference_assets' | 'video';
 
@@ -38,6 +42,9 @@ export interface VimaxAgentPlan {
     duration: number;
     camera: string;
     prompt: string;
+    handoffIntent?: VimaxShotHandoffIntent;
+    handoffReason?: string;
+    continuityPriorities?: VimaxContinuityPriority[];
     referenceUrl?: string;
     videoUrl?: string;
   }>;

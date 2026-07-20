@@ -1,6 +1,7 @@
 import { computeProductionArtifactRevision } from '@/lib/production-artifact-stale';
 import type { ProductionAssemblyPlan } from '@/lib/production-assembly-plan';
 import type { ProductionProject } from '@/lib/production-project';
+import type { VimaxShotGenerationRoute } from '@/lib/skills/vimax-short-drama/vimax-shot-generation-route';
 import {
   buildVimaxCameraTree,
   describeVimaxCameraTreeShot,
@@ -32,6 +33,7 @@ export interface VimaxContinuityShot {
   audioCue: string;
   narrativeCause: string;
   assetAnchors?: string[];
+  generationRoute?: VimaxShotGenerationRoute;
 }
 
 export interface VimaxContinuityContract {
@@ -165,6 +167,7 @@ export function buildVimaxContinuityContract(input: BuildContinuityContractInput
           && !isGlobalAsset(asset, allShotIds)
           && asset.relatedShotIds?.includes(segment.shotId))
         .map(asset => `${asset.name}：${asset.summary}`),
+      generationRoute: segment.generationRoute,
     };
   });
 
@@ -297,6 +300,14 @@ export function parseVimaxContinuityContract(value: unknown): VimaxContinuityCon
     && (shot.previousShotId === null || typeof shot.previousShotId === 'string')
     && (shot.assetAnchors === undefined
       || (Array.isArray(shot.assetAnchors) && shot.assetAnchors.every(anchor => typeof anchor === 'string')))
+    && (shot.generationRoute === undefined
+      || (isRecord(shot.generationRoute)
+        && ['first-frame', 'multi-reference'].includes(String(shot.generationRoute.mode))
+        && ['planner', 'server-default'].includes(String(shot.generationRoute.requestedBy))
+        && typeof shot.generationRoute.reason === 'string'
+        && typeof shot.generationRoute.model === 'string'
+        && typeof shot.generationRoute.requiresPreviousLastFrame === 'boolean'
+        && Array.isArray(shot.generationRoute.referenceRoles)))
     && ['dependency', 'actionStart', 'actionEnd', 'screenDirection', 'framing', 'lightingPalette', 'audioCue', 'narrativeCause']
       .every(key => typeof shot[key] === 'string' && String(shot[key]).trim().length > 0));
 

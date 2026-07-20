@@ -76,6 +76,9 @@ export function buildVimaxAgentPlanFromProductionArtifacts(input: {
         title: sourceShot?.title || `${projectShot?.storyBeat || '镜头'} ${index + 1}`,
         duration: basePlan.shots ? baseDuration + (index < durationRemainder ? 1 : 0) : segment.duration,
         camera: projectShot?.shotTypeLabel || sourceShot?.camera || '分段镜头',
+        handoffIntent: sourceShot?.handoffIntent,
+        handoffReason: sourceShot?.handoffReason,
+        continuityPriorities: sourceShot?.continuityPriorities,
         prompt: [
           segment.prompt,
           `【首尾帧契约】首帧=${segment.shotFrameContract.firstFrame.description}；尾帧=${segment.shotFrameContract.lastFrame.description}`,

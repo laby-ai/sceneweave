@@ -13,6 +13,7 @@ import {
 } from './production-story-segment-contract';
 import { buildBoundaryBridgePlan, buildSegmentBridgePlan } from './trailer-beat-sheet';
 import type { BoundaryBridgePlan, SegmentBridge, SegmentBridgePlan } from './trailer-beat-sheet';
+import type { VimaxShotGenerationRoute } from './skills/vimax-short-drama/vimax-shot-generation-route';
 
 export interface ProductionSegmentAudioState {
   dialogue: string | null;
@@ -30,6 +31,7 @@ export interface ProductionSegmentPlan {
   duration: number;
   prompt: string;
   status: 'queued' | 'running' | 'completed' | 'failed' | 'skipped';
+  generationRoute?: VimaxShotGenerationRoute;
   error?: string | null;
   startedAt?: string;
   completedAt?: string;
