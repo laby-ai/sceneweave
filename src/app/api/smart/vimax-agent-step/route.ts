@@ -724,9 +724,9 @@ export async function POST(request: NextRequest) {
         preset,
         continuity: productionPlan.continuity,
         config: {
-          imageApiKey: config.imageApiKey || '',
-          imageApiBase: config.imageApiBase,
-          imageModel: config.imageModel,
+          imageApiKey: planConnection?.apiKey || config.imageApiKey || '',
+          imageApiBase: planConnection?.apiBase || config.imageApiBase,
+          imageModel: planConnection?.imageModel || config.imageModel,
           selectorApiKey: planConnection?.apiKey || config.apiKey || '',
           selectorApiBase: planConnection?.apiBase || config.apiBase,
           selectorModel: planConnection?.model || config.selectorModel,
@@ -778,7 +778,7 @@ export async function POST(request: NextRequest) {
       const videoModel = videoConnection?.videoModel || config.videoModel;
       const productionPlan = assertVimaxProductionPlanForPhase(canonical.productionPlan, 'video', {
         plan: planConnection?.model || config.textModel,
-        referenceAssets: config.imageModel,
+        referenceAssets: planConnection?.imageModel || config.imageModel,
         video: videoModel,
       });
       const preset = resolveVimaxSkillPresetForRuntime(productionPlan.workflow.presetId);

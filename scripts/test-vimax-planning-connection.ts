@@ -64,6 +64,7 @@ assert.deepEqual(getPlanningSessionConnectionSummary(scope), {
 const headers = getBYOKRequestHeaders(scope);
 assert.equal(headers['x-yh-provider'], 'openai-compatible');
 assert.equal(headers['x-yh-model'], 'Kimi-K3');
+assert.equal(headers['x-yh-image-model'], 'Qwen-Image-2.0');
 assert.equal(headers['x-yh-video-provider'], 'happyhorse-dashscope');
 assert.equal(headers['x-yh-video-model'], 'happyhorse-1.1-t2v');
 assert.equal(JSON.stringify(headers).includes('planning-secret'), true);

@@ -19,6 +19,7 @@ const BYOK_STORAGE_KEY = 'dreambox-api-connection';
 const PLANNING_SESSION_STORAGE_KEY = 'dreambox-planning-connection';
 const HAPPYHORSE_SESSION_STORAGE_KEY = 'dreambox-happyhorse-connection';
 export const DEFAULT_PLANNING_MODEL = 'Kimi-K3';
+export const DEFAULT_IMAGE_MODEL = 'Qwen-Image-2.0';
 
 function isStoredProvider(value: unknown): value is StoredApiProvider {
   return value === 'openai-compatible' || value === 'ark-plan' || value === 'happyhorse-dashscope';
@@ -63,7 +64,7 @@ export function saveHappyHorseSessionConnection(
 
 export function savePlanningSessionConnection(
   storageScope: string,
-  config: { apiBase: string; apiKey: string; model?: string },
+  config: { apiBase: string; apiKey: string; model?: string; imageModel?: string },
 ): void {
   if (typeof window === 'undefined') return;
   window.sessionStorage.setItem(scopedPlanningStorageKey(storageScope), JSON.stringify({
@@ -71,12 +72,13 @@ export function savePlanningSessionConnection(
     apiBase: config.apiBase.trim(),
     apiKey: config.apiKey.trim(),
     model: config.model?.trim() || DEFAULT_PLANNING_MODEL,
+    imageModel: config.imageModel?.trim() || DEFAULT_IMAGE_MODEL,
   } satisfies StoredApiConnection));
 }
 
 export async function validateAndSavePlanningSessionConnection(
   storageScope: string,
-  config: { apiBase: string; apiKey: string; model?: string },
+  config: { apiBase: string; apiKey: string; model?: string; imageModel?: string },
   requestHeaders: Record<string, string> = {},
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const safeRequestHeaders = Object.fromEntries(
@@ -92,6 +94,7 @@ export async function validateAndSavePlanningSessionConnection(
         'x-yh-api-base': config.apiBase.trim(),
         'x-yh-api-key': config.apiKey.trim(),
         'x-yh-model': config.model?.trim() || DEFAULT_PLANNING_MODEL,
+        'x-yh-image-model': config.imageModel?.trim() || DEFAULT_IMAGE_MODEL,
       },
       body: JSON.stringify({ phase: 'planning_connection_validate' }),
       signal: AbortSignal.timeout(12_000),

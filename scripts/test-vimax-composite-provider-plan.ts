@@ -17,6 +17,12 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input);
   const body = JSON.parse(String(init?.body || '{}')) as Record<string, unknown>;
   calls.push({ url, body });
+  if (url.endsWith('/images/generations')) {
+    return Response.json({ data: [{ url: `https://fixture.invalid/reference-${calls.length}.png` }] });
+  }
+  if (body.response_format) {
+    return Response.json({ choices: [{ message: { content: JSON.stringify({ best_image_index: 1, reason: '主体一致' }) } }] });
+  }
   const planContent = JSON.stringify({
     title: '雨夜来电',
     summary: '女记者在旧车站追查神秘电话。',
@@ -177,7 +183,66 @@ async function main() {
   assert.match(recoveredText, /event: plan\.complete/, 'complete JSON must survive a trailing body-stream abort');
   assert.doesNotMatch(recoveredText, /event: plan\.error/);
 
-  console.log(JSON.stringify({ ok: true, route: '/api/smart/vimax-agent-step', providers: ['Kimi-K3', 'happyhorse-1.1-t2v'] }));
+  const r2vWorkspace = 'guest-creation-composite-provider-r2v';
+  const r2vHeaders = {
+    'content-type': 'application/json',
+    'x-paper-host-embed': 'creation-agent',
+    'x-paper-host-guest-workspace': r2vWorkspace,
+    'x-yh-provider': 'openai-compatible',
+    'x-yh-api-base': 'https://api.scnet.example/api/llm/v1',
+    'x-yh-api-key': 'scnet-fixture-key',
+    'x-yh-model': 'Kimi-K3',
+    'x-yh-image-model': 'Qwen-Image-2.0',
+    'x-yh-video-provider': 'happyhorse-dashscope',
+    'x-yh-video-api-base': 'https://happyhorse.example/api/v1',
+    'x-yh-video-api-key': 'happyhorse-fixture-key',
+    'x-yh-video-model': 'happyhorse-1.1-r2v',
+  };
+  const r2vPlanResponse = await route.POST(new NextRequest('http://localhost/api/smart/vimax-agent-step', {
+    method: 'POST',
+    headers: r2vHeaders,
+    body: JSON.stringify({
+      phase: 'plan', prompt: '15 秒漫剧，3 个 5 秒连续镜头。', skillId: 'short-drama',
+      duration: 15, segmentDuration: 5, segmentCount: 3, stream: false,
+    }),
+  }));
+  const r2vPlan = await r2vPlanResponse.json() as { taskId?: string };
+  assert.equal(r2vPlanResponse.status, 200);
+
+  const r2vTaskHeaders = {
+    'content-type': 'application/json',
+    'x-paper-host-embed': 'creation-agent',
+    'x-paper-host-guest-workspace': r2vWorkspace,
+  };
+  const r2vApprove = await taskRoute.POST(new NextRequest(`http://localhost/api/tasks/${r2vPlan.taskId}`, {
+    method: 'POST', headers: r2vTaskHeaders, body: JSON.stringify({ action: 'approve-production-plan' }),
+  }), { params: Promise.resolve({ taskId: r2vPlan.taskId || '' }) });
+  assert.equal(r2vApprove.status, 200);
+  const r2vConfirm = await taskRoute.POST(new NextRequest(`http://localhost/api/tasks/${r2vPlan.taskId}`, {
+    method: 'POST', headers: r2vTaskHeaders, body: JSON.stringify({ action: 'confirm-production-external' }),
+  }), { params: Promise.resolve({ taskId: r2vPlan.taskId || '' }) });
+  assert.equal(r2vConfirm.status, 200);
+
+  const referenceStart = calls.length;
+  const references = await route.POST(new NextRequest('http://localhost/api/smart/vimax-agent-step', {
+    method: 'POST',
+    headers: r2vHeaders,
+    body: JSON.stringify({ phase: 'reference_assets', taskId: r2vPlan.taskId }),
+  }));
+  const referencePayload = await references.json() as { model?: string; assets?: unknown[] };
+  assert.equal(references.status, 200);
+  assert.equal(referencePayload.model, 'Qwen-Image-2.0');
+  assert.ok((referencePayload.assets?.length || 0) >= 5);
+  const referenceCalls = calls.slice(referenceStart);
+  const imageCalls = referenceCalls.filter(call => call.url.endsWith('/images/generations'));
+  const selectorCalls = referenceCalls.filter(call => call.url.endsWith('/chat/completions') && call.body.response_format);
+  assert.ok(imageCalls.length >= 5, 'R2V route must generate subject views and shot references');
+  assert.ok(imageCalls.every(call => call.url === 'https://api.scnet.example/api/llm/v1/images/generations'));
+  assert.ok(imageCalls.every(call => call.body.model === 'Qwen-Image-2.0'));
+  assert.equal(selectorCalls.length, 1);
+  assert.equal(selectorCalls[0]?.body.model, 'Kimi-K3');
+
+  console.log(JSON.stringify({ ok: true, route: '/api/smart/vimax-agent-step', providers: ['Kimi-K3', 'Qwen-Image-2.0', 'happyhorse-1.1-t2v', 'happyhorse-1.1-r2v'] }));
 }
 
 main().finally(() => {
