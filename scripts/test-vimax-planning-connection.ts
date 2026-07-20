@@ -46,7 +46,8 @@ Object.assign(globalThis, {
 assert.deepEqual(getPlanningSessionConnectionSummary('paper-host:planning-default'), {
   configured: false,
   apiBase: '',
-  model: 'Kimi-K3',
+  model: 'qwen3.7-plus',
+  imageModel: 'wan2.7-image',
 });
 
 const scope = 'paper-host:planning-test';
@@ -65,12 +66,13 @@ assert.deepEqual(getPlanningSessionConnectionSummary(scope), {
   configured: true,
   apiBase: 'https://api.scnet.cn/api/llm/v1',
   model: 'Kimi-K3',
+  imageModel: 'wan2.7-image',
 });
 
 const headers = getBYOKRequestHeaders(scope);
 assert.equal(headers['x-yh-provider'], 'openai-compatible');
 assert.equal(headers['x-yh-model'], 'Kimi-K3');
-assert.equal(headers['x-yh-image-model'], 'Qwen-Image-2.0');
+assert.equal(headers['x-yh-image-model'], 'wan2.7-image');
 assert.equal(headers['x-yh-video-provider'], 'happyhorse-dashscope');
 assert.equal(headers['x-yh-video-model'], 'happyhorse-1.1-t2v');
 assert.equal(JSON.stringify(headers).includes('planning-secret'), true);
@@ -125,6 +127,7 @@ async function verifyTransactionalClientSave() {
       configured: true,
       apiBase: 'https://valid.example.com/v1',
       model: 'existing-model',
+      imageModel: 'wan2.7-image',
     }, 'an invalid candidate must not overwrite the last valid connection');
 
     globalThis.fetch = (async () => Response.json({ success: true, ready: true, provider: 'planning' })) as typeof fetch;
@@ -138,6 +141,7 @@ async function verifyTransactionalClientSave() {
       configured: true,
       apiBase: 'https://next.example.com/v1',
       model: 'next-model',
+      imageModel: 'wan2.7-image',
     });
   } finally {
     globalThis.fetch = originalFetch;
@@ -224,6 +228,9 @@ async function verifyValidatedConnectionCanRetryPlan() {
       planningCalls += 1;
       const body = JSON.parse(String(init?.body || '{}')) as { model?: string };
       assert.equal(body.model, 'Qwen3.6-Plus');
+      if (url.startsWith('https://model-blocked.example.com/')) {
+        return Response.json({ error: 'model is not enabled for this API key' }, { status: 403 });
+      }
       return Response.json({
         model: 'Qwen3.6-Plus',
         choices: [{ message: { content: planContent } }],
@@ -253,6 +260,17 @@ async function verifyValidatedConnectionCanRetryPlan() {
     const validationPayload = await validation.json() as { ready?: boolean; error?: string };
     assert.equal(validation.status, 200);
     assert.equal(validationPayload.ready, true);
+
+    const modelBlocked = await route.POST(new NextRequest('http://localhost/api/smart/vimax-agent-step', {
+      method: 'POST',
+      headers: { ...headers, 'x-yh-api-base': 'https://model-blocked.example.com/v1' },
+      body: JSON.stringify({ phase: 'planning_connection_validate' }),
+    }));
+    const modelBlockedPayload = await modelBlocked.json() as { ready?: boolean; code?: string; error?: string };
+    assert.equal(modelBlocked.status, 200);
+    assert.equal(modelBlockedPayload.ready, false, 'a catalog-visible but forbidden model must not be saved as connected');
+    assert.equal(modelBlockedPayload.code, 'planning_provider_auth_failed');
+    assert.doesNotMatch(modelBlockedPayload.error || '', /model is not enabled|fixture-planning-secret/);
 
     const rejected = await route.POST(new NextRequest('http://localhost/api/smart/vimax-agent-step', {
       method: 'POST',
@@ -284,8 +302,8 @@ async function verifyValidatedConnectionCanRetryPlan() {
     assert.equal(planPayload.success, true);
     assert.ok(planPayload.taskId, 'the retried prompt must establish the authoritative production plan');
     assert.equal(planPayload.productionPlan?.workflow?.presetId, 'short-drama');
-    assert.equal(modelDirectoryCalls, 2);
-    assert.equal(planningCalls, 1);
+    assert.equal(modelDirectoryCalls, 3);
+    assert.equal(planningCalls, 3, 'connection validation must prove the selected model is actually callable before plan retry');
     assert.equal(videoCalls, 0, 'planning validation and retry must never call the video provider');
   } finally {
     globalThis.fetch = originalFetch;
@@ -298,7 +316,7 @@ verifyTransactionalClientSave()
   .then(() => process.stdout.write(`${JSON.stringify({
     ok: true,
     path: 'validate candidate -> preserve last valid connection -> retry original plan',
-    planningFixtureCalls: 1,
+    planningFixtureCalls: 3,
     videoProviderCalls: 0,
     incurredCost: false,
   })}\n`))

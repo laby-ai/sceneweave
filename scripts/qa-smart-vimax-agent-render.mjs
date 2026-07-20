@@ -15,6 +15,7 @@ const generateWorkspace = read('src/components/generate/generate-workspace.tsx')
 const model = read('src/lib/smart-assistant-panel-model.ts');
 const route = read('src/app/api/smart/vimax-agent-step/route.ts');
 const referenceAssets = read('src/lib/skills/vimax-short-drama/vimax-reference-assets.ts');
+const byokProvider = read('src/lib/byok-provider.ts');
 const planArtifacts = read('src/lib/skills/vimax-short-drama/vimax-plan-artifacts.ts');
 const agentContract = read('src/lib/skills/vimax-short-drama/vimax-agent-contract.ts');
 // ViMAX 已抽成 Agent 驱动的 skill；编排逻辑应在 skill 内，面板只负责唤起。
@@ -80,10 +81,12 @@ check(
 check('workspace-renders-stage-card', /msg\.vimaxAgent/.test(workspace) && /真实 AgentPlan/.test(workspace) && /Seedream 参考素材/.test(workspace));
 check('route-calls-real-ark-text-model', /chat\/completions/.test(route) && /ARK_API_KEY/.test(route) && /usedRealKey:\s*true/.test(route));
 check(
-  'route-calls-real-seedream-image-model',
+  'route-calls-real-configured-image-model',
   /callVimaxReferenceImages/.test(route)
-    && /images\/generations/.test(referenceAssets)
-    && /doubao-seedream-5\.0-lite/.test(route),
+    && /imageWithBYOK/.test(referenceAssets)
+    && /multimodal-generation\/generation/.test(byokProvider)
+    && /wan2\.7-image/.test(preferences),
+  'reference generation must follow the configured provider adapter instead of a hard-coded image endpoint',
 );
 check('route-does-not-return-free-fake-result', !/usedRealKey:\s*false|incurredCost:\s*false|dry-run|不产生费用/.test(route));
 check('route-fails-explicitly-before-video-cost', /视频生成阶段需要用户在界面显式确认费用/.test(route));

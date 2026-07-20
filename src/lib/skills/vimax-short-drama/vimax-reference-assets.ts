@@ -1,4 +1,5 @@
 import type { VimaxAgentPlan } from '@/lib/skills/vimax-short-drama/vimax-agent-contract';
+import { imageWithBYOK } from '@/lib/byok-provider';
 import {
   buildVimaxContinuityPrompt,
   type VimaxContinuityContract,
@@ -62,36 +63,29 @@ async function generateOneImage(
 ) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 60_000);
-  let response: Response;
   try {
-    response = await fetch(`${config.imageApiBase}/images/generations`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${config.imageApiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: config.imageModel,
-        prompt: target.prompt,
-        size: '2560x1440',
-        response_format: 'url',
-        ...(referenceImages.length > 0 ? { reference_images: referenceImages.slice(0, 3) } : {}),
-      }),
+    const generated = await imageWithBYOK({
+      provider: 'openai-compatible',
+      apiBase: config.imageApiBase,
+      apiKey: config.imageApiKey,
+      imageModel: config.imageModel,
+    }, {
+      model: config.imageModel,
+      prompt: target.prompt,
+      size: '2560x1440',
+      n: 1,
+      referenceImages,
       signal: controller.signal,
     });
+    return { ...target, url: generated.url, status: 'generated' as const };
   } catch (error) {
-    clearTimeout(timeout);
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error(`参考图生成超时（60s）：${target.label}。`);
     }
-    throw error;
+    throw new Error(`参考图生成失败：${target.label} - ${error instanceof Error ? error.message : '未知错误'}`);
+  } finally {
+    clearTimeout(timeout);
   }
-  clearTimeout(timeout);
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const message = typeof data?.error?.message === 'string' ? data.error.message : response.statusText;
-    throw new Error(`参考图生成失败：${target.label} - ${message}`);
-  }
-  const url = data?.data?.[0]?.url || data?.imageUrls?.[0] || data?.url;
-  if (typeof url !== 'string' || !url) throw new Error(`参考图服务未返回 ${target.label} 的图片 URL。`);
-  return { ...target, url, status: 'generated' as const };
 }
 
 async function generateImageCandidates(

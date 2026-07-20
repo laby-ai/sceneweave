@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ArrowLeft, Check, Pencil, Plus, X } from 'lucide-react';
 
 interface VimaxProjectBarProps {
@@ -8,9 +8,10 @@ interface VimaxProjectBarProps {
   onBack: () => void;
   onNewProject: () => void;
   onRenameProject: (title: string) => void;
+  actions?: ReactNode;
 }
 
-export function VimaxProjectBar({ title, onBack, onNewProject, onRenameProject }: VimaxProjectBarProps) {
+export function VimaxProjectBar({ title, onBack, onNewProject, onRenameProject, actions }: VimaxProjectBarProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(title);
 
@@ -75,14 +76,17 @@ export function VimaxProjectBar({ title, onBack, onNewProject, onRenameProject }
             <div className="mt-0.5 text-xs text-[#9298a3]">对话式创作</div>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={onNewProject}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-[#e1e5eb] bg-white px-3.5 py-2 text-sm font-medium text-[#303640] transition hover:border-[#cbd5e4] hover:bg-[#f8faff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f6bff]/30"
-        >
-          <Plus className="h-4 w-4" />
-          新建项目
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {actions}
+          <button
+            type="button"
+            onClick={onNewProject}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-[#e1e5eb] bg-white px-3.5 py-2 text-sm font-medium text-[#303640] transition hover:border-[#cbd5e4] hover:bg-[#f8faff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f6bff]/30"
+          >
+            <Plus className="h-4 w-4" />
+            新建项目
+          </button>
+        </div>
       </div>
     </header>
   );

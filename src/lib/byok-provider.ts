@@ -52,6 +52,8 @@ export interface BYOKImageParams {
   model?: string;
   size?: string;
   n?: number;
+  referenceImages?: string[];
+  signal?: AbortSignal;
 }
 
 export interface BYOKVideoParams {
@@ -95,6 +97,18 @@ function buildChatCompletionsUrl(apiBase: string): string {
 
 function buildImageGenerationsUrl(apiBase: string): string {
   return apiBaseHasVersionPath(apiBase) ? `${apiBase}/images/generations` : `${apiBase}/v1/images/generations`;
+}
+
+function isBailianWanImageModel(model: string): boolean {
+  return /^wan2\.7-image(?:-pro)?$/i.test(model.trim());
+}
+
+function buildBailianWanImageUrl(apiBase: string): string {
+  const parsed = new URL(apiBase);
+  const pathname = parsed.pathname
+    .replace(/\/(?:compatible-mode\/v1|api\/v1)\/?$/, '')
+    .replace(/\/$/, '');
+  return `${parsed.origin}${pathname}/api/v1/services/aigc/multimodal-generation/generation`;
 }
 
 function buildArkVideoTasksUrl(apiBase: string): string {
@@ -233,19 +247,40 @@ export async function imageWithBYOK(
     throw new Error('BYOK 图片调用缺少默认模型');
   }
 
-  const url = buildImageGenerationsUrl(connection.apiBase);
+  const bailianWan = isBailianWanImageModel(model);
+  const url = bailianWan
+    ? buildBailianWanImageUrl(connection.apiBase)
+    : buildImageGenerationsUrl(connection.apiBase);
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${connection.apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
+    body: JSON.stringify(bailianWan ? {
+      model,
+      input: {
+        messages: [{
+          role: 'user',
+          content: [
+            ...(params.referenceImages || []).slice(0, 9).map(image => ({ image })),
+            { text: params.prompt },
+          ],
+        }],
+      },
+      parameters: {
+        size: params.size?.replace(/x/i, '*') || '2K',
+        n: params.n ?? 1,
+        watermark: false,
+      },
+    } : {
       model,
       prompt: params.prompt,
       size: params.size || '1024x1024',
       n: params.n ?? 1,
+      ...(params.referenceImages?.length ? { reference_images: params.referenceImages.slice(0, 3) } : {}),
     }),
+    signal: params.signal,
   });
 
   const payload = await parseResponsePayload(response);
@@ -261,7 +296,16 @@ export async function imageWithBYOK(
       ? (payload as { data: Array<{ url?: string; b64_json?: string }> }).data[0]
       : undefined;
 
-  const imageUrl = firstImage?.url || (firstImage?.b64_json ? `data:image/png;base64,${firstImage.b64_json}` : '');
+  const wanContent = bailianWan && typeof payload === 'object' && payload && 'output' in payload
+    ? (payload as {
+        output?: { choices?: Array<{ message?: { content?: Array<{ type?: string; image?: string; image_url?: string; url?: string }> } }> };
+      }).output?.choices?.[0]?.message?.content
+    : undefined;
+  const wanImage = wanContent?.find(item => item.type === 'image' && (item.image || item.image_url || item.url));
+
+  const imageUrl = wanImage?.image || wanImage?.image_url || wanImage?.url
+    || firstImage?.url
+    || (firstImage?.b64_json ? `data:image/png;base64,${firstImage.b64_json}` : '');
   if (!imageUrl) {
     throw new Error('BYOK 图片调用未返回图像');
   }

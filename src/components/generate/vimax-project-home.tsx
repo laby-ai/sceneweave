@@ -11,6 +11,7 @@ interface VimaxProjectHomeProps {
   skills: VimaxSkillPreset[];
   selectedSkillId: string;
   composer: ReactNode;
+  actions?: ReactNode;
   onOpenProject: (projectId: string) => void;
   onDeleteProject: (projectId: string) => void;
   onStartProject: () => void;
@@ -22,6 +23,7 @@ export function VimaxProjectHome({
   skills,
   selectedSkillId,
   composer,
+  actions,
   onOpenProject,
   onDeleteProject,
   onStartProject,
@@ -38,8 +40,9 @@ export function VimaxProjectHome({
   return (
     <main
       data-testid="vimax-project-home"
-      className="mx-auto flex min-h-full w-full max-w-[1180px] flex-col px-8 pb-14 pt-20 text-[#181a20]"
+      className="relative mx-auto flex min-h-full w-full max-w-[1180px] flex-col px-8 pb-14 pt-20 text-[#181a20]"
     >
+      {actions ? <div className="absolute right-8 top-5 z-30">{actions}</div> : null}
       <section className="mx-auto flex w-full max-w-[920px] flex-col items-center">
         <div className="mb-4 flex items-center gap-2 rounded-full border border-[#dce7ff] bg-[#f3f7ff] px-3 py-1.5 text-xs font-medium text-[#2f6bff]">
           <Sparkles className="h-3.5 w-3.5" />

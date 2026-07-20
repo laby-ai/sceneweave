@@ -77,6 +77,7 @@
     "qa:happyhorse-video-provider": "tsx scripts/qa-happyhorse-video-provider.ts",
     "qa:vimax-shot-generation-route": "tsx scripts/qa-vimax-shot-generation-route.ts",
     "test:vimax-happyhorse-video": "tsx scripts/test-vimax-happyhorse-video.ts",
+    "test:vimax-bailian-connection": "tsx scripts/test-vimax-bailian-connection.ts",
     "test:vimax-r2v-full-route": "tsx scripts/test-vimax-r2v-full-route.ts",
     "test:vimax-protected-media": "tsx scripts/test-vimax-protected-media.ts",
     "test:vimax-background-video-task": "tsx scripts/test-vimax-background-video-task.ts",

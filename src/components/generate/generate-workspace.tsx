@@ -29,8 +29,7 @@ import { VimaxProductionPlanCard } from '@/components/generate/vimax-production-
 import { VimaxProjectEditorCard } from '@/components/generate/vimax-project-editor-card';
 import { VimaxSegmentedProductionCard } from '@/components/generate/vimax-segmented-production-card';
 import { VimaxProtectedDownload, VimaxProtectedVideo } from '@/components/generate/vimax-protected-media';
-import { HappyHorseConnectionControl } from '@/components/generate/happyhorse-connection-control';
-import { PlanningConnectionControl } from '@/components/generate/planning-connection-control';
+import { BailianConnectionControl } from '@/components/generate/bailian-connection-control';
 import { getBYOKRequestHeaders } from '@/lib/byok-client';
 import {
   useVimaxShortDramaSkill,
@@ -175,8 +174,6 @@ export function GenerateWorkspace({
     ...(requestHeaders || {}),
     ...byokHeaders,
   }), [byokHeaders, requestHeaders]);
-  const selectedVideoModel = effectiveRequestHeaders['x-yh-video-model'] || 'doubao-seedance-1.5-pro';
-  const selectedPlanModel = effectiveRequestHeaders['x-yh-model'] || VIMAX_PLAN_MODEL;
 
   const setScopedWorkspaceView = useCallback((view: VimaxWorkspaceView) => {
     setWorkspaceView(view);
@@ -521,6 +518,14 @@ export function GenerateWorkspace({
     void handleSend(context.sourcePrompt, context.presetId);
   }, [handleSend, messages, restoreSkillPreset]);
 
+  const modelSettings = (
+    <BailianConnectionControl
+      storageScope={storageScope}
+      requestHeaders={requestHeaders}
+      onConnectionChange={() => setByokHeaders(getBYOKRequestHeaders(storageScope))}
+    />
+  );
+
   return (
     <div className="relative flex h-full w-full overflow-hidden bg-[#f6f7f9] text-[#181a20]">
       <div className="flex min-w-0 flex-1 flex-col">
@@ -531,6 +536,7 @@ export function GenerateWorkspace({
               skills={visibleSkillPresets}
               selectedSkillId={selectedSkill.id}
               composer={renderDock()}
+              actions={modelSettings}
               onOpenProject={openHistoryProject}
               onDeleteProject={deleteProject}
               onStartProject={startNewChat}
@@ -543,6 +549,7 @@ export function GenerateWorkspace({
                 onBack={() => setScopedWorkspaceView('home')}
                 onNewProject={startNewChat}
                 onRenameProject={renameActiveProject}
+                actions={modelSettings}
               />
               <div className="mx-auto w-full max-w-[1040px] px-6 py-8">
                 {hasMessages ? (
@@ -644,35 +651,18 @@ export function GenerateWorkspace({
             )}
           </div>
 
-          <HappyHorseConnectionControl
-            storageScope={storageScope}
-            onConnectionChange={() => setByokHeaders(getBYOKRequestHeaders(storageScope))}
-          />
-
-          <PlanningConnectionControl
-            storageScope={storageScope}
-            requestHeaders={requestHeaders}
-            onConnectionChange={() => setByokHeaders(getBYOKRequestHeaders(storageScope))}
-          />
-
           <div className="relative">
             <button
               type="button"
               onClick={() => { setModeMenuOpen(false); setSkillMenuOpen(false); setAtMenuOpen(false); setMediaModelMenuOpen(open => !open); }}
               className="flex items-center gap-1 rounded-lg border border-[#e1e5eb] bg-white px-2.5 py-1.5 text-xs text-[#68717d] transition hover:border-[#cbd5e4] hover:text-[#272b32]"
-              title="参考图像 / 视频模型"
+              title="画面比例与清晰度"
             >
-              <ImageIcon className="h-3.5 w-3.5" /> 模型
+              <ImageIcon className="h-3.5 w-3.5" /> 画面
             </button>
             {mediaModelMenuOpen && (
               <div className="absolute left-0 top-full z-20 mt-2 w-56 overflow-hidden rounded-xl border border-[#e1e5eb] bg-white p-2 text-[#252931] shadow-[0_18px_38px_rgba(31,41,55,0.14)]">
-                <p className="px-1 pb-1 text-[11px] font-semibold uppercase tracking-wider text-[#9299a4]">规划模型</p>
-                <div className="rounded-lg bg-[#f5f7fa] px-2.5 py-1.5 text-sm text-[#555d68]">{selectedPlanModel}</div>
-                <p className="px-1 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-[#9299a4]">参考图像模型</p>
-                <div className="rounded-lg bg-[#edf3ff] px-2.5 py-1.5 text-sm text-[#2f6bff]">doubao-seedream-5.0-lite</div>
-                <p className="px-1 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-[#9299a4]">视频模型</p>
-                <div className="break-all rounded-lg bg-[#f5f7fa] px-2.5 py-1.5 text-sm text-[#555d68]">{selectedVideoModel}</div>
-                <p className="px-1 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-[#9299a4]">画面比例</p>
+                <p className="px-1 pb-1 text-[11px] font-semibold uppercase tracking-wider text-[#9299a4]">画面比例</p>
                 <div className="flex gap-1.5">
                   {["16:9", "9:16", "1:1", "4:3", "3:4"].map(r => (
                     <button key={r} type="button" onClick={() => setSelectedRatio(r)} className={`rounded-md border px-2 py-1 text-xs transition-colors ${selectedRatio === r ? "border-[#9bb8ff] bg-[#edf3ff] text-[#2f6bff]" : "border-[#e1e5eb] text-[#626a76] hover:bg-[#f5f7fa]"}`}>{r}</button>

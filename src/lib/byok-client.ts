@@ -20,8 +20,28 @@ interface ProviderErrorPayload {
 const BYOK_STORAGE_KEY = 'dreambox-api-connection';
 const PLANNING_SESSION_STORAGE_KEY = 'dreambox-planning-connection';
 const HAPPYHORSE_SESSION_STORAGE_KEY = 'dreambox-happyhorse-connection';
-export const DEFAULT_PLANNING_MODEL = 'Kimi-K3';
-export const DEFAULT_IMAGE_MODEL = 'Qwen-Image-2.0';
+export const DEFAULT_PLANNING_MODEL = 'qwen3.7-plus';
+export const DEFAULT_IMAGE_MODEL = 'wan2.7-image';
+export const DEFAULT_VIDEO_MODEL = 'happyhorse-1.1-r2v';
+
+export interface BailianApiBases {
+  apiHost: string;
+  planningApiBase: string;
+  videoApiBase: string;
+}
+
+export function resolveBailianApiBases(value: string): BailianApiBases {
+  const parsed = new URL(value.trim());
+  if (parsed.protocol !== 'https:') throw new Error('百炼 API Host 必须使用 HTTPS。');
+  const suffixPattern = /\/(?:compatible-mode\/v1|api\/v1)\/?$/;
+  const pathname = parsed.pathname.replace(suffixPattern, '').replace(/\/$/, '');
+  const apiHost = `${parsed.origin}${pathname}`;
+  return {
+    apiHost,
+    planningApiBase: `${apiHost}/compatible-mode/v1`,
+    videoApiBase: `${apiHost}/api/v1`,
+  };
+}
 
 function isStoredProvider(value: unknown): value is StoredApiProvider {
   return value === 'openai-compatible' || value === 'ark-plan' || value === 'happyhorse-dashscope';
@@ -60,7 +80,7 @@ export function saveHappyHorseSessionConnection(
     provider: 'happyhorse-dashscope',
     apiBase: config.apiBase.trim(),
     apiKey: config.apiKey.trim(),
-    videoModel: config.videoModel?.trim() || 'happyhorse-1.1-t2v',
+    videoModel: config.videoModel?.trim() || DEFAULT_VIDEO_MODEL,
   } satisfies StoredApiConnection));
 }
 
@@ -112,6 +132,43 @@ export async function validateAndSavePlanningSessionConnection(
   }
 }
 
+export async function validateAndSaveBailianSessionConnections(
+  storageScope: string,
+  config: {
+    apiHost: string;
+    apiKey: string;
+    model?: string;
+    imageModel?: string;
+    videoModel?: string;
+  },
+  requestHeaders: Record<string, string> = {},
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  let bases: BailianApiBases;
+  try {
+    bases = resolveBailianApiBases(config.apiHost);
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : '百炼 API Host 无效。' };
+  }
+  const planning = await validateAndSavePlanningSessionConnection(storageScope, {
+    apiBase: bases.planningApiBase,
+    apiKey: config.apiKey,
+    model: config.model || DEFAULT_PLANNING_MODEL,
+    imageModel: config.imageModel || DEFAULT_IMAGE_MODEL,
+  }, requestHeaders);
+  if (!planning.ok) return planning;
+  saveHappyHorseSessionConnection(storageScope, {
+    apiBase: bases.videoApiBase,
+    apiKey: config.apiKey,
+    videoModel: config.videoModel || DEFAULT_VIDEO_MODEL,
+  });
+  return { ok: true };
+}
+
+export function clearBailianSessionConnections(storageScope: string): void {
+  clearPlanningSessionConnection(storageScope);
+  clearHappyHorseSessionConnection(storageScope);
+}
+
 export function clearPlanningSessionConnection(storageScope: string): void {
   if (typeof window === 'undefined') return;
   window.sessionStorage.removeItem(scopedPlanningStorageKey(storageScope));
@@ -121,17 +178,19 @@ export function getPlanningSessionConnectionSummary(storageScope: string): {
   configured: boolean;
   apiBase: string;
   model: string;
+  imageModel: string;
 } {
-  if (typeof window === 'undefined') return { configured: false, apiBase: '', model: DEFAULT_PLANNING_MODEL };
+  if (typeof window === 'undefined') return { configured: false, apiBase: '', model: DEFAULT_PLANNING_MODEL, imageModel: DEFAULT_IMAGE_MODEL };
   try {
     const config = parseConnection(window.sessionStorage.getItem(scopedPlanningStorageKey(storageScope)));
     return {
       configured: config?.provider === 'openai-compatible',
       apiBase: config?.apiBase || '',
       model: config?.model || DEFAULT_PLANNING_MODEL,
+      imageModel: config?.imageModel || DEFAULT_IMAGE_MODEL,
     };
   } catch {
-    return { configured: false, apiBase: '', model: DEFAULT_PLANNING_MODEL };
+    return { configured: false, apiBase: '', model: DEFAULT_PLANNING_MODEL, imageModel: DEFAULT_IMAGE_MODEL };
   }
 }
 
@@ -145,18 +204,18 @@ export function getHappyHorseSessionConnectionSummary(storageScope: string): {
   apiBase: string;
   videoModel: string;
 } {
-  if (typeof window === 'undefined') return { configured: false, apiBase: '', videoModel: 'happyhorse-1.1-t2v' };
+  if (typeof window === 'undefined') return { configured: false, apiBase: '', videoModel: DEFAULT_VIDEO_MODEL };
   try {
     const raw = window.sessionStorage.getItem(scopedHappyHorseStorageKey(storageScope));
-    if (!raw) return { configured: false, apiBase: '', videoModel: 'happyhorse-1.1-t2v' };
+    if (!raw) return { configured: false, apiBase: '', videoModel: DEFAULT_VIDEO_MODEL };
     const config = JSON.parse(raw) as StoredApiConnection;
     return {
       configured: config.provider === 'happyhorse-dashscope' && Boolean(config.apiBase) && Boolean(config.apiKey),
       apiBase: config.apiBase || '',
-      videoModel: config.videoModel || 'happyhorse-1.1-t2v',
+      videoModel: config.videoModel || DEFAULT_VIDEO_MODEL,
     };
   } catch {
-    return { configured: false, apiBase: '', videoModel: 'happyhorse-1.1-t2v' };
+    return { configured: false, apiBase: '', videoModel: DEFAULT_VIDEO_MODEL };
   }
 }
 
@@ -181,7 +240,7 @@ export function getBYOKRequestHeaders(storageScope = ''): Record<string, string>
       headers['x-yh-video-provider'] = video.provider;
       headers['x-yh-video-api-base'] = video.apiBase;
       headers['x-yh-video-api-key'] = video.apiKey;
-      headers['x-yh-video-model'] = video.videoModel || 'happyhorse-1.1-t2v';
+      headers['x-yh-video-model'] = video.videoModel || DEFAULT_VIDEO_MODEL;
     }
 
     return headers;

@@ -52,6 +52,11 @@ function buildModelDirectoryUrl(apiBase: string): string {
   return base.endsWith('/models') ? base : `${base}/models`;
 }
 
+function buildChatCompletionsUrl(apiBase: string): string {
+  const base = apiBase.replace(/\/+$/, '');
+  return `${base}/chat/completions`;
+}
+
 async function validatePlanningConnection(connection: BYOKConnection | undefined): Promise<Record<string, unknown>> {
   const missing = resolveVimaxPlanningReadinessFailure(connection, undefined);
   if (missing || !connection) return { ...(missing || planningFailure('planning_provider_unavailable')), ready: false };
@@ -73,6 +78,26 @@ async function validatePlanningConnection(connection: BYOKConnection | undefined
       : [];
     if (!connection.model || !models.includes(connection.model)) {
       return { ...planningFailure('planning_model_unavailable'), ready: false };
+    }
+    const probe = await fetch(buildChatCompletionsUrl(connection.apiBase), {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${connection.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: connection.model,
+        messages: [{ role: 'user', content: '回复 OK' }],
+        temperature: 0,
+        max_tokens: 1,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!probe.ok) {
+      const failure = planningFailure(probe.status === 401 || probe.status === 403
+        ? 'planning_provider_auth_failed'
+        : 'planning_provider_failed');
+      return { ...failure, ready: false };
     }
     return { success: true, provider: 'planning', ready: true, model: connection.model };
   } catch (error) {

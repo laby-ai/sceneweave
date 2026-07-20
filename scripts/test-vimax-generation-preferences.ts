@@ -7,7 +7,7 @@ import {
 } from '../src/lib/skills/vimax-short-drama/vimax-generation-preferences';
 import { DEFAULT_PLANNING_MODEL } from '../src/lib/byok-client';
 
-assert.equal(VIMAX_PLAN_MODEL, 'Kimi-K3', 'new creation plans must default to Kimi-K3');
+assert.equal(VIMAX_PLAN_MODEL, 'qwen3.7-plus', 'new creation plans must default to Bailian Qwen 3.7 Plus');
 assert.equal(DEFAULT_PLANNING_MODEL, VIMAX_PLAN_MODEL, 'connection UI and runtime must share one planning default');
 
 const settings = resolveVimaxGenerationSettings({
@@ -18,8 +18,8 @@ const settings = resolveVimaxGenerationSettings({
 
 assert.deepEqual(settings, {
   planModel: VIMAX_PLAN_MODEL,
-  imageModel: 'doubao-seedream-5.0-lite',
-  videoModel: 'doubao-seedance-1.5-pro',
+  imageModel: 'wan2.7-image',
+  videoModel: 'happyhorse-1.1-r2v',
   ratio: '9:16',
   resolution: '1080p',
 });
@@ -51,8 +51,8 @@ assert.deepEqual(
   resolveVimaxGenerationSettings({ model: '', ratio: '2:1', quality: '未知' }),
   {
     planModel: VIMAX_PLAN_MODEL,
-    imageModel: 'doubao-seedream-5.0-lite',
-    videoModel: 'doubao-seedance-1.5-pro',
+    imageModel: 'wan2.7-image',
+    videoModel: 'happyhorse-1.1-r2v',
     ratio: '16:9',
     resolution: '720p',
   },
@@ -62,8 +62,8 @@ assert.deepEqual(
   resolveVimaxGenerationSettings({ model: 'Qwen3.6-Plus', ratio: '16:9', quality: '高清' }),
   {
     planModel: 'Qwen3.6-Plus',
-    imageModel: 'doubao-seedream-5.0-lite',
-    videoModel: 'doubao-seedance-1.5-pro',
+    imageModel: 'wan2.7-image',
+    videoModel: 'happyhorse-1.1-r2v',
     ratio: '16:9',
     resolution: '720p',
   },
