@@ -30,7 +30,6 @@ import { VimaxProjectEditorCard } from '@/components/generate/vimax-project-edit
 import { VimaxSegmentedProductionCard } from '@/components/generate/vimax-segmented-production-card';
 import { VimaxProtectedDownload, VimaxProtectedVideo } from '@/components/generate/vimax-protected-media';
 import { BailianConnectionControl } from '@/components/generate/bailian-connection-control';
-import { getBYOKRequestHeaders } from '@/lib/byok-client';
 import {
   useVimaxShortDramaSkill,
   VIMAX_REFERENCE_CONFIRM_REGEX,
@@ -112,6 +111,7 @@ function parseVimaxDurationSpec(text: string) {
 
 interface GenerateWorkspaceProps {
   initialPrompt?: string;
+  agentOnly?: boolean;
   onNavigate?: (section: string, prompt?: string, transfer?: { imageRefs?: string[] }) => void;
   requestHeaders?: Record<string, string>;
   storageScope?: string;
@@ -123,6 +123,7 @@ type SubjectItem = { id: string; name: string; type: 'character' | 'scene' | 'ob
 
 export function GenerateWorkspace({
   initialPrompt,
+  agentOnly = false,
   onNavigate,
   requestHeaders,
   storageScope,
@@ -144,7 +145,6 @@ export function GenerateWorkspace({
   const [subjectOpeningId, setSubjectOpeningId] = useState<string | null>(null);
   const [selectedRatio, setSelectedRatio] = useState('16:9');
   const [selectedQuality, setSelectedQuality] = useState('高清');
-  const [byokHeaders, setByokHeaders] = useState<Record<string, string>>({});
   const skillScope = storageScope || '';
   const [skillSelection, setSkillSelection] = useState(() => {
     const preset = typeof window === 'undefined' ? resolveVimaxSkillPreset() : loadVimaxSkillPreset(localStorage, skillScope);
@@ -159,7 +159,6 @@ export function GenerateWorkspace({
   useEffect(() => {
     setSkillSelection({ scope: skillScope, id: loadVimaxSkillPreset(localStorage, skillScope).id });
     setSkillSearch('');
-    setByokHeaders(getBYOKRequestHeaders(storageScope));
   }, [skillScope, storageScope]);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -170,10 +169,7 @@ export function GenerateWorkspace({
   const activeTitle = activeProject?.title
     || messages.find(message => message.role === 'user')?.content.slice(0, 30)
     || '未命名创作';
-  const effectiveRequestHeaders = useMemo(() => ({
-    ...(requestHeaders || {}),
-    ...byokHeaders,
-  }), [byokHeaders, requestHeaders]);
+  const effectiveRequestHeaders = useMemo(() => ({ ...(requestHeaders || {}) }), [requestHeaders]);
 
   const setScopedWorkspaceView = useCallback((view: VimaxWorkspaceView) => {
     setWorkspaceView(view);
@@ -519,11 +515,7 @@ export function GenerateWorkspace({
   }, [handleSend, messages, restoreSkillPreset]);
 
   const modelSettings = (
-    <BailianConnectionControl
-      storageScope={storageScope}
-      requestHeaders={requestHeaders}
-      onConnectionChange={() => setByokHeaders(getBYOKRequestHeaders(storageScope))}
-    />
+    <BailianConnectionControl />
   );
 
   return (
@@ -614,16 +606,22 @@ export function GenerateWorkspace({
         </div>
         <div className="mt-2 flex items-center gap-2">
           <div className="relative">
-            <button
-              type="button"
-              onClick={() => { setSkillMenuOpen(false); setMediaModelMenuOpen(false); setAtMenuOpen(false); setModeMenuOpen(open => !open); }}
-              className="flex items-center gap-1.5 rounded-lg bg-[#edf3ff] px-2.5 py-1.5 text-xs font-medium text-[#2f6bff] ring-1 ring-[#c9d8ff] transition hover:bg-[#e3edff]"
-            >
-              {activeMode.icon}
-              {activeMode.label}
-              <ChevronDown className="h-3.5 w-3.5" />
-            </button>
-            {modeMenuOpen && (
+            {agentOnly ? (
+              <span className="flex items-center gap-1.5 rounded-lg bg-[#edf3ff] px-2.5 py-1.5 text-xs font-medium text-[#2f6bff] ring-1 ring-[#c9d8ff]">
+                <Sparkles className="h-4 w-4" /> Agent 模式
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => { setSkillMenuOpen(false); setMediaModelMenuOpen(false); setAtMenuOpen(false); setModeMenuOpen(open => !open); }}
+                className="flex items-center gap-1.5 rounded-lg bg-[#edf3ff] px-2.5 py-1.5 text-xs font-medium text-[#2f6bff] ring-1 ring-[#c9d8ff] transition hover:bg-[#e3edff]"
+              >
+                {activeMode.icon}
+                {activeMode.label}
+                <ChevronDown className="h-3.5 w-3.5" />
+              </button>
+            )}
+            {!agentOnly && modeMenuOpen && (
               <div className="absolute left-0 top-full z-20 mt-2 w-44 overflow-hidden rounded-xl border border-[#e1e5eb] bg-white p-1 text-[#252931] shadow-[0_18px_38px_rgba(31,41,55,0.14)]">
                 <p className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#9299a4]">创作类型</p>
                 {CREATION_MODES.map(item => (

@@ -20,9 +20,10 @@ import {
 import {
   chatWithBYOK,
   extractBYOKConnection,
-  extractBYOKVideoConnection,
+  resolveBYOKConnectionsForRequest,
   type BYOKConnection,
 } from '@/lib/byok-provider';
+import { MemberBailianProfileRequiredError } from '@/lib/account/member-bailian-profile';
 import { isHappyHorseR2VModel } from '@/lib/happyhorse-r2v-adapter';
 import { applyVimaxShotGenerationRoutes } from '@/lib/skills/vimax-short-drama/vimax-shot-generation-route';
 import { buildVimaxPlanMessages } from '@/lib/skills/vimax-short-drama/vimax-plan-prompt';
@@ -627,7 +628,9 @@ export async function POST(request: NextRequest) {
     const body = (await request.json().catch(() => ({}))) as VimaxAgentStepBody;
     const phase = body.phase || 'plan';
     const hasExplicitConnection = ['x-yh-provider', 'x-yh-api-base', 'x-yh-api-key', 'x-yh-model'].every(name => request.headers.get(name)?.trim());
-    const planningConnection = phase === 'planning_connection_validate' && !hasExplicitConnection ? undefined : extractBYOKConnection(request.headers);
+    const requestConnections = phase === 'planning_connection_validate'
+      ? { planning: hasExplicitConnection ? extractBYOKConnection(request.headers) : undefined, video: undefined } : await resolveBYOKConnectionsForRequest(request);
+    const planningConnection = requestConnections.planning;
     const connectionResponse = await resolveVimaxPlanningConnectionPhase(phase, planningConnection, getArkConfig().apiKey);
     if (connectionResponse) return NextResponse.json(connectionResponse.payload, { status: connectionResponse.status });
 
@@ -641,8 +644,8 @@ export async function POST(request: NextRequest) {
         style: preset.style,
       };
       const wantStream = body.stream === true;
-      const planConnection = extractBYOKConnection(request.headers);
-      const videoConnection = extractBYOKVideoConnection(request.headers);
+      const planConnection = requestConnections.planning;
+      const videoConnection = requestConnections.video;
       const readinessFailure = resolveVimaxPlanningReadinessFailure(planConnection, getArkConfig().apiKey);
       if (readinessFailure) {
         return NextResponse.json({ ...readinessFailure, phase: 'plan' }, { status: 503 });
@@ -701,7 +704,7 @@ export async function POST(request: NextRequest) {
     if (phase === 'reference_assets') {
       const canonical = resolveCanonicalVimaxStageInput({ taskId: body.taskId || '', owner });
       const config = getArkConfig();
-      const planConnection = extractBYOKConnection(request.headers);
+      const planConnection = requestConnections.planning;
       const productionPlan = assertVimaxProductionPlanForPhase(canonical.productionPlan, 'reference_assets', {
         plan: planConnection?.model || config.textModel,
         referenceAssets: planConnection?.imageModel || config.imageModel,
@@ -757,8 +760,8 @@ export async function POST(request: NextRequest) {
         );
       }
       const config = getArkConfig();
-      const planConnection = extractBYOKConnection(request.headers);
-      const videoConnection = extractBYOKVideoConnection(request.headers);
+      const planConnection = requestConnections.planning;
+      const videoConnection = requestConnections.video;
       let canonicalTaskId = body.taskId || '';
       let recoveryCreatedAfter = resolveVimaxRecoveryCreatedAfter(body.recoverCreatedAfter);
       if (body.recover === true && !getTaskForOwner(canonicalTaskId, owner)) {
@@ -849,6 +852,12 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   } catch (error) {
+    if (error instanceof MemberBailianProfileRequiredError) {
+      return NextResponse.json(
+        { success: false, error: error.message, code: error.code, provider: 'aliyun-bailian' },
+        { status: error.status, headers: { 'Cache-Control': 'no-store' } },
+      );
+    }
     return NextResponse.json(
       {
         success: false,

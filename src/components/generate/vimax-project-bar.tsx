@@ -27,9 +27,9 @@ export function VimaxProjectBar({ title, onBack, onNewProject, onRenameProject, 
   };
 
   return (
-    <header className="sticky top-0 z-20 border-b border-[#e8ebf0] bg-white/90 px-6 py-3.5 text-[#181a20] backdrop-blur-xl">
-      <div className="mx-auto flex w-full max-w-[1040px] items-center justify-between gap-4">
-        <div className="flex min-w-0 items-center gap-3">
+    <header className="sticky top-0 z-20 border-b border-[#e8ebf0] bg-white/90 px-3 py-3.5 text-[#181a20] backdrop-blur-xl sm:px-6">
+      <div className="mx-auto flex w-full max-w-[1040px] items-center justify-between gap-2 sm:gap-4">
+        <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
           <button
             type="button"
             onClick={onBack}
@@ -38,7 +38,7 @@ export function VimaxProjectBar({ title, onBack, onNewProject, onRenameProject, 
           >
             <ArrowLeft className="h-4 w-4" />
           </button>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             {editing ? (
               <div className="flex items-center gap-1.5">
                 <input
@@ -73,7 +73,7 @@ export function VimaxProjectBar({ title, onBack, onNewProject, onRenameProject, 
                 </button>
               </div>
             )}
-            <div className="mt-0.5 text-xs text-[#9298a3]">对话式创作</div>
+            <div className="mt-0.5 hidden text-xs text-[#9298a3] sm:block">对话式创作</div>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -81,10 +81,12 @@ export function VimaxProjectBar({ title, onBack, onNewProject, onRenameProject, 
           <button
             type="button"
             onClick={onNewProject}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-[#e1e5eb] bg-white px-3.5 py-2 text-sm font-medium text-[#303640] transition hover:border-[#cbd5e4] hover:bg-[#f8faff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f6bff]/30"
+            aria-label="新建项目"
+            title="新建项目"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-[#e1e5eb] bg-white text-sm font-medium text-[#303640] transition hover:border-[#cbd5e4] hover:bg-[#f8faff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f6bff]/30 sm:w-auto sm:px-3.5"
           >
             <Plus className="h-4 w-4" />
-            新建项目
+            <span className="hidden sm:inline">新建项目</span>
           </button>
         </div>
       </div>

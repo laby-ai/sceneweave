@@ -1,5 +1,5 @@
 export const VIMAX_PLAN_MODEL = 'qwen3.7-plus';
-export const VIMAX_IMAGE_MODEL = 'wan2.7-image';
+export const VIMAX_IMAGE_MODEL = 'wan2.7-image-pro';
 export const VIMAX_VIDEO_MODEL = 'happyhorse-1.1-i2v';
 
 const SUPPORTED_RATIOS = new Set(['16:9', '9:16', '1:1', '4:3', '3:4']);

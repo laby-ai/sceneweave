@@ -109,7 +109,7 @@ src/components/generate/generate-workspace.tsx
 - API Key 只保存到当前 guest workspace 的 `sessionStorage`；
 - Key 不进入 prompt、项目状态、服务端持久化、日志、截图、文档或 Git；
 - 文本/视觉规划固定 `qwen3.7-plus`；
-- 图像固定 `wan2.7-image`；
+- 图像固定 `wan2.7-image-pro`；
 - 视频默认固定 `happyhorse-1.1-i2v`；
 - 不允许静默降级到其他模型；
 - 连接验证失败不会覆盖之前的有效连接；
@@ -196,7 +196,7 @@ src/lib/skills/vimax-short-drama/vimax-generation-preferences.ts
 
 1. 第一个镜头以主体、场景、道具、shot reference 和 production plan continuity 生成 canonical 首帧；
 2. 后续镜头再加入上一镜最后成功尾帧；
-3. canonical 首帧使用既有 `imageWithBYOK` 和 `wan2.7-image` 生成；
+3. canonical 首帧使用既有 `imageWithBYOK` 和 `wan2.7-image-pro` 生成；
 4. 首帧状态保存 version、status、artifactVersion、image URL、来源尾帧、来源参考图、模型、完成时间或错误；
 5. 缺上一镜尾帧、缺批准参考图、artifact version 过期或来源变化时，视频提交前阻断；
 6. 所有自动镜头 route 为 `first-frame`，模型为 `happyhorse-1.1-i2v`；

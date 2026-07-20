@@ -1,12 +1,5 @@
-'use client';
-
-import { Suspense } from 'react';
-import { DreamboxHome } from './DreamboxHome';
+import { redirect } from 'next/navigation';
 
 export default function Home() {
-  return (
-    <Suspense fallback={<div className="min-h-screen bg-card" />}>
-      <DreamboxHome />
-    </Suspense>
-  );
+  redirect('/embed/creation-agent');
 }

@@ -23,6 +23,10 @@ import {
   buildHappyHorseI2VSubmitRequest,
   isHappyHorseI2VModel,
 } from '@/lib/happyhorse-i2v-adapter';
+import {
+  buildMemberBailianConnections,
+  resolveMemberBailianProfile,
+} from '@/lib/account/member-bailian-profile';
 
 export type BYOKProviderType = 'openai-compatible' | 'ark-plan' | 'happyhorse-dashscope';
 
@@ -135,7 +139,7 @@ function payloadError(payload: unknown, status: number): string {
     : `HTTP ${status}`;
 }
 
-export function extractBYOKConnection(headers: Headers): BYOKConnection | undefined {
+function extractExplicitBYOKConnection(headers: Headers): BYOKConnection | undefined {
   const provider = headers.get('x-yh-provider')?.trim();
   const apiBase = headers.get('x-yh-api-base')?.trim();
   const apiKey = headers.get('x-yh-api-key')?.trim();
@@ -150,6 +154,10 @@ export function extractBYOKConnection(headers: Headers): BYOKConnection | undefi
     return { provider, apiBase: normalizeBYOKApiBase(apiBase), apiKey, model, imageModel, videoModel };
   }
 
+  return undefined;
+}
+
+function extractEnvironmentBYOKConnection(): BYOKConnection | undefined {
   const scnetKey = (process.env.SCNET_API_KEY || '').trim();
   const scnetEnabled = (process.env.SCNET_VIDEO_ENABLED || '').trim().toLowerCase() === 'true';
   if (scnetEnabled && scnetKey) {
@@ -180,7 +188,11 @@ export function extractBYOKConnection(headers: Headers): BYOKConnection | undefi
   return undefined;
 }
 
-export function extractBYOKVideoConnection(headers: Headers): BYOKConnection | undefined {
+export function extractBYOKConnection(headers: Headers): BYOKConnection | undefined {
+  return extractExplicitBYOKConnection(headers) || extractEnvironmentBYOKConnection();
+}
+
+function extractExplicitBYOKVideoConnection(headers: Headers): BYOKConnection | undefined {
   const provider = headers.get('x-yh-video-provider')?.trim();
   const apiBase = headers.get('x-yh-video-api-base')?.trim();
   const apiKey = headers.get('x-yh-video-api-key')?.trim();
@@ -191,7 +203,31 @@ export function extractBYOKVideoConnection(headers: Headers): BYOKConnection | u
   ) {
     return { provider, apiBase: normalizeBYOKApiBase(apiBase), apiKey, videoModel };
   }
-  return extractBYOKConnection(headers);
+  return undefined;
+}
+
+export function extractBYOKVideoConnection(headers: Headers): BYOKConnection | undefined {
+  return extractExplicitBYOKVideoConnection(headers) || extractBYOKConnection(headers);
+}
+
+export async function resolveBYOKConnectionsForRequest(request: Request): Promise<{
+  planning?: BYOKConnection;
+  video?: BYOKConnection;
+}> {
+  const explicitPlanning = extractExplicitBYOKConnection(request.headers);
+  const explicitVideo = extractExplicitBYOKVideoConnection(request.headers);
+  if (explicitPlanning || explicitVideo) {
+    return {
+      planning: explicitPlanning || extractEnvironmentBYOKConnection(),
+      video: explicitVideo || explicitPlanning || extractEnvironmentBYOKConnection(),
+    };
+  }
+
+  const profile = await resolveMemberBailianProfile(request);
+  if (profile) return buildMemberBailianConnections(profile);
+
+  const fallback = extractEnvironmentBYOKConnection();
+  return { planning: fallback, video: fallback };
 }
 
 export async function chatWithBYOK(
