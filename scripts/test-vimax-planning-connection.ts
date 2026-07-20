@@ -5,7 +5,10 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import {
+  BAILIAN_WORKSPACE_API_HOST,
   clearPlanningSessionConnection,
+  DEFAULT_PLANNING_MODEL,
+  DEFAULT_VIDEO_MODEL,
   formatProviderError,
   getBYOKRequestHeaders,
   getPlanningSessionConnectionSummary,
@@ -71,10 +74,12 @@ assert.deepEqual(getPlanningSessionConnectionSummary(scope), {
 
 const headers = getBYOKRequestHeaders(scope);
 assert.equal(headers['x-yh-provider'], 'openai-compatible');
-assert.equal(headers['x-yh-model'], 'Kimi-K3');
+assert.equal(headers['x-yh-api-base'], `${BAILIAN_WORKSPACE_API_HOST}/compatible-mode/v1`);
+assert.equal(headers['x-yh-model'], DEFAULT_PLANNING_MODEL);
 assert.equal(headers['x-yh-image-model'], 'wan2.7-image');
 assert.equal(headers['x-yh-video-provider'], 'happyhorse-dashscope');
-assert.equal(headers['x-yh-video-model'], 'happyhorse-1.1-t2v');
+assert.equal(headers['x-yh-video-api-base'], `${BAILIAN_WORKSPACE_API_HOST}/api/v1`);
+assert.equal(headers['x-yh-video-model'], DEFAULT_VIDEO_MODEL);
 assert.equal(JSON.stringify(headers).includes('planning-secret'), true);
 assert.equal(JSON.stringify(headers).includes('video-secret'), true);
 
@@ -83,7 +88,8 @@ const fallbackHeaders = getBYOKRequestHeaders(scope);
 assert.equal(fallbackHeaders['x-yh-provider'], undefined, 'video credentials must never become the planning connection');
 assert.equal(fallbackHeaders['x-yh-api-key'], undefined, 'video credentials must not be sent in planning headers');
 assert.equal(fallbackHeaders['x-yh-video-provider'], 'happyhorse-dashscope');
-assert.equal(fallbackHeaders['x-yh-video-model'], 'happyhorse-1.1-t2v');
+assert.equal(fallbackHeaders['x-yh-video-api-base'], `${BAILIAN_WORKSPACE_API_HOST}/api/v1`);
+assert.equal(fallbackHeaders['x-yh-video-model'], DEFAULT_VIDEO_MODEL);
 assert.equal(
   formatProviderError({
     provider: 'planning',

@@ -23,6 +23,7 @@ const HAPPYHORSE_SESSION_STORAGE_KEY = 'dreambox-happyhorse-connection';
 export const DEFAULT_PLANNING_MODEL = 'qwen3.7-plus';
 export const DEFAULT_IMAGE_MODEL = 'wan2.7-image';
 export const DEFAULT_VIDEO_MODEL = 'happyhorse-1.1-r2v';
+export const BAILIAN_WORKSPACE_API_HOST = 'https://ws-k96mveli79hlkvto.cn-beijing.maas.aliyuncs.com';
 
 export interface BailianApiBases {
   apiHost: string;
@@ -135,7 +136,6 @@ export async function validateAndSavePlanningSessionConnection(
 export async function validateAndSaveBailianSessionConnections(
   storageScope: string,
   config: {
-    apiHost: string;
     apiKey: string;
     model?: string;
     imageModel?: string;
@@ -143,12 +143,7 @@ export async function validateAndSaveBailianSessionConnections(
   },
   requestHeaders: Record<string, string> = {},
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  let bases: BailianApiBases;
-  try {
-    bases = resolveBailianApiBases(config.apiHost);
-  } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : '百炼 API Host 无效。' };
-  }
+  const bases = resolveBailianApiBases(BAILIAN_WORKSPACE_API_HOST);
   const planning = await validateAndSavePlanningSessionConnection(storageScope, {
     apiBase: bases.planningApiBase,
     apiKey: config.apiKey,
@@ -227,20 +222,21 @@ export function getBYOKRequestHeaders(storageScope = ''): Record<string, string>
     const video = loadHappyHorseConnection(storageScope);
     const headers: Record<string, string> = {};
 
-    if (primary?.provider && primary.apiBase && primary.apiKey) {
-      headers['x-yh-provider'] = primary.provider;
-      headers['x-yh-api-base'] = primary.apiBase;
+    const bailianBases = resolveBailianApiBases(BAILIAN_WORKSPACE_API_HOST);
+
+    if (primary?.provider && primary.apiKey) {
+      headers['x-yh-provider'] = 'openai-compatible';
+      headers['x-yh-api-base'] = bailianBases.planningApiBase;
       headers['x-yh-api-key'] = primary.apiKey;
-      if (primary.model) headers['x-yh-model'] = primary.model;
-      if (primary.imageModel) headers['x-yh-image-model'] = primary.imageModel;
-      if (primary.videoModel) headers['x-yh-video-model'] = primary.videoModel;
+      headers['x-yh-model'] = DEFAULT_PLANNING_MODEL;
+      headers['x-yh-image-model'] = DEFAULT_IMAGE_MODEL;
     }
 
-    if (video?.provider === 'happyhorse-dashscope' && video.apiBase && video.apiKey) {
+    if (video?.provider === 'happyhorse-dashscope' && video.apiKey) {
       headers['x-yh-video-provider'] = video.provider;
-      headers['x-yh-video-api-base'] = video.apiBase;
+      headers['x-yh-video-api-base'] = bailianBases.videoApiBase;
       headers['x-yh-video-api-key'] = video.apiKey;
-      headers['x-yh-video-model'] = video.videoModel || DEFAULT_VIDEO_MODEL;
+      headers['x-yh-video-model'] = DEFAULT_VIDEO_MODEL;
     }
 
     return headers;

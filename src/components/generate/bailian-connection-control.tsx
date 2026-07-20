@@ -10,7 +10,6 @@ import {
   DEFAULT_VIDEO_MODEL,
   getHappyHorseSessionConnectionSummary,
   getPlanningSessionConnectionSummary,
-  resolveBailianApiBases,
   validateAndSaveBailianSessionConnections,
 } from '@/lib/byok-client';
 
@@ -27,7 +26,6 @@ export function BailianConnectionControl({
 }: BailianConnectionControlProps) {
   const [open, setOpen] = useState(false);
   const [configured, setConfigured] = useState(false);
-  const [apiHost, setApiHost] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [error, setError] = useState('');
   const [validating, setValidating] = useState(false);
@@ -36,29 +34,18 @@ export function BailianConnectionControl({
     const planning = getPlanningSessionConnectionSummary(storageScope);
     const video = getHappyHorseSessionConnectionSummary(storageScope);
     setConfigured(planning.configured && video.configured);
-    const configuredBase = planning.apiBase || video.apiBase;
-    if (configuredBase) {
-      try {
-        setApiHost(resolveBailianApiBases(configuredBase).apiHost);
-      } catch {
-        setApiHost('');
-      }
-    } else {
-      setApiHost('');
-    }
     setApiKey('');
     setError('');
   }, [storageScope]);
 
   const save = async () => {
-    if (!apiHost.trim() || !apiKey.trim()) {
-      setError('请填写百炼 API Host 和 API Key。');
+    if (!apiKey.trim()) {
+      setError('请填写百炼 API Key。');
       return;
     }
     setValidating(true);
     setError('');
     const result = await validateAndSaveBailianSessionConnections(storageScope, {
-      apiHost,
       apiKey,
     }, requestHeaders);
     setValidating(false);
@@ -75,7 +62,6 @@ export function BailianConnectionControl({
   const clear = () => {
     clearBailianSessionConnections(storageScope);
     setConfigured(false);
-    setApiHost('');
     setApiKey('');
     setError('');
     setOpen(false);
@@ -102,7 +88,7 @@ export function BailianConnectionControl({
           <div className="mb-3 flex items-start justify-between gap-3">
             <div>
               <p className="text-sm font-semibold">百炼模型设置</p>
-              <p className="mt-1 text-xs leading-5 text-[#7a828e]">一个工作空间连接统一用于规划、参考图与视频，仅保存在当前访客会话。</p>
+              <p className="mt-1 text-xs leading-5 text-[#7a828e]">百炼工作空间已由平台统一配置，只需填写 API Key；密钥仅保存在当前访客会话。</p>
             </div>
             <button type="button" onClick={() => setOpen(false)} className="rounded-md p-1 text-[#8a929e] hover:bg-[#f4f6f8]" aria-label="关闭模型设置">
               <X className="h-4 w-4" />
@@ -110,10 +96,6 @@ export function BailianConnectionControl({
           </div>
 
           <label className="block text-xs font-medium text-[#626a76]">
-            API Host
-            <input value={apiHost} onChange={event => setApiHost(event.target.value)} placeholder="https://你的工作空间域名" autoComplete="off" className="mt-1.5 w-full rounded-lg border border-[#dfe4eb] bg-[#f9fafb] px-3 py-2 text-xs outline-none focus:border-[#9bb8ff] focus:bg-white" />
-          </label>
-          <label className="mt-3 block text-xs font-medium text-[#626a76]">
             API Key
             <input type="password" value={apiKey} onChange={event => setApiKey(event.target.value)} placeholder={configured ? '重新填写后可更新连接' : '输入百炼工作空间 API Key'} autoComplete="new-password" className="mt-1.5 w-full rounded-lg border border-[#dfe4eb] bg-[#f9fafb] px-3 py-2 text-xs outline-none focus:border-[#9bb8ff] focus:bg-white" />
           </label>

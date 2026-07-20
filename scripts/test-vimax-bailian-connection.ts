@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
+  BAILIAN_WORKSPACE_API_HOST,
   DEFAULT_IMAGE_MODEL,
   DEFAULT_PLANNING_MODEL,
   DEFAULT_VIDEO_MODEL,
@@ -23,10 +25,11 @@ class MemoryStorage implements Storage {
 assert.equal(DEFAULT_PLANNING_MODEL, 'qwen3.7-plus');
 assert.equal(DEFAULT_IMAGE_MODEL, 'wan2.7-image');
 assert.equal(DEFAULT_VIDEO_MODEL, 'happyhorse-1.1-r2v');
-assert.deepEqual(resolveBailianApiBases('https://workspace.example.com'), {
-  apiHost: 'https://workspace.example.com',
-  planningApiBase: 'https://workspace.example.com/compatible-mode/v1',
-  videoApiBase: 'https://workspace.example.com/api/v1',
+assert.equal(BAILIAN_WORKSPACE_API_HOST, 'https://ws-k96mveli79hlkvto.cn-beijing.maas.aliyuncs.com');
+assert.deepEqual(resolveBailianApiBases(BAILIAN_WORKSPACE_API_HOST), {
+  apiHost: BAILIAN_WORKSPACE_API_HOST,
+  planningApiBase: `${BAILIAN_WORKSPACE_API_HOST}/compatible-mode/v1`,
+  videoApiBase: `${BAILIAN_WORKSPACE_API_HOST}/api/v1`,
 });
 assert.deepEqual(resolveBailianApiBases('https://workspace.example.com/api/v1'), {
   apiHost: 'https://workspace.example.com',
@@ -49,7 +52,7 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   validationCalls += 1;
   assert.match(String(input), /api\/smart\/vimax-agent-step$/);
   const headers = new Headers(init?.headers);
-  assert.equal(headers.get('x-yh-api-base'), 'https://workspace.example.com/compatible-mode/v1');
+  assert.equal(headers.get('x-yh-api-base'), `${BAILIAN_WORKSPACE_API_HOST}/compatible-mode/v1`);
   assert.equal(headers.get('x-yh-model'), DEFAULT_PLANNING_MODEL);
   assert.equal(headers.get('x-yh-image-model'), DEFAULT_IMAGE_MODEL);
   return Response.json({ ready: true });
@@ -58,24 +61,43 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
 async function main() {
 try {
   const result = await validateAndSaveBailianSessionConnections('guest-bailian', {
-    apiHost: 'https://workspace.example.com/api/v1',
     apiKey: 'fixture-key',
   });
   assert.deepEqual(result, { ok: true });
   assert.equal(validationCalls, 1);
   const headers = getBYOKRequestHeaders('guest-bailian');
   assert.equal(headers['x-yh-provider'], 'openai-compatible');
-  assert.equal(headers['x-yh-api-base'], 'https://workspace.example.com/compatible-mode/v1');
+  assert.equal(headers['x-yh-api-base'], `${BAILIAN_WORKSPACE_API_HOST}/compatible-mode/v1`);
   assert.equal(headers['x-yh-model'], DEFAULT_PLANNING_MODEL);
   assert.equal(headers['x-yh-image-model'], DEFAULT_IMAGE_MODEL);
   assert.equal(headers['x-yh-video-provider'], 'happyhorse-dashscope');
-  assert.equal(headers['x-yh-video-api-base'], 'https://workspace.example.com/api/v1');
+  assert.equal(headers['x-yh-video-api-base'], `${BAILIAN_WORKSPACE_API_HOST}/api/v1`);
   assert.equal(headers['x-yh-video-model'], DEFAULT_VIDEO_MODEL);
+
+  window.sessionStorage.setItem('dreambox-planning-connection:guest-bailian', JSON.stringify({
+    provider: 'openai-compatible',
+    apiBase: 'https://untrusted.example.com/compatible-mode/v1',
+    apiKey: 'fixture-key',
+    model: 'untrusted-model',
+    imageModel: 'untrusted-image-model',
+  }));
+  window.sessionStorage.setItem('dreambox-happyhorse-connection:guest-bailian', JSON.stringify({
+    provider: 'happyhorse-dashscope',
+    apiBase: 'https://untrusted.example.com/api/v1',
+    apiKey: 'fixture-key',
+    videoModel: 'untrusted-video-model',
+  }));
+  const hardenedHeaders = getBYOKRequestHeaders('guest-bailian');
+  assert.equal(hardenedHeaders['x-yh-api-base'], `${BAILIAN_WORKSPACE_API_HOST}/compatible-mode/v1`);
+  assert.equal(hardenedHeaders['x-yh-model'], DEFAULT_PLANNING_MODEL);
+  assert.equal(hardenedHeaders['x-yh-image-model'], DEFAULT_IMAGE_MODEL);
+  assert.equal(hardenedHeaders['x-yh-video-api-base'], `${BAILIAN_WORKSPACE_API_HOST}/api/v1`);
+  assert.equal(hardenedHeaders['x-yh-video-model'], DEFAULT_VIDEO_MODEL);
 
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     assert.equal(
       String(input),
-      'https://workspace.example.com/api/v1/services/aigc/multimodal-generation/generation',
+      `${BAILIAN_WORKSPACE_API_HOST}/api/v1/services/aigc/multimodal-generation/generation`,
     );
     const body = JSON.parse(String(init?.body || '{}')) as {
       model?: string;
@@ -109,6 +131,11 @@ try {
     model: DEFAULT_IMAGE_MODEL,
     provider: 'byok',
   });
+
+  const connectionUi = readFileSync(new URL('../src/components/generate/bailian-connection-control.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(connectionUi, />\s*API Host\s*</);
+  assert.doesNotMatch(connectionUi, /setApiHost|apiHost,/);
+  assert.match(connectionUi, />\s*API Key\s*</);
 } finally {
   globalThis.fetch = originalFetch;
 }
