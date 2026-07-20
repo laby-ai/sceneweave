@@ -299,6 +299,14 @@ async function main() {
         shotId: 'shot-2',
         duration: 6,
         prompt: '第二段：承接上一段尾帧，旧桥警报升级。',
+        generationRoute: {
+          mode: 'first-frame',
+          requestedBy: 'planner',
+          reason: '延续上一镜动作与空间方向。',
+          model: 'happyhorse-1.1-i2v',
+          requiresPreviousLastFrame: true,
+          referenceRoles: [],
+        },
         status: 'queued',
         dependencies: { characterAssetIds: [], sceneAssetIds: [], propAssetIds: [] },
         expectedInputs: {
@@ -331,6 +339,14 @@ async function main() {
         shotId: 'shot-3',
         duration: 6,
         prompt: '第三段：承接第二段尾帧，车厢孩子成为可见救援目标。',
+        generationRoute: {
+          mode: 'first-frame',
+          requestedBy: 'planner',
+          reason: '延续上一镜动作与空间方向。',
+          model: 'happyhorse-1.1-i2v',
+          requiresPreviousLastFrame: true,
+          referenceRoles: [],
+        },
         status: 'queued',
         dependencies: { characterAssetIds: [], sceneAssetIds: [], propAssetIds: [] },
         expectedInputs: {
