@@ -5,6 +5,10 @@ import {
   resolveVimaxGenerationSettings,
   VIMAX_PLAN_MODEL,
 } from '../src/lib/skills/vimax-short-drama/vimax-generation-preferences';
+import { DEFAULT_PLANNING_MODEL } from '../src/lib/byok-client';
+
+assert.equal(VIMAX_PLAN_MODEL, 'Kimi-K3', 'new creation plans must default to Kimi-K3');
+assert.equal(DEFAULT_PLANNING_MODEL, VIMAX_PLAN_MODEL, 'connection UI and runtime must share one planning default');
 
 const settings = resolveVimaxGenerationSettings({
   model: VIMAX_PLAN_MODEL,
@@ -54,8 +58,20 @@ assert.deepEqual(
   },
 );
 
+assert.deepEqual(
+  resolveVimaxGenerationSettings({ model: 'Qwen3.6-Plus', ratio: '16:9', quality: '高清' }),
+  {
+    planModel: 'Qwen3.6-Plus',
+    imageModel: 'doubao-seedream-5.0-lite',
+    videoModel: 'doubao-seedance-1.5-pro',
+    ratio: '16:9',
+    resolution: '720p',
+  },
+  'an explicit model locked by an existing project must not be migrated',
+);
+
 console.log(JSON.stringify({
   ok: true,
   script: 'test-vimax-generation-preferences',
-  checks: 3,
+  checks: 7,
 }));

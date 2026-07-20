@@ -18,7 +18,7 @@ interface ProviderErrorPayload {
 const BYOK_STORAGE_KEY = 'dreambox-api-connection';
 const PLANNING_SESSION_STORAGE_KEY = 'dreambox-planning-connection';
 const HAPPYHORSE_SESSION_STORAGE_KEY = 'dreambox-happyhorse-connection';
-export const DEFAULT_PLANNING_MODEL = 'Qwen3.6-Plus';
+export const DEFAULT_PLANNING_MODEL = 'Kimi-K3';
 
 function isStoredProvider(value: unknown): value is StoredApiProvider {
   return value === 'openai-compatible' || value === 'ark-plan' || value === 'happyhorse-dashscope';

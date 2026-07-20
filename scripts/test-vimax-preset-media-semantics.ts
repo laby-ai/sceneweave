@@ -19,6 +19,7 @@ process.env.ARK_IMAGE_API_KEY = 'fixture-image-key';
 
 const imagePrompts: string[] = [];
 const videoPrompts: string[] = [];
+const selectorModels: string[] = [];
 let unexpectedNetworkCalls = 0;
 const originalFetch = globalThis.fetch;
 
@@ -30,6 +31,13 @@ globalThis.fetch = async (input, init) => {
     return new Response(JSON.stringify({ data: [{ url: 'https://fixture.invalid/reference.png' }] }), {
       status: 200,
       headers: { 'content-type': 'application/json' },
+    });
+  }
+  if (url.endsWith('/chat/completions')) {
+    const body = JSON.parse(String(init?.body || '{}')) as { model?: string };
+    selectorModels.push(body.model || '');
+    return Response.json({
+      choices: [{ message: { content: '{"best_image_index":1,"reason":"主体与服饰连续性最佳"}' } }],
     });
   }
   if (url.endsWith('/contents/generations/tasks') && init?.method === 'POST') {
@@ -96,6 +104,10 @@ async function main() {
     'content-type': 'application/json',
     'x-paper-host-embed': 'creation-agent',
     'x-paper-host-guest-workspace': 'guest-creation-preset-media-semantics',
+    'x-yh-provider': 'openai-compatible',
+    'x-yh-api-base': 'https://planning.example.com/v1',
+    'x-yh-api-key': 'fixture-planning-key',
+    'x-yh-model': 'Kimi-K3',
   };
   const plan = {
     title: '银色耳机商品片',
@@ -143,13 +155,15 @@ async function main() {
       productionPlan: commercePlan,
     }),
   }));
-  assert.equal(referenceResponse.status, 200);
+  const referencePayload = await referenceResponse.clone().json().catch(() => null);
+  assert.equal(referenceResponse.status, 200, JSON.stringify(referencePayload));
   assert.ok(imagePrompts.length > 0, 'reference stage must invoke the existing image route fixture');
   const commerceShotPrompt = imagePrompts.find((prompt) => prompt.includes('创作类型：电商商品片'));
   assert.ok(commerceShotPrompt, 'reference stage must preserve the commerce shot prompt after portrait generation');
   assert.match(commerceShotPrompt, /电商商品片/);
   assert.match(commerceShotPrompt, /明快商业广告/);
   assert.doesNotMatch(commerceShotPrompt, /雨夜|同一部短剧/);
+  assert.deepEqual(selectorModels, ['Kimi-K3'], 'the active K3 planning connection must also select the best first-frame candidate');
 
   const videoResponse = await route.POST(new NextRequest('http://localhost/api/smart/vimax-agent-step', {
     method: 'POST',
@@ -197,6 +211,7 @@ async function main() {
     script: 'test-vimax-preset-media-semantics',
     imageRequests: imagePrompts.length,
     videoRequests: videoPrompts.length,
+    selectorModels,
     providerCalls: 0,
   }));
 }

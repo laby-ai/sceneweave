@@ -727,9 +727,9 @@ export async function POST(request: NextRequest) {
           imageApiKey: config.imageApiKey || '',
           imageApiBase: config.imageApiBase,
           imageModel: config.imageModel,
-          selectorApiKey: config.apiKey || '',
-          selectorApiBase: config.apiBase,
-          selectorModel: config.selectorModel,
+          selectorApiKey: planConnection?.apiKey || config.apiKey || '',
+          selectorApiBase: planConnection?.apiBase || config.apiBase,
+          selectorModel: planConnection?.model || config.selectorModel,
         },
       });
       const task = getTaskForOwner(canonical.taskId, owner);

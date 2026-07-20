@@ -1,4 +1,4 @@
-export const VIMAX_PLAN_MODEL = 'minimax-m3';
+export const VIMAX_PLAN_MODEL = 'Kimi-K3';
 export const VIMAX_IMAGE_MODEL = 'doubao-seedream-5.0-lite';
 export const VIMAX_VIDEO_MODEL = 'doubao-seedance-1.5-pro';
 

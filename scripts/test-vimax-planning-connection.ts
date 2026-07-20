@@ -40,7 +40,7 @@ Object.assign(globalThis, { window: { sessionStorage, localStorage } });
 assert.deepEqual(getPlanningSessionConnectionSummary('paper-host:planning-default'), {
   configured: false,
   apiBase: '',
-  model: 'Qwen3.6-Plus',
+  model: 'Kimi-K3',
 });
 
 const scope = 'paper-host:planning-test';
