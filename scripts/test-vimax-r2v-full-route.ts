@@ -10,6 +10,7 @@ import { promisify } from 'node:util';
 import ffmpegPath from 'ffmpeg-static';
 
 import type { ProductionAssemblyPlan } from '../src/lib/production-assembly-plan';
+import { buildBoundaryBridgeTimeline } from '../src/lib/local-video-merge';
 import type { VimaxAgentPlan } from '../src/lib/skills/vimax-short-drama/vimax-agent-contract';
 import {
   buildVimaxContinuityContract,
@@ -46,6 +47,7 @@ async function main() {
     taskId: string;
     body: { input?: { media?: Array<{ type: string; url: string }> } };
   }> = [];
+  const mediaDownloads: string[] = [];
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -65,6 +67,7 @@ async function main() {
       });
     }
     if (/^https:\/\/fixture\.invalid\/fixture-provider-\d+\.mp4$/.test(url)) {
+      mediaDownloads.push(url);
       return new Response(fixtureVideo, { status: 200, headers: { 'content-type': 'video/mp4' } });
     }
     throw new Error(`Unexpected network call: ${url}`);
@@ -230,6 +233,24 @@ async function main() {
     const lastSuccessfulResult = parseVimaxProductionPlan(parent?.result?.productionPlan)?.render.lastSuccessfulResult;
     assert.match(lastSuccessfulResult?.videoUrl || '', /^\/api\/final-videos\/[0-9a-f-]{36}$/);
     assert.equal(lastSuccessfulResult?.renderReport?.segmentCount, 3);
+    const expectedTimelineUrls = [
+      'https://fixture.invalid/fixture-provider-1.mp4',
+      'https://fixture.invalid/fixture-provider-2.mp4',
+      'https://fixture.invalid/fixture-provider-3.mp4',
+      'https://fixture.invalid/fixture-provider-4.mp4',
+      'https://fixture.invalid/fixture-provider-5.mp4',
+    ];
+    assert.deepEqual([...mediaDownloads].sort(), [...expectedTimelineUrls].sort(),
+      'the final edit must consume all persisted shot and boundary media');
+    const editTimeline = buildBoundaryBridgeTimeline(
+      [expectedTimelineUrls[0], expectedTimelineUrls[2], expectedTimelineUrls[4]],
+      [expectedTimelineUrls[1], expectedTimelineUrls[3]],
+      [5, 5, 5],
+    );
+    assert.deepEqual(editTimeline.sources.map(source => source.url), expectedTimelineUrls,
+      'boundary media must be edited between its adjacent shots');
+    assert.equal(editTimeline.expectedDurationSeconds, 15,
+      'two-sided overlaps must keep the three-shot edit at 15 seconds');
     assert.ok(providerRequests.slice(0, 4).every((request, index) => (
       providerRequests[index + 1] && Number(request.taskId.split('-').pop()) < Number(providerRequests[index + 1].taskId.split('-').pop())
     )));

@@ -311,6 +311,7 @@ export async function recoverHappyHorseVimaxVideo(
 export async function finalizeHappyHorseSegments(
   segments: HappyHorseVimaxSegment[],
   owner?: FinalVideoOwner,
+  options: { boundaryBridgeUrls?: string[] } = {},
 ) {
   const segmentUrls = segments.map(segment => segment.videoUrl).filter((url): url is string => Boolean(url));
   if (segmentUrls.length !== segments.length) throw new Error('视频片段已生成，但缺少可交付地址。');
@@ -319,7 +320,11 @@ export async function finalizeHappyHorseSegments(
     const root = getFinalVideoStoreRoot();
     const saved = segmentUrls.length === 1
       ? await saveMemberFinalVideoFromUrl(root, owner, segmentUrls[0])
-      : await mergeMemberFinalVideos(root, owner, segmentUrls, { expectedDurationSeconds });
+      : await mergeMemberFinalVideos(root, owner, segmentUrls, {
+        expectedDurationSeconds,
+        segmentDurationsSeconds: segments.map(segment => segment.duration),
+        boundaryBridgeUrls: options.boundaryBridgeUrls,
+      });
     const basePath = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
     return {
       videoUrl: `${basePath}/api/final-videos/${saved.id}`,
@@ -331,7 +336,11 @@ export async function finalizeHappyHorseSegments(
     };
   }
   if (segmentUrls.length === 1) return { videoUrl: segmentUrls[0], merge: {} };
-  const merged = await mergeVideosWithLocalFfmpeg(segmentUrls, { expectedDurationSeconds });
+  const merged = await mergeVideosWithLocalFfmpeg(segmentUrls, {
+    expectedDurationSeconds,
+    segmentDurationsSeconds: segments.map(segment => segment.duration),
+    boundaryBridgeUrls: options.boundaryBridgeUrls,
+  });
   return {
     videoUrl: merged.videoUrl,
     merge: { bytes: merged.bytes, segmentCount: merged.segmentCount, renderReport: merged.renderReport },

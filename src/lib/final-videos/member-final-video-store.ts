@@ -128,7 +128,11 @@ export async function mergeMemberFinalVideos(
   root: string,
   owner: FinalVideoOwner,
   segmentUrls: string[],
-  options: { expectedDurationSeconds?: number } = {},
+  options: {
+    expectedDurationSeconds?: number;
+    segmentDurationsSeconds?: number[];
+    boundaryBridgeUrls?: string[];
+  } = {},
 ) {
   const id = randomUUID();
   const directory = ownerDirectory(root, owner);
@@ -137,6 +141,8 @@ export async function mergeMemberFinalVideos(
     outputDirectory: directory,
     outputFileName: `${id}.mp4`,
     expectedDurationSeconds: options.expectedDurationSeconds,
+    segmentDurationsSeconds: options.segmentDurationsSeconds,
+    boundaryBridgeUrls: options.boundaryBridgeUrls,
   });
   return {
     id,

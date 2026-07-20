@@ -121,7 +121,18 @@ export async function runVimaxProductionVideoOrchestrator(input: {
         : {}),
     };
   });
-  const { videoUrl, merge } = await finalizeHappyHorseSegments(segments, input.owner);
+  const boundaryBridgeUrls = assemblyPlan.assembly.strategy === 'boundary-bridge-concat'
+    ? [...(assemblyPlan.boundaryBridgePlan?.boundaries || [])]
+      .sort((left, right) => left.index - right.index)
+      .map(boundary => boundary.bridgeVideoUrl)
+      .filter((url): url is string => Boolean(url))
+    : [];
+  if (boundaryBridgeUrls.length > 0 && boundaryBridgeUrls.length !== segments.length - 1) {
+    throw new Error('边界桥接结果不完整，拒绝生成跳切成片。');
+  }
+  const { videoUrl, merge } = await finalizeHappyHorseSegments(segments, input.owner, {
+    boundaryBridgeUrls,
+  });
   return {
     model: input.model,
     videoUrl,
