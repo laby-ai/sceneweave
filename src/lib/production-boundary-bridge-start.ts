@@ -423,6 +423,18 @@ async function runBoundaryBridgeProviderJob(params: {
       watermark: false,
     });
     providerTaskId = submitResult.taskId;
+    const submittedTask = getTaskFresh(childTaskId);
+    updateTask(childTaskId, {
+      result: {
+        ...(submittedTask?.result || {}),
+        providerTaskId: submitResult.taskId,
+        boundaryBridge: {
+          version: 'yh-boundary-bridge-runtime-v1',
+          boundaryIndex,
+          status: 'submitted',
+        },
+      },
+    });
     updateTaskProgress(childTaskId, 18, '边界 bridge 已提交到 Ark，等待生成...', `供应商任务 ${submitResult.taskId}`);
 
     const videoResult = await waitForVideoWithBYOK(

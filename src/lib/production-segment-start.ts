@@ -1,9 +1,18 @@
 import type { BYOKConnection } from '@/lib/byok-provider';
 import { submitVideoWithBYOK, waitForVideoWithBYOK } from '@/lib/byok-provider';
+import { isHappyHorseR2VModel } from '@/lib/happyhorse-r2v-adapter';
 import type { ProductionAssemblyPlan, ProductionSegmentPlan } from '@/lib/production-assembly-plan';
+import { computeProductionArtifactRevision } from '@/lib/production-artifact-stale';
 import type { ProductionProject } from '@/lib/production-project';
 import { applySegmentAssetWriteback } from '@/lib/production-segment-assets';
 import { describeStorySegmentCue } from '@/lib/production-story-segment-contract';
+import {
+  buildHappyHorseR2VReferenceManifest,
+  buildHappyHorseR2VReferencePrompt,
+} from '@/lib/skills/vimax-short-drama/happyhorse-r2v-reference-manifest';
+import type { VimaxAgentReferenceAsset } from '@/lib/skills/vimax-short-drama/vimax-agent-contract';
+import { buildVimaxContinuityPrompt } from '@/lib/skills/vimax-short-drama/vimax-continuity-contract';
+import { parseVimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 import {
   buildProductionSegmentStartPayload,
   ProductionSegmentStartPayloadError,
@@ -145,6 +154,7 @@ async function runSegmentProviderJob(params: {
   segment: ProductionSegmentPlan;
   ratio: string;
   videoModel?: string;
+  resolution?: string;
   generateAudio?: boolean;
 }) {
   const {
@@ -156,6 +166,7 @@ async function runSegmentProviderJob(params: {
     segment,
     ratio,
     videoModel,
+    resolution,
     generateAudio,
   } = params;
   const startPayload = buildProductionSegmentStartPayload(segment);
@@ -165,12 +176,44 @@ async function runSegmentProviderJob(params: {
   let lastFrameExtraction: LastFrameExtractionResult | undefined;
 
   try {
+    const parentTask = getTaskFresh(parentTaskId);
+    const productionProject = parentTask?.result?.productionProject as ProductionProject | undefined;
+    const productionPlan = parseVimaxProductionPlan(parentTask?.result?.productionPlan);
+    const providerContinuityPrompt = productionPlan?.continuity
+      ? buildVimaxContinuityPrompt(productionPlan.continuity, segment.index)
+      : '';
+    const referenceAssets = Array.isArray(parentTask?.result?.vimaxReferenceAssets)
+      ? parentTask.result.vimaxReferenceAssets as VimaxAgentReferenceAsset[]
+      : [];
+    const resolvedVideoModel = videoModel || byokConnection.videoModel || byokConnection.model;
+    const storyboardShot = productionProject?.storyboard.shots.find(shot => shot.id === segment.shotId);
+    const referenceManifest = resolvedVideoModel && isHappyHorseR2VModel(resolvedVideoModel)
+      ? buildHappyHorseR2VReferenceManifest({
+        assets: referenceAssets,
+        shotIndex: storyboardShot?.index || segment.index + 1,
+        artifactRevision: productionPlan?.continuity?.artifactRevision
+          || (productionProject ? computeProductionArtifactRevision(productionProject) : 'unknown'),
+        previousLastFrameUrl: startPayload.firstFrameImage
+          || startPayload.previousLastFrameImage
+          || undefined,
+      })
+      : undefined;
+    if (referenceManifest && referenceManifest.entries.length === 0) {
+      throw new Error(`镜头 ${segment.index + 1} 缺少已批准参考图，未提交付费视频任务。`);
+    }
     const submitResult = await submitVideoWithBYOK(byokConnection, {
-      prompt: startPayload.providerPrompt,
+      prompt: [
+        startPayload.providerPrompt,
+        providerContinuityPrompt,
+        referenceManifest ? buildHappyHorseR2VReferencePrompt(referenceManifest) : '',
+      ].filter(Boolean).join('\n'),
       duration: Math.min(Math.max(segment.duration, 5), 10),
       ratio,
-      model: videoModel,
-      firstFrameImage: startPayload.firstFrameImage || undefined,
+      model: resolvedVideoModel,
+      resolution,
+      ...(referenceManifest
+        ? { referenceImages: referenceManifest.entries.map(entry => entry.url) }
+        : { firstFrameImage: startPayload.firstFrameImage || undefined }),
       generateAudio,
     });
     providerTaskId = submitResult.taskId;
@@ -179,6 +222,7 @@ async function runSegmentProviderJob(params: {
       result: {
         ...(submittedTask?.result || {}),
         providerTaskId: submitResult.taskId,
+        ...(referenceManifest ? { referenceManifest } : {}),
       },
     });
     updateTaskProgress(childTaskId, 18, '片段已提交到 Ark，等待生成...', `供应商任务 ${submitResult.taskId}`);
@@ -224,6 +268,7 @@ async function runSegmentProviderJob(params: {
     completeTask(childTaskId, {
       videoUrl: videoResult.videoUrl,
       providerTaskId: submitResult.taskId,
+      ...(referenceManifest ? { referenceManifest } : {}),
       lastFrameUrl,
       audioCue: segmentAudioCue(segment),
       storyStateCue: segmentStoryStateCue(segment),
@@ -471,6 +516,11 @@ export function startProductionAssemblySegment(
     segment,
     ratio: typeof resolvedChildTask.config.ratio === 'string' ? resolvedChildTask.config.ratio : '16:9',
     videoModel: typeof resolvedChildTask.config.videoModel === 'string' ? resolvedChildTask.config.videoModel : undefined,
+    resolution: typeof resolvedChildTask.config.resolution === 'string'
+      ? resolvedChildTask.config.resolution
+      : typeof parentTask.config?.resolution === 'string'
+        ? parentTask.config.resolution
+        : undefined,
     generateAudio: input.generateAudio === true,
   });
 

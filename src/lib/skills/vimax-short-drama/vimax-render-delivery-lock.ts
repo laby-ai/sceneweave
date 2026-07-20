@@ -46,6 +46,33 @@ function assertCurrentAssemblyArtifacts(context: VimaxRenderContext) {
   if (assemblyPlan.status !== 'completed' || invalidSegment) {
     throw new Error('当前版本仍有未完成或已失效的片段，不能进入成片合成。');
   }
+  for (const segment of assemblyPlan.segments) {
+    if (segment.index <= 0) continue;
+    const previous = assemblyPlan.segments.find(item => item.index === segment.index - 1);
+    const previousLastFrameUrl = previous?.expectedOutputs.lastFrameUrl || null;
+    if (segment.expectedInputs.bridgeStrategy === 'transition-bridge') {
+      const boundary = assemblyPlan.boundaryBridgePlan?.boundaries.find(item => (
+        item.nextSegmentId === segment.id || item.index === segment.index - 1
+      ));
+      if (!boundary
+        || boundary.status !== 'generated'
+        || !boundary.readiness.pass
+        || !boundary.bridgeVideoUrl
+        || !boundary.newCameraImageUrl
+        || boundary.sourceLastFrameUrl !== previousLastFrameUrl
+        || segment.expectedInputs.previousLastFrameUrl !== previousLastFrameUrl
+        || segment.expectedInputs.firstFrameUrl !== boundary.newCameraImageUrl
+        || segment.expectedInputs.bridgeFirstFrameUrl !== boundary.newCameraImageUrl) {
+        throw new Error(`第 ${segment.index}->${segment.index + 1} 段边界桥接尚未生成或与当前片段版本不匹配，不能进入成片合成。`);
+      }
+      continue;
+    }
+    if (!previousLastFrameUrl
+      || segment.expectedInputs.firstFrameUrl !== previousLastFrameUrl
+      || segment.expectedInputs.previousLastFrameUrl !== previousLastFrameUrl) {
+      throw new Error(`第 ${segment.index}->${segment.index + 1} 段缺少可验证的尾帧衔接，不能进入成片合成。`);
+    }
+  }
   return artifactVersion;
 }
 

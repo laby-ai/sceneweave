@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 import { buildProductionAssemblyPlan } from '../src/lib/production-assembly-plan';
 import { computeProductionArtifactRevision, freshArtifactReadiness } from '../src/lib/production-artifact-stale';
+import { applyBoundaryBridgeArtifactWriteback } from '../src/lib/production-boundary-bridge-start';
 import { buildProductionProject } from '../src/lib/production-project';
 import {
   approveVimaxProductionPlan,
@@ -50,6 +51,7 @@ const assemblyPlan = {
     expectedOutputs: {
       ...segment.expectedOutputs,
       videoUrl: `/generated/videos/segment-${index + 1}.mp4`,
+      lastFrameUrl: `/generated/images/segment-${index + 1}-last.jpg`,
     },
   })),
 };
@@ -82,21 +84,37 @@ const plan = {
 };
 
 assert.throws(
-  () => assertVimaxProductionRenderCheckpoint(plan, { productionProject, assemblyPlan }),
+  () => approveVimaxProductionRender(plan, { productionProject, assemblyPlan }),
+  /边界桥接/,
+  'render approval must reject a completed-looking assembly whose transition bridge is still missing',
+);
+
+const bridgedAssemblyPlan = applyBoundaryBridgeArtifactWriteback({
+  assemblyPlan,
+  boundaryIndex: 0,
+  patch: {
+    bridgeVideoUrl: '/generated/videos/boundary-1-2.mp4',
+    bridgeLastFrameUrl: '/generated/images/boundary-1-2-last.jpg',
+    newCameraImageUrl: '/generated/images/boundary-1-2-new-camera.jpg',
+  },
+}).assemblyPlan;
+
+assert.throws(
+  () => assertVimaxProductionRenderCheckpoint(plan, { productionProject, assemblyPlan: bridgedAssemblyPlan }),
   /确认当前版本的成片合成/,
 );
 
-const approved = approveVimaxProductionRender(plan, { productionProject, assemblyPlan });
+const approved = approveVimaxProductionRender(plan, { productionProject, assemblyPlan: bridgedAssemblyPlan });
 assert.equal(approved.render.checkpointDecision?.artifactVersion, artifactVersion);
 assert.equal(
-  assertVimaxProductionRenderCheckpoint(approved, { productionProject, assemblyPlan }).render.checkpointDecision?.status,
+  assertVimaxProductionRenderCheckpoint(approved, { productionProject, assemblyPlan: bridgedAssemblyPlan }).render.checkpointDecision?.status,
   'approved',
 );
 
 assert.throws(
   () => recordVimaxSuccessfulRender(approved, {
     productionProject,
-    assemblyPlan,
+    assemblyPlan: bridgedAssemblyPlan,
     videoUrl: '/generated/videos/final-unverified.mp4',
     completedAt: '2026-07-18T08:59:00.000Z',
   }),
@@ -105,7 +123,7 @@ assert.throws(
 
 const verifiedRenderInput = {
   productionProject,
-  assemblyPlan,
+  assemblyPlan: bridgedAssemblyPlan,
   videoUrl: '/generated/videos/final-current.mp4',
   completedAt: '2026-07-18T09:00:00.000Z',
   renderReport: {

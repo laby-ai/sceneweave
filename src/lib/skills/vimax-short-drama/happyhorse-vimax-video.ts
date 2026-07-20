@@ -308,7 +308,7 @@ export async function recoverHappyHorseVimaxVideo(
   };
 }
 
-async function finalizeHappyHorseSegments(
+export async function finalizeHappyHorseSegments(
   segments: HappyHorseVimaxSegment[],
   owner?: FinalVideoOwner,
 ) {

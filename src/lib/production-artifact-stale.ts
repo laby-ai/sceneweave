@@ -76,7 +76,6 @@ export function computeProductionArtifactRevision(project: ProductionProject) {
       shot.prompt,
       shot.subtitleText,
       shot.narrationText,
-      shot.status,
     ].map(compact).join(':'))
     .join('|');
   return `rev-${stableHash([

@@ -10,6 +10,7 @@ import { persistVimaxPlanTask } from '@/lib/skills/vimax-short-drama/vimax-plan-
 import { resolveCanonicalVimaxStageInput } from '@/lib/skills/vimax-short-drama/vimax-canonical-stage-input';
 import { resolveVimaxRecoveryCreatedAfter, restoreVimaxRecoveryTask } from '@/lib/skills/vimax-short-drama/vimax-recovery-session';
 import { createVimaxVideoTaskRuntime } from '@/lib/skills/vimax-short-drama/vimax-video-task-runtime';
+import { runVimaxProductionVideoOrchestrator } from '@/lib/skills/vimax-short-drama/vimax-production-video-orchestrator';
 import { assertVimaxProductionPlanForPhase, buildVimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 import { resolveVimaxSkillRuntimeBinding } from '@/lib/skills/vimax-short-drama/vimax-skill-runtime-binding';
 import {
@@ -24,7 +25,6 @@ import {
 } from '@/lib/byok-provider';
 import { isHappyHorseR2VModel } from '@/lib/happyhorse-r2v-adapter';
 import {
-  callHappyHorseVimaxVideo,
   recoverHappyHorseVimaxVideo,
   type HappyHorseVimaxSegment,
 } from '@/lib/skills/vimax-short-drama/happyhorse-vimax-video';
@@ -816,13 +816,13 @@ export async function POST(request: NextRequest) {
             savedHappyHorseSegments, persistSegment,
           )
           : videoConnection?.provider === 'happyhorse-dashscope'
-            ? await callHappyHorseVimaxVideo(
-              canonical.plan,
-              preset,
-              videoConnection,
-              { ...generationPreferences, owner },
-              continuity, persistedAssets, persistSegment, savedHappyHorseSegments,
-            )
+            ? await runVimaxProductionVideoOrchestrator({
+              owner, parentTaskId: canonical.taskId,
+              connection: videoConnection, model: videoModel,
+              generateAudio: true,
+              shots: canonical.plan.shots,
+              onSegmentState: persistSegment,
+            })
             : await callSeedanceVideo(canonical.plan, assets, preset, continuity, generationPreferences),
       });
       if (body.background === true) {

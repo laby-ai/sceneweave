@@ -76,6 +76,7 @@
     "qa:scnet-video-provider": "tsx scripts/qa-scnet-video-provider.ts",
     "qa:happyhorse-video-provider": "tsx scripts/qa-happyhorse-video-provider.ts",
     "test:vimax-happyhorse-video": "tsx scripts/test-vimax-happyhorse-video.ts",
+    "test:vimax-r2v-full-route": "tsx scripts/test-vimax-r2v-full-route.ts",
     "test:vimax-protected-media": "tsx scripts/test-vimax-protected-media.ts",
     "test:vimax-background-video-task": "tsx scripts/test-vimax-background-video-task.ts",
     "test:vimax-task-project-recovery": "tsx scripts/test-vimax-task-project-recovery.ts",
