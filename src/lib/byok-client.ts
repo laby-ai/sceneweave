@@ -230,14 +230,9 @@ export function getBYOKRequestHeaders(storageScope = ''): Record<string, string>
     const headers: Record<string, string> = {};
 
     const workspaceBases = resolveBailianApiBases(BAILIAN_WORKSPACE_API_HOST);
-    const universalBases = resolveBailianApiBases(BAILIAN_UNIVERSAL_API_HOST);
-
     if (primary?.provider && primary.apiKey) {
-      const planningApiBase = primary.apiBase === universalBases.planningApiBase
-        ? universalBases.planningApiBase
-        : workspaceBases.planningApiBase;
       headers['x-yh-provider'] = 'openai-compatible';
-      headers['x-yh-api-base'] = planningApiBase;
+      headers['x-yh-api-base'] = workspaceBases.planningApiBase;
       headers['x-yh-api-key'] = primary.apiKey;
       headers['x-yh-model'] = DEFAULT_PLANNING_MODEL;
       headers['x-yh-image-model'] = DEFAULT_IMAGE_MODEL;

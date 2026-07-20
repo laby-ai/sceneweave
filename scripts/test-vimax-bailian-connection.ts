@@ -107,7 +107,7 @@ try {
 
   window.sessionStorage.setItem('dreambox-planning-connection:guest-bailian', JSON.stringify({
     provider: 'openai-compatible',
-    apiBase: 'https://untrusted.example.com/compatible-mode/v1',
+    apiBase: `${BAILIAN_UNIVERSAL_API_HOST}/compatible-mode/v1`,
     apiKey: 'fixture-key',
     model: 'untrusted-model',
     imageModel: 'untrusted-image-model',
