@@ -215,6 +215,18 @@ async function main() {
     )));
     assert.equal(isReusableVimaxBoundaryBridge(assemblyPlan, 0), true);
     assert.equal(isReusableVimaxBoundaryBridge(assemblyPlan, 1), true);
+    const readyBoundaryPlan: ProductionAssemblyPlan = {
+      ...assemblyPlan,
+      boundaryBridgePlan: assemblyPlan.boundaryBridgePlan
+        ? {
+          ...assemblyPlan.boundaryBridgePlan,
+          boundaries: assemblyPlan.boundaryBridgePlan.boundaries.map((boundary, index) => (
+            index === 0 ? { ...boundary, status: 'ready' as const } : boundary
+          )),
+        }
+        : assemblyPlan.boundaryBridgePlan,
+    };
+    assert.equal(isReusableVimaxBoundaryBridge(readyBoundaryPlan, 0), true);
     const lastSuccessfulResult = parseVimaxProductionPlan(parent?.result?.productionPlan)?.render.lastSuccessfulResult;
     assert.match(lastSuccessfulResult?.videoUrl || '', /^\/api\/final-videos\/[0-9a-f-]{36}$/);
     assert.equal(lastSuccessfulResult?.renderReport?.segmentCount, 3);

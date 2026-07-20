@@ -17,9 +17,10 @@ export function isReusableVimaxBoundaryBridge(
   boundaryIndex: number,
 ) {
   const boundary = assemblyPlan?.boundaryBridgePlan?.boundaries.find(item => item.index === boundaryIndex);
-  return boundary?.status === 'generated'
-    && Boolean(boundary.bridgeVideoUrl)
-    && Boolean(boundary.newCameraImageUrl);
+  return Boolean(boundary
+    && boundary.status !== 'stale'
+    && boundary.bridgeVideoUrl
+    && boundary.newCameraImageUrl);
 }
 
 async function waitForOwnedTask(owner: TaskOwner, taskId: string) {
