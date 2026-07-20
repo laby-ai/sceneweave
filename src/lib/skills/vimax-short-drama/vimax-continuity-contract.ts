@@ -115,15 +115,15 @@ export function resolveVimaxProviderHandoffMode(input: ProviderHandoffInput): Vi
   const model = compact(input.model, 'unknown-model');
   const normalized = `${provider} ${model}`.toLowerCase();
   const supportsReferenceImages = /happyhorse-1\.1-r2v/.test(normalized);
-  const supportsFirstFrame = /(ark-video|seedance)/.test(normalized)
-    && !/(happyhorse|t2v-only)/.test(normalized);
+  const supportsFirstFrame = /happyhorse-1\.1-i2v/.test(normalized)
+    || (/(ark-video|seedance)/.test(normalized) && !/(happyhorse|t2v-only)/.test(normalized));
 
   return {
     mode: supportsReferenceImages ? 'reference-handoff' : supportsFirstFrame ? 'frame-handoff' : 'text-anchors',
     provider,
     model,
     supportsFirstFrame,
-    supportsReferenceImages: supportsReferenceImages || supportsFirstFrame,
+    supportsReferenceImages,
     locked: true,
     limitation: supportsReferenceImages
       ? '使用已批准的角色、场景、道具参考图，并可把上一镜尾帧作为额外参考；这是多参考约束，不声称强制绑定下一镜首帧。'

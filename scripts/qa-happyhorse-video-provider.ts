@@ -9,11 +9,23 @@ import {
   parseHappyHorseVideoTaskId,
 } from '../src/lib/happyhorse-video-provider';
 import { getVideoStatusWithBYOK, submitVideoWithBYOK } from '../src/lib/byok-provider';
+import { buildHappyHorseI2VSubmitRequest } from '../src/lib/happyhorse-i2v-adapter';
 import { resolveVimaxProviderHandoffMode } from '../src/lib/skills/vimax-short-drama/vimax-continuity-contract';
 import { selectHappyHorseR2VReferenceImages } from '../src/lib/skills/vimax-short-drama/happyhorse-vimax-video';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
+}
+
+async function assertRejects(run: () => Promise<unknown>, expected: RegExp) {
+  try {
+    await run();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    assert(expected.test(message), `unexpected rejection: ${message}`);
+    return;
+  }
+  throw new Error(`expected rejection matching ${expected}`);
 }
 
 const connection = {
@@ -41,6 +53,18 @@ assert(request.body.parameters.resolution === '720P', 'resolution must be normal
 assert(request.body.parameters.duration === 5, 'duration mismatch');
 assert(request.body.parameters.ratio === '16:9', 'ratio mismatch');
 assert(request.body.parameters.seed === 271828, 'seed mismatch');
+const i2vRequest = buildHappyHorseI2VSubmitRequest({
+  ...connection,
+  model: 'happyhorse-1.1-i2v',
+  prompt: '承接上一镜尾帧，小红帽从同一动作继续向右跑。',
+  firstFrameImage: 'https://media.example.com/previous-tail.jpg',
+  duration: 5,
+  resolution: '720p',
+});
+assert(i2vRequest.body.model === 'happyhorse-1.1-i2v', 'I2V model mismatch');
+assert(JSON.stringify(i2vRequest.body.input.media) === JSON.stringify([
+  { type: 'first_frame', url: 'https://media.example.com/previous-tail.jpg' },
+]), 'I2V must contain exactly one first_frame');
 assert(
   buildHappyHorseVideoTaskUrl(connection.apiBase, 'task id') ===
     'https://workspace.example.com/api/v1/tasks/task%20id',
@@ -222,7 +246,64 @@ async function verifyR2VProviderDispatch() {
   }
 }
 
-verifyProviderDispatch().then(verifyR2VProviderDispatch).then(() => {
+async function verifyI2VProviderDispatch() {
+  const originalFetch = globalThis.fetch;
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
+    calls.push({ url: String(url), init });
+    return new Response(JSON.stringify({ output: { task_id: 'task-i2v-a', task_status: 'PENDING' } }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  try {
+    const connectionWithI2V = {
+      provider: 'happyhorse-dashscope' as const,
+      apiBase: connection.apiBase,
+      apiKey: connection.apiKey,
+      videoModel: 'happyhorse-1.1-i2v',
+    };
+    const task = await submitVideoWithBYOK(connectionWithI2V, {
+      prompt: '承接上一镜动作。',
+      duration: 5,
+      resolution: '720P',
+      firstFrameImage: 'https://media.example.com/previous-tail.jpg',
+    });
+    const submitBody = JSON.parse(String(calls[0]?.init?.body || '{}'));
+    assert(task.taskId === 'task-i2v-a', 'BYOK HappyHorse I2V task id mismatch');
+    assert(JSON.stringify(submitBody.input?.media) === JSON.stringify([
+      { type: 'first_frame', url: 'https://media.example.com/previous-tail.jpg' },
+    ]), 'I2V dispatch must preserve exactly one first_frame');
+
+    await assertRejects(
+      () => submitVideoWithBYOK(connectionWithI2V, { prompt: '缺少首帧。', duration: 5 }),
+      /首帧/,
+    );
+    await assertRejects(
+      () => submitVideoWithBYOK(connectionWithI2V, {
+        prompt: '不允许附加普通参考图。',
+        duration: 5,
+        firstFrameImage: 'https://media.example.com/previous-tail.jpg',
+        referenceImages: ['https://media.example.com/character.png'],
+      }),
+      /只能使用一个首帧/,
+    );
+    assert(calls.length === 1, 'invalid I2V input must fail before provider fetch');
+
+    const handoff = resolveVimaxProviderHandoffMode({
+      provider: 'happyhorse-dashscope',
+      model: 'happyhorse-1.1-i2v',
+    });
+    assert(handoff.mode === 'frame-handoff', 'I2V must use frame handoff mode');
+    assert(handoff.supportsFirstFrame === true, 'I2V first-frame capability missing');
+    assert(handoff.supportsReferenceImages === false, 'I2V must not claim multi-reference support');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+verifyProviderDispatch().then(verifyR2VProviderDispatch).then(verifyI2VProviderDispatch).then(() => {
   console.log(JSON.stringify({
     ok: true,
     usedRealKey: false,
@@ -237,6 +318,9 @@ verifyProviderDispatch().then(verifyR2VProviderDispatch).then(() => {
       'r2v-reference-media-dispatch',
       'r2v-reference-handoff-capability',
       'r2v-persisted-asset-and-tail-selection',
+      'i2v-first-frame-only-dispatch',
+      'i2v-invalid-media-fails-before-fetch',
+      'i2v-frame-handoff-capability',
     ],
   }, null, 2));
 }).catch(error => {
