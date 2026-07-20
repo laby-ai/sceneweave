@@ -23,6 +23,7 @@ const HAPPYHORSE_SESSION_STORAGE_KEY = 'dreambox-happyhorse-connection';
 export const DEFAULT_PLANNING_MODEL = 'qwen3.7-plus';
 export const DEFAULT_IMAGE_MODEL = 'wan2.7-image';
 export const DEFAULT_VIDEO_MODEL = 'happyhorse-1.1-r2v';
+export const BAILIAN_UNIVERSAL_API_HOST = 'https://dashscope.aliyuncs.com';
 export const BAILIAN_WORKSPACE_API_HOST = 'https://ws-k96mveli79hlkvto.cn-beijing.maas.aliyuncs.com';
 
 export interface BailianApiBases {
@@ -103,7 +104,7 @@ export async function validateAndSavePlanningSessionConnection(
   storageScope: string,
   config: { apiBase: string; apiKey: string; model?: string; imageModel?: string },
   requestHeaders: Record<string, string> = {},
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true } | { ok: false; error: string; code?: string }> {
   const safeRequestHeaders = Object.fromEntries(
     Object.entries(requestHeaders).filter(([name]) => !name.toLowerCase().startsWith('x-yh-')),
   );
@@ -124,7 +125,11 @@ export async function validateAndSavePlanningSessionConnection(
     });
     const payload = await response.json().catch(() => null) as (ProviderErrorPayload & { ready?: unknown }) | null;
     if (!response.ok || payload?.ready !== true) {
-      return { ok: false, error: formatProviderError(payload, '规划模型连接验证失败，请检查后重试。') };
+      return {
+        ok: false,
+        error: formatProviderError(payload, '规划模型连接验证失败，请检查后重试。'),
+        code: typeof payload?.code === 'string' ? payload.code : undefined,
+      };
     }
     savePlanningSessionConnection(storageScope, config);
     return { ok: true };
@@ -142,21 +147,39 @@ export async function validateAndSaveBailianSessionConnections(
     videoModel?: string;
   },
   requestHeaders: Record<string, string> = {},
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  const bases = resolveBailianApiBases(BAILIAN_WORKSPACE_API_HOST);
-  const planning = await validateAndSavePlanningSessionConnection(storageScope, {
-    apiBase: bases.planningApiBase,
+): Promise<{ ok: true; videoReady: boolean; warning?: string } | { ok: false; error: string; code?: string }> {
+  const workspaceBases = resolveBailianApiBases(BAILIAN_WORKSPACE_API_HOST);
+  const workspacePlanning = await validateAndSavePlanningSessionConnection(storageScope, {
+    apiBase: workspaceBases.planningApiBase,
     apiKey: config.apiKey,
     model: config.model || DEFAULT_PLANNING_MODEL,
     imageModel: config.imageModel || DEFAULT_IMAGE_MODEL,
   }, requestHeaders);
-  if (!planning.ok) return planning;
-  saveHappyHorseSessionConnection(storageScope, {
-    apiBase: bases.videoApiBase,
+  if (workspacePlanning.ok) {
+    saveHappyHorseSessionConnection(storageScope, {
+      apiBase: workspaceBases.videoApiBase,
+      apiKey: config.apiKey,
+      videoModel: config.videoModel || DEFAULT_VIDEO_MODEL,
+    });
+    return { ok: true, videoReady: true };
+  }
+  if (workspacePlanning.code !== 'planning_provider_permission_denied') return workspacePlanning;
+
+  const universalBases = resolveBailianApiBases(BAILIAN_UNIVERSAL_API_HOST);
+  const universalPlanning = await validateAndSavePlanningSessionConnection(storageScope, {
+    apiBase: universalBases.planningApiBase,
     apiKey: config.apiKey,
-    videoModel: config.videoModel || DEFAULT_VIDEO_MODEL,
-  });
-  return { ok: true };
+    model: config.model || DEFAULT_PLANNING_MODEL,
+    imageModel: config.imageModel || DEFAULT_IMAGE_MODEL,
+  }, requestHeaders);
+  if (!universalPlanning.ok) return universalPlanning;
+
+  clearHappyHorseSessionConnection(storageScope);
+  return {
+    ok: true,
+    videoReady: false,
+    warning: '规划与参考图已连接；当前 API Key 不属于快乐马视频工作空间，视频生成暂未启用。',
+  };
 }
 
 export function clearBailianSessionConnections(storageScope: string): void {
@@ -222,11 +245,15 @@ export function getBYOKRequestHeaders(storageScope = ''): Record<string, string>
     const video = loadHappyHorseConnection(storageScope);
     const headers: Record<string, string> = {};
 
-    const bailianBases = resolveBailianApiBases(BAILIAN_WORKSPACE_API_HOST);
+    const workspaceBases = resolveBailianApiBases(BAILIAN_WORKSPACE_API_HOST);
+    const universalBases = resolveBailianApiBases(BAILIAN_UNIVERSAL_API_HOST);
 
     if (primary?.provider && primary.apiKey) {
+      const planningApiBase = primary.apiBase === universalBases.planningApiBase
+        ? universalBases.planningApiBase
+        : workspaceBases.planningApiBase;
       headers['x-yh-provider'] = 'openai-compatible';
-      headers['x-yh-api-base'] = bailianBases.planningApiBase;
+      headers['x-yh-api-base'] = planningApiBase;
       headers['x-yh-api-key'] = primary.apiKey;
       headers['x-yh-model'] = DEFAULT_PLANNING_MODEL;
       headers['x-yh-image-model'] = DEFAULT_IMAGE_MODEL;
@@ -234,7 +261,7 @@ export function getBYOKRequestHeaders(storageScope = ''): Record<string, string>
 
     if (video?.provider === 'happyhorse-dashscope' && video.apiKey) {
       headers['x-yh-video-provider'] = video.provider;
-      headers['x-yh-video-api-base'] = bailianBases.videoApiBase;
+      headers['x-yh-video-api-base'] = workspaceBases.videoApiBase;
       headers['x-yh-video-api-key'] = video.apiKey;
       headers['x-yh-video-model'] = DEFAULT_VIDEO_MODEL;
     }
