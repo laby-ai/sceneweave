@@ -23,6 +23,7 @@ import {
   parseVimaxProductionPlan,
 } from '../src/lib/skills/vimax-short-drama/vimax-production-plan';
 import { resolveVimaxSkillRuntimeBinding } from '../src/lib/skills/vimax-short-drama/vimax-skill-runtime-binding';
+import { applyVimaxShotGenerationRoutes } from '../src/lib/skills/vimax-short-drama/vimax-shot-generation-route';
 
 const execFileAsync = promisify(execFile);
 const fixtureRoot = path.join(tmpdir(), `sceneweave-r2v-full-route-${randomUUID()}`);
@@ -45,7 +46,7 @@ async function main() {
   const fixtureVideo = await readFile(fixtureVideoPath);
   const providerRequests: Array<{
     taskId: string;
-    body: { input?: { media?: Array<{ type: string; url: string }> } };
+    body: { model?: string; input?: { media?: Array<{ type: string; url: string }> } };
   }> = [];
   const mediaDownloads: string[] = [];
   const originalFetch = globalThis.fetch;
@@ -262,6 +263,120 @@ async function main() {
     assert.equal(download.status, 200);
     assert.equal(download.headers.get('content-type'), 'video/mp4');
     assert.ok(Number(download.headers.get('content-length')) > fixtureVideo.length);
+
+    const dualWorkspace = 'guest-creation-dual-route-full-chain-fixture';
+    const dualOwner = {
+      tenantId: 'paper-host-guest',
+      memberId: `guest-${createHash('sha256').update(dualWorkspace).digest('hex').slice(0, 32)}`,
+    };
+    const dualPlan: VimaxAgentPlan = {
+      ...plan,
+      title: '雨夜录音笔双路由',
+      shots: plan.shots.map((shot, index) => ({
+        ...shot,
+        handoffIntent: index === 1 ? 'strict-frame' as const : 'reference-flexible' as const,
+        handoffReason: index === 1
+          ? '同一动作、同一空间，必须承接上一镜尾帧。'
+          : index === 0
+            ? '第一镜建立角色与场景。'
+            : '主动换到站外广场，保留人物与道具参考。',
+      })),
+    };
+    const dualTaskId = createTask('storyboard', {
+      prompt: dualPlan.summary,
+      workflow: 'vimax-agent',
+    }, dualOwner);
+    const dualBuilt = buildProductionBackedVimaxPlan(dualPlan.summary, dualPlan, {
+      phase: 'plan', skillId: 'short-drama', duration: 15, segmentDuration: 5, segmentCount: 3,
+      ratio: '16:9', resolution: '720p', sceneType: 'drama', style: '电影感短剧',
+    }, dualTaskId);
+    const dualRouted = applyVimaxShotGenerationRoutes({
+      plan: dualBuilt.plan,
+      assemblyPlan: dualBuilt.assemblyPlan,
+      provider: 'happyhorse-dashscope',
+      configuredModel: 'happyhorse-1.1-r2v',
+    });
+    const dualContinuity = buildVimaxContinuityContract({
+      productionProject: dualBuilt.productionProject,
+      assemblyPlan: dualRouted.assemblyPlan,
+      providerHandoff: resolveVimaxProviderHandoffMode({
+        provider: 'happyhorse-dashscope',
+        model: 'happyhorse-1.1-r2v',
+      }),
+    });
+    const dualBasePlan = buildVimaxProductionPlan({
+      title: dualPlan.title,
+      ratio: '16:9',
+      resolution: '720p',
+      planModel: VIMAX_PLAN_MODEL,
+      imageModel: 'fixture-image',
+      videoModel: 'happyhorse-1.1-r2v',
+      providerReadiness: { plan: true, referenceAssets: true, video: true },
+      assets: dualPlan.assets,
+      shots: dualPlan.shots,
+      workflow: resolveVimaxSkillRuntimeBinding({ skillId: 'short-drama' }),
+      continuity: dualContinuity,
+    });
+    const dualApproved = approveVimaxProductionPlan(dualBasePlan);
+    persistVimaxPlanTask({
+      taskId: dualTaskId,
+      prompt: dualPlan.summary,
+      plan: dualRouted.plan,
+      productionProject: dualBuilt.productionProject,
+      assemblyPlan: dualRouted.assemblyPlan,
+      productionPlan: {
+        ...dualApproved,
+        governance: { ...dualApproved.governance, status: 'ready' as const },
+        estimatedCost: { ...dualApproved.estimatedCost, amount: 1, status: 'confirmed' as const },
+      },
+    });
+    const dualRequestStart = providerRequests.length;
+    const dualHeaders = {
+      ...requestHeaders,
+      'x-paper-host-guest-workspace': dualWorkspace,
+    };
+    const dualResponse = await route.POST(new NextRequest('http://localhost/api/smart/vimax-agent-step', {
+      method: 'POST',
+      headers: dualHeaders,
+      body: JSON.stringify({
+        taskId: dualTaskId,
+        phase: 'video',
+        confirm: true,
+        background: true,
+        assets: requestAssets,
+      }),
+    }));
+    const dualAccepted = await dualResponse.json() as { backgroundTaskId?: string };
+    assert.equal(dualResponse.status, 202);
+    assert.ok(dualAccepted.backgroundTaskId);
+    const dualDeadline = Date.now() + 30_000;
+    while (Date.now() < dualDeadline
+      && getTaskForOwner(dualAccepted.backgroundTaskId!, dualOwner)?.status === 'running') {
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+    const dualBackground = getTaskForOwner(dualAccepted.backgroundTaskId!, dualOwner);
+    assert.equal(dualBackground?.status, 'completed', dualBackground?.error || dualBackground?.message);
+    const dualRequests = providerRequests.slice(dualRequestStart);
+    assert.equal(dualRequests.length, 3, 'persisted shot routes must not create legacy boundary provider tasks');
+    assert.deepEqual(dualRequests.map(request => request.body.model), [
+      'happyhorse-1.1-r2v',
+      'happyhorse-1.1-i2v',
+      'happyhorse-1.1-r2v',
+    ]);
+    assert.deepEqual(dualRequests[1]?.body.input?.media, [{
+      type: 'first_frame',
+      url: `https://fixture.invalid/${dualRequests[0].taskId}-last.jpg`,
+    }]);
+    assert.deepEqual(dualRequests[2]?.body.input?.media?.at(-1), {
+      type: 'reference_image',
+      url: `https://fixture.invalid/${dualRequests[1].taskId}-last.jpg`,
+    });
+    const recoveredDual = JSON.parse(JSON.stringify(
+      (getTaskForOwner(dualTaskId, dualOwner)?.result?.assemblyPlan as ProductionAssemblyPlan).segments,
+    )) as ProductionAssemblyPlan['segments'];
+    assert.deepEqual(recoveredDual.map(segment => segment.generationRoute?.mode), [
+      'multi-reference', 'first-frame', 'multi-reference',
+    ]);
     console.log(JSON.stringify({
       ok: true,
       route: '/api/smart/vimax-agent-step',
@@ -270,6 +385,7 @@ async function main() {
       boundaryProviderTasks: 2,
       realProviderCalls: 0,
       fixtureProviderSubmits: providerRequests.length,
+      dualRouteProviderTasks: dualRequests.length,
       incurredCost: false,
       finalVideoUrl: lastSuccessfulResult.videoUrl,
     }));

@@ -185,7 +185,10 @@ async function runSegmentProviderJob(params: {
     const referenceAssets = Array.isArray(parentTask?.result?.vimaxReferenceAssets)
       ? parentTask.result.vimaxReferenceAssets as VimaxAgentReferenceAsset[]
       : [];
-    const resolvedVideoModel = videoModel || byokConnection.videoModel || byokConnection.model;
+    const resolvedVideoModel = segment.generationRoute?.model
+      || videoModel
+      || byokConnection.videoModel
+      || byokConnection.model;
     const storyboardShot = productionProject?.storyboard.shots.find(shot => shot.id === segment.shotId);
     const referenceManifest = resolvedVideoModel && isHappyHorseR2VModel(resolvedVideoModel)
       ? buildHappyHorseR2VReferenceManifest({

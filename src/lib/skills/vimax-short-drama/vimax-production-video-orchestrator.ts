@@ -84,6 +84,8 @@ export async function runVimaxProductionVideoOrchestrator(input: {
     if (index >= queue.childTaskIds.length - 1) continue;
     const parentAfterSegment = getTaskForOwner(input.parentTaskId, input.owner);
     const planAfterSegment = parentAfterSegment?.result?.assemblyPlan as ProductionAssemblyPlan | undefined;
+    const nextSegment = planAfterSegment?.segments[index + 1];
+    if (nextSegment?.generationRoute) continue;
     if (isReusableVimaxBoundaryBridge(planAfterSegment, index)) continue;
     const bridge = startProductionBoundaryBridge({
       parentTaskId: input.parentTaskId,
