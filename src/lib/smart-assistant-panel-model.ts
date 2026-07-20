@@ -138,6 +138,10 @@ export interface ChatMessage {
       duration: number;
       camera: string;
       prompt: string;
+      /** 规划模型给出的语义衔接意图；实际执行路线由服务端解析。 */
+      handoffIntent?: 'strict-frame' | 'reference-flexible';
+      /** 展示给用户的逐镜衔接理由。 */
+      handoffReason?: string;
       /** 该 Clip 的参考首帧图（reference_assets 阶段回填）。 */
       referenceUrl?: string;
       /** 该 Clip 的成片视频（video 阶段回填）。 */

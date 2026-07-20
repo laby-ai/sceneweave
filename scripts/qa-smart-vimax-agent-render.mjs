@@ -69,6 +69,14 @@ check(
     && /QUALITY_TO_RESOLUTION/.test(preferences),
   'model, ratio and quality controls must affect the existing Vimax requests',
 );
+check(
+  'vimax-shot-routing-is-visible-without-stale-call-counts',
+  /严格接镜/.test(generateWorkspace)
+    && /参考创作/.test(generateWorkspace)
+    && /shot\.handoffReason/.test(generateWorkspace)
+    && !/3 个镜头共 5 次调用/.test(generateWorkspace),
+  'the workspace must explain each persisted shot route without exposing the retired fixed bridge-call model',
+);
 check('workspace-renders-stage-card', /msg\.vimaxAgent/.test(workspace) && /真实 AgentPlan/.test(workspace) && /Seedream 参考素材/.test(workspace));
 check('route-calls-real-ark-text-model', /chat\/completions/.test(route) && /ARK_API_KEY/.test(route) && /usedRealKey:\s*true/.test(route));
 check(

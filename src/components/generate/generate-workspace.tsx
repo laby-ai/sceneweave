@@ -32,7 +32,6 @@ import { VimaxProtectedDownload, VimaxProtectedVideo } from '@/components/genera
 import { HappyHorseConnectionControl } from '@/components/generate/happyhorse-connection-control';
 import { PlanningConnectionControl } from '@/components/generate/planning-connection-control';
 import { getBYOKRequestHeaders } from '@/lib/byok-client';
-import { isHappyHorseR2VModel } from '@/lib/happyhorse-r2v-adapter';
 import {
   useVimaxShortDramaSkill,
   VIMAX_REFERENCE_CONFIRM_REGEX,
@@ -423,21 +422,19 @@ export function GenerateWorkspace({
       }
       // 点击“确认参考图，继续生成视频” -> 进入视频费用确认，不重复生成参考图
       if (/继续生成视频|生成视频/.test(text)) {
-        const r2vCostDetail = isHappyHorseR2VModel(selectedVideoModel)
-          ? 'R2V 会为每个主镜头和每个相邻镜头边界分别创建模型任务；例如 3 个镜头共 5 次调用（3 个主镜头 + 2 个衔接任务）。'
-          : '';
+        const routingCostDetail = '当前计划按每个主镜头创建一次视频任务；每镜会依照已确认的衔接计划执行“严格接镜”或“参考创作”，不再默认追加边界生成任务。';
         setMessages(prev => [...prev, { id: genId(), role: 'user', content: text, timestamp: Date.now() }]);
         setInput('');
         setMessages(prev => [...prev, {
           id: genId(),
           role: 'assistant',
-          content: `视频生成会真实调用 ${selectedVideoModel}（按真实费用计费）。${r2vCostDetail}确认后会按分镜逐段生成，并自动合成为完整短剧，预计 4-10 分钟。`,
+          content: `视频生成会真实调用已连接的视频模型（按真实费用计费）。${routingCostDetail}确认后会按分镜逐段生成，并自动合成为完整短剧，预计 4-10 分钟。`,
           timestamp: Date.now(),
           vimaxAgent: {
             phase: 'video_cost_confirm',
             title: '视频生成费用确认',
-            summary: r2vCostDetail || '将基于已确认的连续性约束和分镜脚本，调用当前视频模型逐段生成并合成为完整短剧。',
-            model: selectedVideoModel,
+            summary: routingCostDetail,
+            model: '已连接视频模型',
             costState: 'not-yet',
             nextAction: '点击“确认开始生成”后开始真实调用视频模型。',
           },
@@ -482,7 +479,7 @@ export function GenerateWorkspace({
       timestamp: Date.now(),
     }]);
     setInput('');
-  }, [input, isLoading, mode, activeMode, onNavigate, handlePlanStep, handleReferenceAssetsStep, handleVideoStep, selectedRatio, selectedQuality, selectedSkill, selectedVideoModel, setScopedWorkspaceView]);
+  }, [input, isLoading, mode, activeMode, onNavigate, handlePlanStep, handleReferenceAssetsStep, handleVideoStep, selectedRatio, selectedQuality, selectedSkill, setScopedWorkspaceView]);
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
@@ -912,8 +909,19 @@ function MessageBubble({ message, onQuickOption, onResultIteration, onProduction
                   <div className="flex min-h-[24px] items-center gap-2">
                     <span className="shrink-0 font-medium text-[#2f6bff]">Clip {shot.index}</span>
                     <span className="min-w-0 flex-1 truncate text-[#3a414b]">{shot.title}</span>
+                    {shot.handoffIntent ? (
+                      <span
+                        title={shot.handoffReason}
+                        className="shrink-0 rounded-full border border-[#dce4f4] bg-white px-2 py-0.5 text-[11px] font-medium text-[#596579]"
+                      >
+                        {shot.handoffIntent === 'strict-frame' ? '严格接镜' : '参考创作'}
+                      </span>
+                    ) : null}
                     <span className="shrink-0 text-[#858c97]">{shot.duration}s · {shot.camera}</span>
                   </div>
+                  {shot.handoffReason ? (
+                    <p className="line-clamp-2 text-[#68758a]">衔接：{shot.handoffReason}</p>
+                  ) : null}
                   {shot.prompt ? (
                     <p className="line-clamp-3 text-[#858c97]">{shot.prompt}</p>
                   ) : null}
