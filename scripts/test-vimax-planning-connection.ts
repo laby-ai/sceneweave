@@ -35,7 +35,13 @@ function createStorage(): Storage {
 
 const sessionStorage = createStorage();
 const localStorage = createStorage();
-Object.assign(globalThis, { window: { sessionStorage, localStorage } });
+Object.assign(globalThis, {
+  window: {
+    sessionStorage,
+    localStorage,
+    location: { pathname: '/sceneweave/embed/creation-agent', search: '', hash: '' },
+  },
+});
 
 assert.deepEqual(getPlanningSessionConnectionSummary('paper-host:planning-default'), {
   configured: false,
@@ -94,7 +100,8 @@ async function verifyTransactionalClientSave() {
     apiKey: 'existing-secret',
     model: 'existing-model',
   });
-  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    assert.equal(input, '/sceneweave/api/smart/vimax-agent-step');
     const headers = new Headers(init?.headers);
     assert.equal(headers.get('x-yh-api-key'), 'invalid-secret');
     assert.equal(headers.get('x-yh-video-api-key'), null, 'connection validation must never send video credentials');

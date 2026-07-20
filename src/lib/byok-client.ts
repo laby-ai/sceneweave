@@ -1,3 +1,5 @@
+import { clientApiPath } from '@/lib/client-api';
+
 type StoredApiProvider = 'openai-compatible' | 'ark-plan' | 'happyhorse-dashscope';
 
 interface StoredApiConnection {
@@ -85,7 +87,7 @@ export async function validateAndSavePlanningSessionConnection(
     Object.entries(requestHeaders).filter(([name]) => !name.toLowerCase().startsWith('x-yh-')),
   );
   try {
-    const response = await fetch('/api/smart/vimax-agent-step', {
+    const response = await fetch(clientApiPath('/api/smart/vimax-agent-step'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
