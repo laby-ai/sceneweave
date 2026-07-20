@@ -93,10 +93,10 @@ assert.equal(fallbackHeaders['x-yh-video-model'], DEFAULT_VIDEO_MODEL);
 assert.equal(
   formatProviderError({
     provider: 'planning',
-    code: 'planning_provider_auth_failed',
+    code: 'planning_provider_permission_denied',
     error: 'upstream request_id=private-detail',
   }, '规划失败'),
-  '规划模型连接不可用，请检查 API Base、API Key 和模型名后重试。',
+  '百炼 API Key 暂无权调用固定规划模型，请在百炼控制台授权 qwen3.7-plus，并检查 API Key 的 IP 白名单。',
   'planning errors must not expose upstream details',
 );
 
@@ -128,7 +128,7 @@ async function verifyTransactionalClientSave() {
       model: 'invalid-model',
     }, { 'x-paper-host-guest-workspace': 'guest-planning-transaction' });
     assert.equal(failed.ok, false);
-    assert.equal(failed.error, '规划模型连接不可用，请检查 API Base、API Key 和模型名后重试。');
+    assert.equal(failed.error, '百炼 API Key 无效，请检查后重试。');
     assert.deepEqual(getPlanningSessionConnectionSummary(existingScope), {
       configured: true,
       apiBase: 'https://valid.example.com/v1',
@@ -275,7 +275,11 @@ async function verifyValidatedConnectionCanRetryPlan() {
     const modelBlockedPayload = await modelBlocked.json() as { ready?: boolean; code?: string; error?: string };
     assert.equal(modelBlocked.status, 200);
     assert.equal(modelBlockedPayload.ready, false, 'a catalog-visible but forbidden model must not be saved as connected');
-    assert.equal(modelBlockedPayload.code, 'planning_provider_auth_failed');
+    assert.equal(modelBlockedPayload.code, 'planning_provider_permission_denied');
+    assert.equal(
+      formatProviderError(modelBlockedPayload, '规划失败'),
+      '百炼 API Key 暂无权调用固定规划模型，请在百炼控制台授权 qwen3.7-plus，并检查 API Key 的 IP 白名单。',
+    );
     assert.doesNotMatch(modelBlockedPayload.error || '', /model is not enabled|fixture-planning-secret/);
 
     const rejected = await route.POST(new NextRequest('http://localhost/api/smart/vimax-agent-step', {

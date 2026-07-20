@@ -3,6 +3,7 @@ import type { BYOKConnection } from '@/lib/byok-provider';
 export type VimaxPlanningFailureCode =
   | 'planning_provider_unavailable'
   | 'planning_provider_auth_failed'
+  | 'planning_provider_permission_denied'
   | 'planning_model_unavailable'
   | 'planning_provider_failed';
 
@@ -15,7 +16,9 @@ export interface VimaxPlanningFailure {
 
 function planningFailure(code: VimaxPlanningFailureCode): VimaxPlanningFailure {
   const error = code === 'planning_provider_auth_failed'
-    ? '规划模型连接不可用，请检查 API Base、API Key 和模型名后重试。'
+    ? '百炼 API Key 无效，请检查后重试。'
+    : code === 'planning_provider_permission_denied'
+      ? '百炼 API Key 暂无权调用固定规划模型，请在百炼控制台授权 qwen3.7-plus，并检查 API Key 的 IP 白名单。'
     : code === 'planning_model_unavailable'
       ? '连接已通过，但未找到所选规划模型，请检查模型名后重试。'
     : code === 'planning_provider_unavailable'
@@ -42,9 +45,17 @@ export function resolveVimaxPlanningReadinessFailure(
 
 export function sanitizeVimaxPlanningFailure(error: unknown): VimaxPlanningFailure {
   const message = error instanceof Error ? error.message : '';
-  return planningFailure(/API key|Authentication|Unauthorized|\b401\b|认证|密钥/i.test(message)
-    ? 'planning_provider_auth_failed'
-    : 'planning_provider_failed');
+  return planningFailure(/Access denied|API-Key restrictions|\b403\b/i.test(message)
+    ? 'planning_provider_permission_denied'
+    : /API key|Authentication|Unauthorized|\b401\b|认证|密钥/i.test(message)
+      ? 'planning_provider_auth_failed'
+      : 'planning_provider_failed');
+}
+
+function planningFailureCodeForStatus(status: number): VimaxPlanningFailureCode {
+  if (status === 401) return 'planning_provider_auth_failed';
+  if (status === 403) return 'planning_provider_permission_denied';
+  return 'planning_provider_failed';
 }
 
 function buildModelDirectoryUrl(apiBase: string): string {
@@ -67,9 +78,7 @@ async function validatePlanningConnection(connection: BYOKConnection | undefined
       signal: AbortSignal.timeout(10_000),
     });
     if (!response.ok) {
-      const failure = planningFailure(response.status === 401 || response.status === 403
-        ? 'planning_provider_auth_failed'
-        : 'planning_provider_failed');
+      const failure = planningFailure(planningFailureCodeForStatus(response.status));
       return { ...failure, ready: false };
     }
     const payload = await response.json().catch(() => null) as { data?: Array<{ id?: unknown }> } | null;
@@ -94,9 +103,7 @@ async function validatePlanningConnection(connection: BYOKConnection | undefined
       signal: AbortSignal.timeout(10_000),
     });
     if (!probe.ok) {
-      const failure = planningFailure(probe.status === 401 || probe.status === 403
-        ? 'planning_provider_auth_failed'
-        : 'planning_provider_failed');
+      const failure = planningFailure(planningFailureCodeForStatus(probe.status));
       return { ...failure, ready: false };
     }
     return { success: true, provider: 'planning', ready: true, model: connection.model };

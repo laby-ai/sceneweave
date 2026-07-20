@@ -261,7 +261,10 @@ export function formatProviderError(payload: unknown, fallback: string): string 
 
   if (data?.provider === 'planning') {
     if (data.code === 'planning_provider_auth_failed') {
-      return '规划模型连接不可用，请检查 API Base、API Key 和模型名后重试。';
+      return '百炼 API Key 无效，请检查后重试。';
+    }
+    if (data.code === 'planning_provider_permission_denied') {
+      return '百炼 API Key 暂无权调用固定规划模型，请在百炼控制台授权 qwen3.7-plus，并检查 API Key 的 IP 白名单。';
     }
     if (data.code === 'planning_provider_unavailable') {
       return '规划模型暂不可用，请先连接可用的规划模型后重试。';
