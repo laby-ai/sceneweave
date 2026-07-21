@@ -122,6 +122,7 @@
     "test:cross-app-auth-contract": "tsx scripts/test-cross-app-auth-contract.ts",
     "test:client-request-contract": "tsx scripts/test-client-request-contract.ts",
     "test:vimax-authenticated-transport": "tsx scripts/test-vimax-authenticated-transport.ts",
+    "test:vimax-qwen37-planning-payload": "tsx scripts/test-vimax-qwen37-planning-payload.ts",
     "test:loopback-listener-contract": "node scripts/test-loopback-listener-contract.mjs",
     "test:request-observability": "tsx scripts/test-request-observability.ts",
     "test:paper-host-creation-agent": "tsx scripts/test-paper-host-creation-agent.ts",

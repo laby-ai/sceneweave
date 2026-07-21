@@ -360,8 +360,8 @@ async function callArkTextStream(prompt: string, preset: VimaxSkillPreset, model
     },
     body: JSON.stringify({
       model,
-      temperature: 0.2,
-      max_tokens: 4000,
+      enable_thinking: false,
+      response_format: { type: 'json_object' },
       stream: true,
       messages: buildVimaxPlanMessages(prompt, preset),
     }),
