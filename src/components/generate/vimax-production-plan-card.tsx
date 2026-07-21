@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { clientApiFetch, clientApiRequest } from '@/lib/client-api';
 import { buildVimaxProductionGovernanceView } from '@/lib/skills/vimax-short-drama/vimax-production-governance';
-import { parseVimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
+import { parseVimaxProductionPlan, skipsVimaxReferenceAssets } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 import type { VimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 
 const stageLabels: Record<VimaxProductionPlan['providerRoutes'][number]['stage'], string> = {
@@ -58,7 +58,7 @@ export function VimaxProductionPlanCard({ plan, taskId, requestHeaders, onPlanCh
   const governance = buildVimaxProductionGovernanceView(currentPlan);
   const videoReady = currentPlan.providerRoutes.find(route => route.stage === 'video')?.ready === true;
   const completed = currentPlan.checkpoints.filter(checkpoint => checkpoint.status === 'completed').length;
-  const referenceSkipped = currentPlan.checkpoints.some(checkpoint => checkpoint.id === 'reference_assets' && checkpoint.status === 'skipped');
+  const referenceSkipped = skipsVimaxReferenceAssets(currentPlan);
 
   async function updatePlan(action: string, fallbackError: string) {
     if (!taskId || pendingAction) return;
