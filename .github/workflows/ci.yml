@@ -73,6 +73,7 @@ jobs:
         run: |
           pnpm run test:creation-agent-layout
           pnpm run test:vimax-authenticated-transport
+          pnpm run test:vimax-qwen37-planning-payload
           pnpm run qa:smart-vimax-agent-render
 
       - name: Check compose durability
