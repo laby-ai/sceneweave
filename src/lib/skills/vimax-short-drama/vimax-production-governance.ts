@@ -2,6 +2,7 @@ import type { VimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-p
 
 export interface VimaxProductionGovernanceView {
   state: VimaxProductionPlan['governance']['status'];
+  mode?: 'external' | 'draft';
   label: string;
   canApprove: boolean;
   description: string;
@@ -33,8 +34,18 @@ export function buildVimaxProductionGovernanceView(plan: VimaxProductionPlan): V
     };
   }
   if (plan.governance.status === 'ready') {
+    if (plan.estimatedCost.status === 'confirmed' && plan.estimatedCost.billingSource === 'external-byok') {
+      return {
+        state: 'ready',
+        mode: 'external',
+        label: '百炼真实生成已确认',
+        canApprove: false,
+        description: '将使用当前账号的百炼配置调用真实图像和视频模型；费用以供应商账单为准。',
+      };
+    }
     return {
       state: 'ready',
+      mode: 'draft',
       label: '无成本草稿流程已就绪',
       canApprove: false,
       description: '不会调用图像或视频模型；可暂停、刷新恢复或准备交付草稿。',

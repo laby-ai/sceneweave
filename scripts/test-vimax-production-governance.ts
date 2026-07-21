@@ -95,6 +95,24 @@ async function main() {
     video: 'video-model',
   }), /真实费用/);
 
+  const externalPlan = planModule.confirmVimaxProductionExternalCost(approvedPlan);
+  assert.deepEqual(governanceView.buildVimaxProductionGovernanceView(externalPlan), {
+    state: 'ready',
+    mode: 'external',
+    label: '百炼真实生成已确认',
+    canApprove: false,
+    description: '将使用当前账号的百炼配置调用真实图像和视频模型；费用以供应商账单为准。',
+  });
+
+  const draftPlan = planModule.confirmVimaxProductionDraft(approvedPlan);
+  assert.deepEqual(governanceView.buildVimaxProductionGovernanceView(draftPlan), {
+    state: 'ready',
+    mode: 'draft',
+    label: '无成本草稿流程已就绪',
+    canApprove: false,
+    description: '不会调用图像或视频模型；可暂停、刷新恢复或准备交付草稿。',
+  });
+
   const duplicateResponse = await taskRoute.POST(approveRequest(), { params: Promise.resolve({ taskId }) });
   assert.equal(duplicateResponse.status, 200);
   const duplicatePlan = planModule.parseVimaxProductionPlan(taskManager.getTaskFresh(taskId)?.result?.productionPlan);
@@ -108,7 +126,7 @@ async function main() {
   assert.equal(otherGuestResponse.status, 404);
 
   rmSync(taskFile, { force: true });
-  console.log(JSON.stringify({ ok: true, script: 'test-vimax-production-governance', checks: 20 }));
+  console.log(JSON.stringify({ ok: true, script: 'test-vimax-production-governance', checks: 22 }));
 }
 
 main().catch(error => {

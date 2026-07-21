@@ -178,6 +178,8 @@ export function VimaxProductionPlanCard({ plan, taskId, requestHeaders, onPlanCh
         <p className="mt-0.5 text-[10px] text-[#858e9a]">
           {currentPlan.estimatedCost.status === 'draft-only-confirmed'
             ? '已选择无成本草稿：不会调用图像或视频模型。'
+            : governance.mode === 'external'
+              ? '已确认使用当前账号的百炼配置；真实费用由供应商账单结算。'
             : '真实媒体费用待供应商确认；在获得明确报价前不会调用付费模型。'}
         </p>
       </div>
@@ -229,12 +231,14 @@ export function VimaxProductionPlanCard({ plan, taskId, requestHeaders, onPlanCh
               onClick={() => void updatePlan('pause-production', '暂停流程失败')}
               className="rounded-lg border border-[#dfe5ed] bg-white px-3 py-1.5 text-[11px] font-medium text-[#4d5663] transition hover:bg-[#f5f7fa] disabled:opacity-50"
             >暂停流程</button>
-            <button
-              type="button"
-              disabled={!taskId || Boolean(pendingAction)}
-              onClick={() => void updatePlan('prepare-production-draft', '准备交付草稿失败')}
-              className="rounded-lg bg-[#2f6bff] px-3 py-1.5 text-[11px] font-medium text-white transition hover:bg-[#245de3] disabled:opacity-50"
-            >准备交付草稿</button>
+            {governance.mode === 'draft' ? (
+              <button
+                type="button"
+                disabled={!taskId || Boolean(pendingAction)}
+                onClick={() => void updatePlan('prepare-production-draft', '准备交付草稿失败')}
+                className="rounded-lg bg-[#2f6bff] px-3 py-1.5 text-[11px] font-medium text-white transition hover:bg-[#245de3] disabled:opacity-50"
+              >准备交付草稿</button>
+            ) : null}
           </>
         ) : null}
         {paused ? (
