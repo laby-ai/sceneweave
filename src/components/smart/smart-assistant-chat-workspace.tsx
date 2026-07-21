@@ -218,7 +218,7 @@ export function SmartAssistantChatWorkspace(props: SmartAssistantChatWorkspacePr
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="inline-flex items-center gap-1 rounded-full bg-[#70E0FF]/12 px-2 py-1 text-[11px] font-medium text-[#70E0FF]">
                               <Sparkles className="h-3 w-3" />
-                              {msg.vimaxAgent.phase === 'plan' ? '真实 AgentPlan' : msg.vimaxAgent.phase === 'reference_assets' ? 'Seedream 参考素材' : '视频费用确认'}
+                              {msg.vimaxAgent.phase === 'plan' ? '真实 AgentPlan' : msg.vimaxAgent.phase === 'reference_assets' ? '千问参考素材' : '视频费用确认'}
                             </span>
                             <span className={`rounded-full px-2 py-1 text-[11px] font-medium ${
                               msg.vimaxAgent.costState === 'incurred'

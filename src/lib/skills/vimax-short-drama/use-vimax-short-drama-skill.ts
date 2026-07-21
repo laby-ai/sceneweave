@@ -33,7 +33,7 @@ import { formatProviderError } from '@/lib/byok-client';
  * - 视频/语音阶段必须用户显式确认费用，这里不触发。
  */
 
-export const VIMAX_REFERENCE_CONFIRM_REGEX = /确认分镜|生成参考图|进入\s*Seedream|参考素材生成/;
+export const VIMAX_REFERENCE_CONFIRM_REGEX = /确认分镜|生成参考图|进入\s*(?:Seedream|千问图像)|参考素材生成/;
 
 /**
  * 视频确认意图。仅当对话里已存在带真实参考图 URL 的 ViMAX 消息时，
@@ -362,7 +362,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
           generationSettings,
           productionPlan,
           costState: 'incurred',
-          nextAction: plan.nextAction || '确认分镜后进入 Seedream 参考素材生成。',
+          nextAction: plan.nextAction || '确认分镜后进入千问参考素材生成。',
           assets: assets.map((asset: { kind?: NonNullable<NonNullable<ChatMessage['vimaxAgent']>['assets']>[number]['kind']; label?: string; prompt?: string }) => ({
             kind: asset.kind || 'reference',
             label: asset.label || '参考素材',
@@ -464,7 +464,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         ...plan,
         phase: 'reference_assets',
         costState: 'incurred',
-        nextAction: '等待 Seedream 返回参考素材。',
+        nextAction: '等待千问图像返回参考素材。',
       },
     } as ChatMessage]);
 
@@ -504,7 +504,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         throw new Error(reason);
       }
       if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Seedream 参考素材生成失败');
+        throw new Error(data.error || '千问参考素材生成失败');
       }
 
       const generatedAssets = Array.isArray(data.assets) ? data.assets : [];
@@ -568,7 +568,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
           ...plan,
           phase: 'reference_assets',
           costState: 'blocked',
-          nextAction: '修正 Seedream 配置或素材 prompt 后重试。',
+          nextAction: '修正千问图像配置或素材 prompt 后重试。',
         },
       } : message));
     } finally {
