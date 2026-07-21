@@ -222,6 +222,13 @@ export async function resolveBYOKConnectionsForRequest(request: Request, trusted
   planning?: BYOKConnection;
   video?: BYOKConnection;
 }> {
+  if (trustedOwner) {
+    return buildMemberBailianConnections(await resolveMemberBailianProfileForOwner(
+      trustedOwner,
+      request.headers.get('x-request-id') || crypto.randomUUID(),
+    ));
+  }
+
   const explicitPlanning = extractExplicitBYOKConnection(request.headers);
   const explicitVideo = extractExplicitBYOKVideoConnection(request.headers);
   if (explicitPlanning || explicitVideo) {
@@ -231,12 +238,7 @@ export async function resolveBYOKConnectionsForRequest(request: Request, trusted
     };
   }
 
-  const profile = trustedOwner
-    ? await resolveMemberBailianProfileForOwner(
-      trustedOwner,
-      request.headers.get('x-request-id') || crypto.randomUUID(),
-    )
-    : await resolveMemberBailianProfile(request);
+  const profile = await resolveMemberBailianProfile(request);
   if (profile) return buildMemberBailianConnections(profile);
 
   const fallback = extractEnvironmentBYOKConnection();

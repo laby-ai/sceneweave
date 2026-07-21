@@ -628,7 +628,7 @@ export async function POST(request: NextRequest) {
     const body = (await request.json().catch(() => ({}))) as VimaxAgentStepBody;
     const phase = body.phase || 'plan';
     const hasExplicitConnection = ['x-yh-provider', 'x-yh-api-base', 'x-yh-api-key', 'x-yh-model'].every(name => request.headers.get(name)?.trim());
-    const requestConnections = phase === 'planning_connection_validate'
+    const requestConnections = phase === 'planning_connection_validate' && access.sessionMode !== 'member'
       ? { planning: hasExplicitConnection ? extractBYOKConnection(request.headers) : undefined, video: undefined } : await resolveBYOKConnectionsForRequest(request, access.sessionMode === 'member' ? owner : undefined);
     const planningConnection = requestConnections.planning;
     const connectionResponse = await resolveVimaxPlanningConnectionPhase(phase, planningConnection, getArkConfig().apiKey);
