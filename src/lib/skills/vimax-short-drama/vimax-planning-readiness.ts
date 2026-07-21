@@ -1,4 +1,5 @@
 import type { BYOKConnection } from '@/lib/byok-provider';
+import { emitOperationalSystemEvent } from '@/lib/operational-observability';
 
 export type VimaxPlanningFailureCode =
   | 'planning_provider_unavailable'
@@ -12,6 +13,19 @@ export interface VimaxPlanningFailure {
   provider: 'planning';
   code: VimaxPlanningFailureCode;
   error: string;
+}
+
+const SAFE_PROVIDER_CODE = /^[A-Za-z0-9._-]{1,64}$/;
+
+class VimaxPlanningProviderError extends Error {
+  constructor(
+    readonly status: number,
+    readonly providerCode: string,
+    readonly failure: VimaxPlanningFailure,
+  ) {
+    super(failure.error);
+    this.name = 'VimaxPlanningProviderError';
+  }
 }
 
 function planningFailure(code: VimaxPlanningFailureCode): VimaxPlanningFailure {
@@ -44,12 +58,44 @@ export function resolveVimaxPlanningReadinessFailure(
 }
 
 export function sanitizeVimaxPlanningFailure(error: unknown): VimaxPlanningFailure {
+  if (error instanceof VimaxPlanningProviderError) return error.failure;
   const message = error instanceof Error ? error.message : '';
   return planningFailure(/Access denied|API-Key restrictions|\b403\b/i.test(message)
     ? 'planning_provider_permission_denied'
     : /API key|Authentication|Unauthorized|\b401\b|认证|密钥/i.test(message)
       ? 'planning_provider_auth_failed'
       : 'planning_provider_failed');
+}
+
+function readProviderCode(payload: unknown): string {
+  if (!payload || typeof payload !== 'object') return 'unknown';
+  const error = 'error' in payload ? (payload as { error?: unknown }).error : undefined;
+  const value = error && typeof error === 'object' && 'code' in error
+    ? (error as { code?: unknown }).code
+    : 'code' in payload ? (payload as { code?: unknown }).code : undefined;
+  return typeof value === 'string' && SAFE_PROVIDER_CODE.test(value) ? value : 'unknown';
+}
+
+export function createVimaxPlanningProviderError(status: number, payload: unknown): Error {
+  return new VimaxPlanningProviderError(
+    status,
+    readProviderCode(payload),
+    planningFailure(planningFailureCodeForStatus(status)),
+  );
+}
+
+export function getVimaxPlanningProviderDiagnostic(error: unknown): string | null {
+  return error instanceof VimaxPlanningProviderError
+    ? `http_${error.status}_${error.providerCode}`
+    : null;
+}
+
+export function reportVimaxPlanningFailure(error: unknown): VimaxPlanningFailure {
+  const diagnostic = getVimaxPlanningProviderDiagnostic(error);
+  if (diagnostic) {
+    emitOperationalSystemEvent('planning.provider_rejected', { level: 'error', errorType: diagnostic });
+  }
+  return sanitizeVimaxPlanningFailure(error);
 }
 
 function planningFailureCodeForStatus(status: number): VimaxPlanningFailureCode {

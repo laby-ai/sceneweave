@@ -33,7 +33,7 @@ import {
 } from '@/lib/skills/vimax-short-drama/happyhorse-vimax-video';
 import { resolveAndPersistVimaxVideoReferenceAssets } from '@/lib/skills/vimax-short-drama/vimax-video-reference-assets';
 import { callVimaxReferenceImages } from '@/lib/skills/vimax-short-drama/vimax-reference-assets';
-import { callWithSanitizedVimaxPlanningFailure, resolveVimaxPlanningConnectionPhase, resolveVimaxPlanningReadinessFailure, sanitizeVimaxPlanningFailure } from '@/lib/skills/vimax-short-drama/vimax-planning-readiness';
+import { callWithSanitizedVimaxPlanningFailure, createVimaxPlanningProviderError, reportVimaxPlanningFailure, resolveVimaxPlanningConnectionPhase, resolveVimaxPlanningReadinessFailure } from '@/lib/skills/vimax-short-drama/vimax-planning-readiness';
 import {
   buildVimaxContinuityContract,
   buildVimaxFrameProviderPrompt,
@@ -369,8 +369,7 @@ async function callArkTextStream(prompt: string, preset: VimaxSkillPreset, model
 
   if (!response.ok || !response.body) {
     const data = await response.json().catch(() => ({}));
-    const message = typeof data?.error?.message === 'string' ? data.error.message : response.statusText;
-    throw new Error(`Ark 调用失败：${message}`);
+    throw createVimaxPlanningProviderError(response.status, data);
   }
 
   const reader = response.body.getReader();
@@ -672,7 +671,7 @@ export async function POST(request: NextRequest) {
               );
               send('plan.complete', { success: true, phase: 'plan', model: result.model, ...envelope });
             } catch (error) {
-              send('plan.error', sanitizeVimaxPlanningFailure(error));
+              send('plan.error', reportVimaxPlanningFailure(error));
             } finally {
               controller.close();
             }
