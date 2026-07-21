@@ -7,7 +7,7 @@
 当前产品不是一套新建的 AIGC Demo，而是在 SceneWeave 原有成熟 ViMAX 短剧生成链上持续补强的“创作智能体”。正式短剧默认执行已经升级为：
 
 1. 规划模型产生剧本、资产、分镜和连续性约束；
-2. Wan 2.7 根据批准资产、当前分镜和上一镜尾帧编译每个镜头的 canonical 首帧；
+2. Qwen Image 2.0 根据批准资产、当前分镜和上一镜尾帧编译每个镜头的 canonical 首帧；
 3. 所有镜头统一交给 HappyHorse 1.1 I2V；
 4. 逐镜任务、provider task ID、状态、结果 URL 和 artifact version 立即持久化；
 5. 最后按当前 artifact version 合成、质检、播放和下载。
@@ -109,7 +109,7 @@ src/components/generate/generate-workspace.tsx
 - API Key 只保存到当前 guest workspace 的 `sessionStorage`；
 - Key 不进入 prompt、项目状态、服务端持久化、日志、截图、文档或 Git；
 - 文本/视觉规划固定 `qwen3.7-plus`；
-- 图像固定 `wan2.7-image-pro`；
+- 图像固定 `qwen-image-2.0`，通过百炼原生 multimodal-generation 接口生成或编辑；
 - 视频默认固定 `happyhorse-1.1-i2v`；
 - 不允许静默降级到其他模型；
 - 连接验证失败不会覆盖之前的有效连接；
@@ -196,7 +196,7 @@ src/lib/skills/vimax-short-drama/vimax-generation-preferences.ts
 
 1. 第一个镜头以主体、场景、道具、shot reference 和 production plan continuity 生成 canonical 首帧；
 2. 后续镜头再加入上一镜最后成功尾帧；
-3. canonical 首帧使用既有 `imageWithBYOK` 和 `wan2.7-image-pro` 生成；
+3. canonical 首帧使用既有 `imageWithBYOK` 和 `qwen-image-2.0` 生成；
 4. 首帧状态保存 version、status、artifactVersion、image URL、来源尾帧、来源参考图、模型、完成时间或错误；
 5. 缺上一镜尾帧、缺批准参考图、artifact version 过期或来源变化时，视频提交前阻断；
 6. 所有自动镜头 route 为 `first-frame`，模型为 `happyhorse-1.1-i2v`；
@@ -404,7 +404,7 @@ scripts/test-paper-host-creation-agent.ts
 
 产品是 SceneWeave 内置“创作智能体”，ViMAX 是稳定内核，不删、不重写、不另建运行时。唯一主链是 generate-workspace.tsx -> use-vimax-short-drama-skill.ts -> /api/smart/vimax-agent-step -> productionPlan/project/task/asset/storyboard/segment/assembly/export。
 
-当前默认视频策略是 canonical-I2V：Wan 2.7 用批准资产、分镜约束和上一镜尾帧编译每镜 canonical 首帧，所有镜头固定 HappyHorse 1.1 I2V；R2V 仅保留显式 legacy 兼容。规划模型负责剧本和连续性，不选择视频路由。严禁静默降级。
+当前默认视频策略是 canonical-I2V：Qwen Image 2.0 用批准资产、分镜约束和上一镜尾帧编译每镜 canonical 首帧，所有镜头固定 HappyHorse 1.1 I2V；R2V 仅保留显式 legacy 兼容。HappyHorse 1.1 单段时长按官方契约限制为 3 至 15 秒。规划模型负责剧本和连续性，不选择视频路由。严禁静默降级。
 
 先跑无付费 canonical/route/segment/recovery/assembly QA。只有用户在当前轮明确授权费用且有效百炼连接通过后，才能运行一次有界真实短剧全链。provider task ID、status、video URL、artifactVersion 和 lastSuccessfulResult 必须即时持久化；pending/error/cancel/stale 不得覆盖最后成功结果。
 

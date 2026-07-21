@@ -103,11 +103,17 @@ function buildImageGenerationsUrl(apiBase: string): string {
   return apiBaseHasVersionPath(apiBase) ? `${apiBase}/images/generations` : `${apiBase}/v1/images/generations`;
 }
 
-function isBailianWanImageModel(model: string): boolean {
-  return /^wan2\.7-image(?:-pro)?$/i.test(model.trim());
+function isBailianMultimodalImageModel(model: string): boolean {
+  const value = model.trim();
+  return /^wan2\.7-image(?:-pro)?$/i.test(value)
+    || /^qwen-image-2\.0(?:-pro)?(?:-\d{4}-\d{2}-\d{2})?$/i.test(value);
 }
 
-function buildBailianWanImageUrl(apiBase: string): string {
+function isQwenImage2Model(model: string): boolean {
+  return /^qwen-image-2\.0(?:-pro)?(?:-\d{4}-\d{2}-\d{2})?$/i.test(model.trim());
+}
+
+function buildBailianMultimodalImageUrl(apiBase: string): string {
   const parsed = new URL(apiBase);
   const pathname = parsed.pathname
     .replace(/\/(?:compatible-mode\/v1|api\/v1)\/?$/, '')
@@ -283,9 +289,9 @@ export async function imageWithBYOK(
     throw new Error('BYOK 图片调用缺少默认模型');
   }
 
-  const bailianWan = isBailianWanImageModel(model);
-  const url = bailianWan
-    ? buildBailianWanImageUrl(connection.apiBase)
+  const bailianMultimodal = isBailianMultimodalImageModel(model);
+  const url = bailianMultimodal
+    ? buildBailianMultimodalImageUrl(connection.apiBase)
     : buildImageGenerationsUrl(connection.apiBase);
   const response = await fetch(url, {
     method: 'POST',
@@ -293,13 +299,15 @@ export async function imageWithBYOK(
       Authorization: `Bearer ${connection.apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(bailianWan ? {
+    body: JSON.stringify(bailianMultimodal ? {
       model,
       input: {
         messages: [{
           role: 'user',
           content: [
-            ...(params.referenceImages || []).slice(0, 9).map(image => ({ image })),
+            ...(params.referenceImages || [])
+              .slice(0, isQwenImage2Model(model) ? 3 : 9)
+              .map(image => ({ image })),
             { text: params.prompt },
           ],
         }],
@@ -332,14 +340,16 @@ export async function imageWithBYOK(
       ? (payload as { data: Array<{ url?: string; b64_json?: string }> }).data[0]
       : undefined;
 
-  const wanContent = bailianWan && typeof payload === 'object' && payload && 'output' in payload
+  const multimodalContent = bailianMultimodal && typeof payload === 'object' && payload && 'output' in payload
     ? (payload as {
         output?: { choices?: Array<{ message?: { content?: Array<{ type?: string; image?: string; image_url?: string; url?: string }> } }> };
       }).output?.choices?.[0]?.message?.content
     : undefined;
-  const wanImage = wanContent?.find(item => item.type === 'image' && (item.image || item.image_url || item.url));
+  const multimodalImage = multimodalContent?.find(
+    item => item.type === 'image' && (item.image || item.image_url || item.url),
+  );
 
-  const imageUrl = wanImage?.image || wanImage?.image_url || wanImage?.url
+  const imageUrl = multimodalImage?.image || multimodalImage?.image_url || multimodalImage?.url
     || firstImage?.url
     || (firstImage?.b64_json ? `data:image/png;base64,${firstImage.b64_json}` : '');
   if (!imageUrl) {

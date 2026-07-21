@@ -24,7 +24,7 @@ class MemoryStorage implements Storage {
 }
 
 assert.equal(DEFAULT_PLANNING_MODEL, 'qwen3.7-plus');
-assert.equal(DEFAULT_IMAGE_MODEL, 'wan2.7-image-pro');
+assert.equal(DEFAULT_IMAGE_MODEL, 'qwen-image-2.0');
 assert.equal(DEFAULT_VIDEO_MODEL, 'happyhorse-1.1-i2v');
 assert.equal(BAILIAN_UNIVERSAL_API_HOST, 'https://dashscope.aliyuncs.com');
 assert.equal(BAILIAN_WORKSPACE_API_HOST, 'https://ws-k96mveli79hlkvto.cn-beijing.maas.aliyuncs.com');
@@ -138,6 +138,8 @@ try {
     assert.equal(body.model, DEFAULT_IMAGE_MODEL);
     assert.deepEqual(body.input?.messages?.[0]?.content, [
       { image: 'https://media.example.com/reference.png' },
+      { image: 'https://media.example.com/reference-2.png' },
+      { image: 'https://media.example.com/reference-3.png' },
       { text: 'fixture image' },
     ]);
     assert.deepEqual(body.parameters, { size: '1696*960', n: 1, watermark: false });
@@ -155,7 +157,12 @@ try {
   }, {
     prompt: 'fixture image',
     size: '1696x960',
-    referenceImages: ['https://media.example.com/reference.png'],
+    referenceImages: [
+      'https://media.example.com/reference.png',
+      'https://media.example.com/reference-2.png',
+      'https://media.example.com/reference-3.png',
+      'https://media.example.com/reference-4-must-be-truncated.png',
+    ],
   });
   assert.deepEqual(image, {
     url: 'https://media.example.com/result.png',
@@ -178,7 +185,7 @@ process.stdout.write(`${JSON.stringify({
   planningModel: DEFAULT_PLANNING_MODEL,
   imageModel: DEFAULT_IMAGE_MODEL,
   videoModel: DEFAULT_VIDEO_MODEL,
-  wanImageAdapterCalls: 1,
+  qwenImageAdapterCalls: 1,
   providerVideoCalls: 0,
 })}\n`);
 }

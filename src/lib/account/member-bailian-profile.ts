@@ -9,7 +9,7 @@ import { resolveAccountSessionFromRequest } from '@/lib/account/account-session'
 export type { MemberProviderProfile };
 
 export const BAILIAN_TEXT_MODEL = 'qwen3.7-plus';
-export const BAILIAN_IMAGE_MODEL = 'wan2.7-image-pro';
+export const BAILIAN_IMAGE_MODEL = 'qwen-image-2.0';
 export const BAILIAN_TTS_MODEL = 'qwen-audio-3.0-tts-plus';
 export const BAILIAN_VIDEO_MODEL = 'happyhorse-1.1-i2v';
 

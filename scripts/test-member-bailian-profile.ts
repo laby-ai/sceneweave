@@ -15,14 +15,14 @@ const profile: MemberProviderProfile = {
   workspace_id: 'ws-member-test',
   region: 'cn-beijing',
   text_model: 'qwen3.7-plus',
-  image_model: 'wan2.7-image-pro',
+  image_model: 'qwen-image-2.0',
   tts_model: 'qwen-audio-3.0-tts-plus',
   api_key: 'fixture-key-not-a-real-secret',
 };
 
 const connections = buildMemberBailianConnections(profile);
 assert.equal(connections.planning.model, 'qwen3.7-plus');
-assert.equal(connections.planning.imageModel, 'wan2.7-image-pro');
+assert.equal(connections.planning.imageModel, 'qwen-image-2.0');
 assert.equal(connections.video.videoModel, 'happyhorse-1.1-i2v');
 assert.equal(connections.planning.apiBase, 'https://ws-member-test.cn-beijing.maas.aliyuncs.com/compatible-mode/v1');
 assert.equal(connections.video.apiBase, 'https://ws-member-test.cn-beijing.maas.aliyuncs.com/api/v1');

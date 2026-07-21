@@ -37,7 +37,7 @@ const request = buildHappyHorseVideoSubmitRequest({
   ...connection,
   model: 'happyhorse-1.1-t2v',
   prompt: '同一演员走过雨夜街道，镜头保持向右运动。',
-  duration: 5,
+  duration: 15,
   ratio: '16:9',
   resolution: '720p',
   seed: 271828,
@@ -50,7 +50,7 @@ assert(
 assert(request.headers['X-DashScope-Async'] === 'enable', 'async header missing');
 assert(request.headers.Authorization === 'Bearer dummy-key', 'authorization header mismatch');
 assert(request.body.parameters.resolution === '720P', 'resolution must be normalized to 720P');
-assert(request.body.parameters.duration === 5, 'duration mismatch');
+assert(request.body.parameters.duration === 15, '15 second duration mismatch');
 assert(request.body.parameters.ratio === '16:9', 'ratio mismatch');
 assert(request.body.parameters.seed === 271828, 'seed mismatch');
 const i2vRequest = buildHappyHorseI2VSubmitRequest({
@@ -58,10 +58,11 @@ const i2vRequest = buildHappyHorseI2VSubmitRequest({
   model: 'happyhorse-1.1-i2v',
   prompt: '承接上一镜尾帧，小红帽从同一动作继续向右跑。',
   firstFrameImage: 'https://media.example.com/previous-tail.jpg',
-  duration: 5,
+  duration: 15,
   resolution: '720p',
 });
 assert(i2vRequest.body.model === 'happyhorse-1.1-i2v', 'I2V model mismatch');
+assert(i2vRequest.body.parameters.duration === 15, 'I2V must preserve the supported 15 second duration');
 assert(JSON.stringify(i2vRequest.body.input.media) === JSON.stringify([
   { type: 'first_frame', url: 'https://media.example.com/previous-tail.jpg' },
 ]), 'I2V must contain exactly one first_frame');
