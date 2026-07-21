@@ -11,6 +11,8 @@ import {
 } from '@/lib/skills/vimax-short-drama/vimax-continuity-contract';
 import type { ProductionAssemblyPlan } from '@/lib/production-assembly-plan';
 import type { ProductionProject } from '@/lib/production-project';
+import { isHappyHorseI2VModel } from '@/lib/happyhorse-i2v-adapter';
+import { isHappyHorseR2VModel } from '@/lib/happyhorse-r2v-adapter';
 
 export type VimaxProductionPhase = 'plan' | 'reference_assets' | 'video';
 export type VimaxProductionCheckpoint = VimaxProductionPhase | 'render';
@@ -223,6 +225,11 @@ export function skipsVimaxReferenceAssets(plan: VimaxProductionPlan | undefined)
   return Boolean(plan?.checkpoints.some(checkpoint => (
     checkpoint.id === 'reference_assets' && checkpoint.status === 'skipped'
   )));
+}
+
+export function requiresVimaxReferenceAssets(provider: string | undefined, model: string | undefined): boolean {
+  if (provider !== 'happyhorse-dashscope') return true;
+  return isHappyHorseI2VModel(model) || isHappyHorseR2VModel(model);
 }
 
 export function parseVimaxProductionPlan(value: unknown): VimaxProductionPlan | undefined {

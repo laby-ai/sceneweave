@@ -11,7 +11,7 @@ import { resolveCanonicalVimaxStageInput } from '@/lib/skills/vimax-short-drama/
 import { resolveVimaxRecoveryCreatedAfter, restoreVimaxRecoveryTask } from '@/lib/skills/vimax-short-drama/vimax-recovery-session';
 import { createVimaxVideoTaskRuntime } from '@/lib/skills/vimax-short-drama/vimax-video-task-runtime';
 import { runVimaxProductionVideoOrchestrator } from '@/lib/skills/vimax-short-drama/vimax-production-video-orchestrator';
-import { assertVimaxProductionPlanForPhase, buildVimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
+import { assertVimaxProductionPlanForPhase, buildVimaxProductionPlan, requiresVimaxReferenceAssets } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 import { resolveVimaxSkillRuntimeBinding } from '@/lib/skills/vimax-short-drama/vimax-skill-runtime-binding';
 import {
   resolveVimaxSkillPresetForRuntime,
@@ -24,7 +24,6 @@ import {
   type BYOKConnection,
 } from '@/lib/byok-provider';
 import { MemberBailianProfileRequiredError } from '@/lib/account/member-bailian-profile';
-import { isHappyHorseR2VModel } from '@/lib/happyhorse-r2v-adapter';
 import { applyVimaxShotGenerationRoutes } from '@/lib/skills/vimax-short-drama/vimax-shot-generation-route';
 import { buildVimaxPlanMessages } from '@/lib/skills/vimax-short-drama/vimax-plan-prompt';
 import {
@@ -296,7 +295,7 @@ function buildVimaxPlanEnvelope(
       referenceAssets: Boolean((planConnection?.apiKey && planConnection.imageModel) || config.imageApiKey),
       video: Boolean(videoConnection?.videoModel && videoConnection.apiKey) || Boolean(config.imageApiKey),
     },
-    referenceAssetsRequired: videoConnection?.provider !== 'happyhorse-dashscope' || isHappyHorseR2VModel(videoModel),
+    referenceAssetsRequired: requiresVimaxReferenceAssets(videoConnection?.provider, videoModel),
     assets: plan.assets,
     shots: plan.shots,
     workflow,

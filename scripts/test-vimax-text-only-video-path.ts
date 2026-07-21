@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 import {
   buildVimaxProductionPlan,
+  requiresVimaxReferenceAssets,
   skipsVimaxReferenceAssets,
 } from '../src/lib/skills/vimax-short-drama/vimax-production-plan';
 import { resolveVimaxSkillRuntimeBinding } from '../src/lib/skills/vimax-short-drama/vimax-skill-runtime-binding';
@@ -25,5 +26,9 @@ function buildPlan(referenceAssetsRequired: boolean) {
 assert.equal(skipsVimaxReferenceAssets(buildPlan(false)), true, 'text-only plan must skip reference assets');
 assert.equal(skipsVimaxReferenceAssets(buildPlan(true)), false, 'frame-capable plan must keep reference assets required');
 assert.equal(skipsVimaxReferenceAssets(undefined), false, 'missing server plan must fail closed');
+assert.equal(requiresVimaxReferenceAssets('happyhorse-dashscope', 'happyhorse-1.1-t2v'), false);
+assert.equal(requiresVimaxReferenceAssets('happyhorse-dashscope', 'happyhorse-1.1-i2v'), true);
+assert.equal(requiresVimaxReferenceAssets('happyhorse-dashscope', 'happyhorse-1.1-r2v'), true);
+assert.equal(requiresVimaxReferenceAssets('ark-video-v3', 'happyhorse-1.1-t2v'), true);
 
 console.log(JSON.stringify({ ok: true, providerCalls: 0, path: 'plan -> video cost confirm -> video' }));
