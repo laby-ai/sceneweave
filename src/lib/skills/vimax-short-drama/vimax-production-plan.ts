@@ -222,6 +222,8 @@ export function buildVimaxProductionPlan(input: VimaxProductionPlanInput): Vimax
 }
 
 export function skipsVimaxReferenceAssets(plan: VimaxProductionPlan | undefined): boolean {
+  const videoModel = plan?.providerRoutes.find(route => route.stage === 'video')?.model;
+  if (isHappyHorseI2VModel(videoModel) || isHappyHorseR2VModel(videoModel)) return false;
   return Boolean(plan?.checkpoints.some(checkpoint => (
     checkpoint.id === 'reference_assets' && checkpoint.status === 'skipped'
   )));

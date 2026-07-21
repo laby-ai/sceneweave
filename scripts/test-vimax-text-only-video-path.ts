@@ -32,9 +32,13 @@ assert.equal(requiresVimaxReferenceAssets('happyhorse-dashscope', 'happyhorse-1.
 assert.equal(requiresVimaxReferenceAssets('happyhorse-dashscope', 'happyhorse-1.1-r2v'), true);
 assert.equal(requiresVimaxReferenceAssets('ark-video-v3', 'happyhorse-1.1-t2v'), true);
 
-const legacyI2VPlan = parseVimaxProductionPlan(JSON.parse(JSON.stringify(
-  buildPlan(false, 'happyhorse-1.1-i2v'),
-)));
+const rawLegacyI2VPlan = buildPlan(false, 'happyhorse-1.1-i2v');
+assert.equal(
+  skipsVimaxReferenceAssets(rawLegacyI2VPlan),
+  false,
+  'raw legacy I2V messages must not bypass canonical references before plan parsing',
+);
+const legacyI2VPlan = parseVimaxProductionPlan(JSON.parse(JSON.stringify(rawLegacyI2VPlan)));
 assert.equal(
   legacyI2VPlan?.checkpoints.find(checkpoint => checkpoint.id === 'reference_assets')?.status,
   'pending',
