@@ -8,6 +8,11 @@ import { resolveAccountSessionFromRequest } from '@/lib/account/account-session'
 
 export type { MemberProviderProfile };
 
+export interface MemberBailianOwner {
+  tenantId: string;
+  memberId: string;
+}
+
 export const BAILIAN_TEXT_MODEL = 'qwen3.7-plus';
 export const BAILIAN_IMAGE_MODEL = 'qwen-image-3.0-pro';
 export const BAILIAN_TTS_MODEL = 'qwen-audio-3.0-tts-plus';
@@ -63,13 +68,23 @@ export async function resolveMemberBailianProfile(
 ): Promise<MemberProviderProfile | null> {
   const session = await resolveAccountSessionFromRequest(request);
   if (!session) return null;
+  return resolveMemberBailianProfileForOwner(
+    { tenantId: session.tenant_id, memberId: session.member.id },
+    request.headers.get('x-request-id') || crypto.randomUUID(),
+  );
+}
+
+export async function resolveMemberBailianProfileForOwner(
+  owner: MemberBailianOwner,
+  requestId = crypto.randomUUID(),
+): Promise<MemberProviderProfile> {
   const client = accountClient();
   if (!client) throw new Error('account_provider_profile_not_configured');
   try {
     return await client.resolveMemberProviderProfile({
-      tenantId: session.tenant_id,
-      memberId: session.member.id,
-      requestId: request.headers.get('x-request-id') || crypto.randomUUID(),
+      tenantId: owner.tenantId,
+      memberId: owner.memberId,
+      requestId,
     });
   } catch (error) {
     if (error instanceof AccountServiceError && error.status === 404) {

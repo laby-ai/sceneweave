@@ -46,6 +46,17 @@ assert.match(shell, /creation-agent-dark/);
 assert.match(shell, /data-creation-agent-theme="dark"/);
 assert.match(shell, /agentOnly/, 'the primary creation entry must not expose legacy mode placeholders');
 
+const provider = await readFile(path.join(process.cwd(), 'src/lib/byok-provider.ts'), 'utf8');
+assert.match(provider, /trustedOwner\?: TaskOwner/);
+assert.match(provider, /resolveMemberBailianProfileForOwner\(\s*trustedOwner/);
+
+const route = await readFile(path.join(process.cwd(), 'src/app/api/smart/vimax-agent-step/route.ts'), 'utf8');
+assert.match(
+  route,
+  /resolveBYOKConnectionsForRequest\(request, access\.sessionMode === 'member' \? owner : undefined\)/,
+  'member planning must resolve the saved profile from the already authenticated owner',
+);
+
 console.log('member Bailian profile contract: ok');
 }
 

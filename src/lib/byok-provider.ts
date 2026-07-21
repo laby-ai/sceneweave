@@ -26,7 +26,9 @@ import {
 import {
   buildMemberBailianConnections,
   resolveMemberBailianProfile,
+  resolveMemberBailianProfileForOwner,
 } from '@/lib/account/member-bailian-profile';
+import type { TaskOwner } from '@/lib/task-manager';
 
 export type BYOKProviderType = 'openai-compatible' | 'ark-plan' | 'happyhorse-dashscope';
 
@@ -216,7 +218,7 @@ export function extractBYOKVideoConnection(headers: Headers): BYOKConnection | u
   return extractExplicitBYOKVideoConnection(headers) || extractBYOKConnection(headers);
 }
 
-export async function resolveBYOKConnectionsForRequest(request: Request): Promise<{
+export async function resolveBYOKConnectionsForRequest(request: Request, trustedOwner?: TaskOwner): Promise<{
   planning?: BYOKConnection;
   video?: BYOKConnection;
 }> {
@@ -229,7 +231,12 @@ export async function resolveBYOKConnectionsForRequest(request: Request): Promis
     };
   }
 
-  const profile = await resolveMemberBailianProfile(request);
+  const profile = trustedOwner
+    ? await resolveMemberBailianProfileForOwner(
+      trustedOwner,
+      request.headers.get('x-request-id') || crypto.randomUUID(),
+    )
+    : await resolveMemberBailianProfile(request);
   if (profile) return buildMemberBailianConnections(profile);
 
   const fallback = extractEnvironmentBYOKConnection();
