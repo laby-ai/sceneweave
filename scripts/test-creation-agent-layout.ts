@@ -6,7 +6,6 @@ const home = readFileSync('src/components/generate/vimax-project-home.tsx', 'utf
 const workspace = readFileSync('src/components/generate/generate-workspace.tsx', 'utf8');
 const account = readFileSync('src/components/home/account-status-button.tsx', 'utf8');
 const nextConfig = readFileSync('next.config.ts', 'utf8');
-const backgroundAsset = readFileSync('public/home/huiying-creation-agent-cosmic-4k.webp');
 
 assert.match(shell, /AccountStatusButton/);
 assert.match(shell, /BailianConnectionControl/);
@@ -17,17 +16,14 @@ assert.match(shell, /max-w-\[1320px\]/);
 
 assert.match(home, /data-testid="creation-agent-hero"/);
 assert.match(home, /data-testid="creation-agent-page-background"/);
-assert.match(home, /huiying-creation-agent-cosmic-4k\.webp/);
-assert.doesNotMatch(home, /huiying-hero-cosmic-reel-v2\.png/);
+assert.match(home, /huiying-hero-cosmic-reel-v2\.png/);
 assert.doesNotMatch(home, /huiying-hero-cinematic-flow\.png/);
 assert.match(home, /backgroundPreview/);
 assert.doesNotMatch(home, /heroPreview/);
 assert.equal((home.match(/quality: width >= 1080 \? 68 : 58/g) || []).length, 1);
-assert.match(home, /object-center/);
-assert.doesNotMatch(home, /\[mask-image:linear-gradient/);
-assert.equal(backgroundAsset.subarray(0, 4).toString('ascii'), 'RIFF');
-assert.equal(backgroundAsset.subarray(8, 12).toString('ascii'), 'WEBP');
-assert.ok(backgroundAsset.byteLength > 600_000);
+assert.match(home, /object-\[70%_center\]/);
+assert.match(home, /sm:object-\[68%_center\]/);
+assert.match(home, /\[mask-image:linear-gradient/);
 assert.match(home, /data-testid="creation-agent-brand-mark"/);
 assert.match(home, /data-testid="creation-agent-main-stage"/);
 assert.doesNotMatch(home, /data-testid="creation-agent-hero-fade"/);
