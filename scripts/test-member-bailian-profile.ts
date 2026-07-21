@@ -4,23 +4,16 @@ import path from 'node:path';
 
 import {
   buildMemberBailianConnections,
-  parseBailianWorkspaceId,
   type MemberProviderProfile,
 } from '../src/lib/account/member-bailian-profile';
 import { resolveBYOKConnectionsForRequest } from '../src/lib/byok-provider';
 
 async function main() {
-assert.equal(
-  parseBailianWorkspaceId('https://ws-member-test.cn-beijing.maas.aliyuncs.com/api/v1'),
-  'ws-member-test',
-);
-assert.throws(() => parseBailianWorkspaceId('http://ws-member-test.cn-beijing.maas.aliyuncs.com'));
-assert.throws(() => parseBailianWorkspaceId('https://dashscope.aliyuncs.com'));
 const profile: MemberProviderProfile = {
   tenant_id: 'tenant-test',
   member_id: 'member-test',
   provider_id: 'aliyun-bailian',
-  workspace_id: 'ws-member-test',
+  workspace_id: '',
   region: 'cn-beijing',
   text_model: 'qwen3.7-plus',
   image_model: 'qwen-image-3.0-pro',
@@ -32,17 +25,13 @@ const connections = buildMemberBailianConnections(profile);
 assert.equal(connections.planning.model, 'qwen3.7-plus');
 assert.equal(connections.planning.imageModel, 'qwen-image-3.0-pro');
 assert.equal(connections.video.videoModel, 'happyhorse-1.1-i2v');
-assert.equal(connections.planning.apiBase, 'https://ws-member-test.cn-beijing.maas.aliyuncs.com/compatible-mode/v1');
-assert.equal(connections.video.apiBase, 'https://ws-member-test.cn-beijing.maas.aliyuncs.com/api/v1');
+assert.equal(connections.planning.apiBase, 'https://dashscope.aliyuncs.com/compatible-mode/v1');
+assert.equal(connections.video.apiBase, 'https://dashscope.aliyuncs.com/api/v1');
 
 const workspaceConnections = buildMemberBailianConnections({ ...profile, workspace_id: 'ws-member-test' });
 assert.equal(workspaceConnections.planning.model, 'qwen3.7-plus');
-assert.equal(workspaceConnections.planning.apiBase, 'https://ws-member-test.cn-beijing.maas.aliyuncs.com/compatible-mode/v1');
-assert.equal(workspaceConnections.video.apiBase, 'https://ws-member-test.cn-beijing.maas.aliyuncs.com/api/v1');
-assert.throws(
-  () => buildMemberBailianConnections({ ...profile, workspace_id: '' }),
-  (error: unknown) => error instanceof Error && error.message.includes('API Base'),
-);
+assert.equal(workspaceConnections.planning.apiBase, 'https://dashscope.aliyuncs.com/compatible-mode/v1');
+assert.equal(workspaceConnections.video.apiBase, 'https://dashscope.aliyuncs.com/api/v1');
 
 const originalFetch = globalThis.fetch;
 const accountEnv = {
@@ -76,7 +65,7 @@ try {
     },
   }), { tenantId: profile.tenant_id, memberId: profile.member_id });
   assert.equal(profileResolveCalls, 1, 'a trusted member must resolve the encrypted account profile');
-  assert.equal(connectionsForMember.planning?.apiBase, 'https://ws-member-test.cn-beijing.maas.aliyuncs.com/compatible-mode/v1');
+  assert.equal(connectionsForMember.planning?.apiBase, 'https://dashscope.aliyuncs.com/compatible-mode/v1');
   assert.equal(connectionsForMember.planning?.provider, 'openai-compatible');
   assert.equal(connectionsForMember.video?.provider, 'happyhorse-dashscope');
 } finally {
@@ -94,8 +83,8 @@ assert.doesNotMatch(rootPage, /DreamboxHome/, 'the legacy home must stay hidden 
 const control = await readFile(path.join(process.cwd(), 'src/components/generate/bailian-connection-control.tsx'), 'utf8');
 assert.match(control, /\/api\/account\/provider-profile/);
 assert.doesNotMatch(control, /业务空间 ID/);
-assert.match(control, /API Base/);
-assert.match(control, /workspace_id: workspaceId/);
+assert.doesNotMatch(control, /API Base/);
+assert.doesNotMatch(control, /workspace_id/);
 assert.doesNotMatch(control, /sessionStorage|localStorage|validateAndSaveBailianSessionConnections/);
 
 const shell = await readFile(path.join(process.cwd(), 'src/components/creation-agent/vimax-creation-agent-shell.tsx'), 'utf8');
@@ -121,7 +110,7 @@ assert.match(
   /phase === 'planning_connection_validate' && access\.sessionMode !== 'member'/,
   'member connection checks must use the saved account profile instead of request headers',
 );
-assert.match(route, /MemberBailianApiBaseRequiredError/, 'a missing API Base must return a stable 428 contract');
+assert.doesNotMatch(route, /MemberBailianApiBaseRequiredError/, 'the member route must not require user-supplied API Base');
 
 console.log('member Bailian profile contract: ok');
 }
