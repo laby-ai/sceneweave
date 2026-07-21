@@ -20,7 +20,7 @@ import {
   type VimaxProductionPlan,
 } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 import { waitForVimaxBackgroundVideoTask } from '@/lib/skills/vimax-short-drama/vimax-background-video-task';
-import { recoverPersistedVimaxPlan } from '@/lib/skills/vimax-short-drama/vimax-plan-stream-recovery';
+import { waitForPersistedVimaxPlan } from '@/lib/skills/vimax-short-drama/vimax-plan-stream-recovery';
 import { formatProviderError } from '@/lib/byok-client';
 import { clientApiFetch, clientApiRequest, ClientRequestError } from '@/lib/client-api';
 
@@ -332,7 +332,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
                     })),
                   },
                 } : m));
-              } else if (event === 'plan.persisted') {
+              } else if (event === 'plan.accepted') {
                 persistedTaskId = typeof data.taskId === 'string' ? data.taskId : '';
               } else if (event === 'plan.complete') {
                 plan = data.plan || {};
@@ -356,11 +356,17 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
 
       if (persistedTaskId && (streamError || !plan.title || !productionPlan)) {
         try {
-          const persisted = await clientApiFetch<{ task?: unknown }>(
-            `/api/tasks/${encodeURIComponent(persistedTaskId)}`,
-            { headers: requestHeaders, signal: run.signal, redirectOnUnauthorized: false },
-          );
-          const recovered = recoverPersistedVimaxPlan(persisted.task, persistedTaskId);
+          const recovered = await waitForPersistedVimaxPlan({
+            taskId: persistedTaskId,
+            signal: run.signal,
+            loadTask: async taskId => {
+              const persisted = await clientApiFetch<{ task?: unknown }>(
+                `/api/tasks/${encodeURIComponent(taskId)}`,
+                { headers: requestHeaders, signal: run.signal, redirectOnUnauthorized: false },
+              );
+              return persisted.task;
+            },
+          });
           if (recovered) {
             plan = recovered.plan;
             assets = recovered.plan.assets;

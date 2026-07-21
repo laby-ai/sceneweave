@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { mergeVideosWithLocalFfmpeg } from '@/lib/local-video-merge';
 import { extractLastFrameForHandoff } from '@/lib/video-frame-extraction';
 import { resolvePaperHostCreationOwnerFromRequest } from '@/lib/task-access';
-import { createTask, getTaskForOwner, updateTask, type TaskOwner } from '@/lib/task-manager';
+import { createTask, failTask, getTaskForOwner, updateTask, type TaskOwner } from '@/lib/task-manager';
 import type { VimaxAgentPlan, VimaxAgentReferenceAsset, VimaxAgentStepBody } from '@/lib/skills/vimax-short-drama/vimax-agent-contract';
 import { VIMAX_PLAN_MODEL } from '@/lib/skills/vimax-short-drama/vimax-generation-preferences';
 import { buildProductionBackedVimaxPlan } from '@/lib/skills/vimax-short-drama/vimax-plan-artifacts';
@@ -305,16 +305,8 @@ function buildVimaxPlanEnvelope(
   return { plan, productionPlan, productionProject, assemblyPlan };
 }
 
-function createPersistedPlanEnvelope(
-  owner: TaskOwner,
-  prompt: string,
-  model: string,
-  basePlan: VimaxAgentPlan,
-  body: VimaxAgentStepBody,
-  planConnection?: BYOKConnection,
-  videoConnection?: BYOKConnection,
-) {
-  const taskId = createTask('storyboard', {
+function createVimaxPlanTask(owner: TaskOwner, prompt: string, body: VimaxAgentStepBody) {
+  return createTask('storyboard', {
     prompt,
     duration: `${body.duration || 30}s`,
     ratio: body.ratio || '16:9',
@@ -324,6 +316,19 @@ function createPersistedPlanEnvelope(
     workflow: 'vimax-agent',
     skillId: body.skillId,
   }, owner);
+}
+
+function createPersistedPlanEnvelope(
+  owner: TaskOwner,
+  prompt: string,
+  model: string,
+  basePlan: VimaxAgentPlan,
+  body: VimaxAgentStepBody,
+  planConnection?: BYOKConnection,
+  videoConnection?: BYOKConnection,
+  existingTaskId?: string,
+) {
+  const taskId = existingTaskId || createVimaxPlanTask(owner, prompt, body);
   const { plan, productionPlan, productionProject, assemblyPlan } = buildVimaxPlanEnvelope(
     prompt,
     model,
@@ -652,13 +657,14 @@ export async function POST(request: NextRequest) {
       }
 
       if (wantStream) {
+        const planTaskId = createVimaxPlanTask(owner, prompt, trustedBody);
         const encoder = new TextEncoder();
         const stream = new ReadableStream({
           async start(controller) {
             const send = (event: string, data: unknown) => controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
-            let persistedTaskId = '';
             try {
               send('plan.start', { phase: 'plan' });
+              send('plan.accepted', { taskId: planTaskId });
               const result = await callArkTextStream(prompt, preset, body.model, (delta) => {
                 send('plan.delta', { delta });
               }, planConnection);
@@ -670,11 +676,12 @@ export async function POST(request: NextRequest) {
                 trustedBody,
                 planConnection,
                 videoConnection,
+                planTaskId,
               );
-              send('plan.persisted', { taskId: (persistedTaskId = envelope.taskId) });
               send('plan.complete', { success: true, phase: 'plan', model: result.model, ...envelope });
             } catch (error) {
-              send('plan.error', { ...reportVimaxPlanningFailure(error), taskId: persistedTaskId || undefined });
+              failTask(planTaskId, 'planning_provider_failed');
+              send('plan.error', { ...reportVimaxPlanningFailure(error), taskId: planTaskId });
             } finally { controller.close(); }
           },
         });

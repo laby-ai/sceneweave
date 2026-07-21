@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { recoverPersistedVimaxPlan } from '../src/lib/skills/vimax-short-drama/vimax-plan-stream-recovery';
+import {
+  recoverPersistedVimaxPlan,
+  waitForPersistedVimaxPlan,
+} from '../src/lib/skills/vimax-short-drama/vimax-plan-stream-recovery';
 import { buildVimaxProductionPlan } from '../src/lib/skills/vimax-short-drama/vimax-production-plan';
 
 const shots = Array.from({ length: 4 }, (_, index) => ({
@@ -60,13 +63,44 @@ assert.equal(
   'recovery requires the persisted production plan contract',
 );
 
-const routeSource = readFileSync('src/app/api/smart/vimax-agent-step/route.ts', 'utf8');
-const clientSource = readFileSync('src/lib/skills/vimax-short-drama/use-vimax-short-drama-skill.ts', 'utf8');
-assert.ok(
-  routeSource.indexOf("send('plan.persisted'") < routeSource.indexOf("send('plan.complete'"),
-  'the small recovery cursor must be sent before the full SSE envelope',
-);
-assert.match(clientSource, /clientApiFetch<\{ task\?: unknown \}>/);
-assert.match(clientSource, /recoverPersistedVimaxPlan\(persisted\.task, persistedTaskId\)/);
+async function main() {
+  let loadAttempts = 0;
+  const recoveredAfterPersistence = await waitForPersistedVimaxPlan({
+    taskId: 'task-plan-1',
+    intervalMs: 0,
+    maxAttempts: 3,
+    loadTask: async () => {
+      loadAttempts += 1;
+      return loadAttempts === 1 ? { ...persistedTask, status: 'pending' } : persistedTask;
+    },
+  });
+  assert.equal(loadAttempts, 2, 'recovery should wait for the server-side task to finish');
+  assert.equal(recoveredAfterPersistence?.plan.shots.length, 4);
 
-console.log(JSON.stringify({ ok: true, recoveredShots: recovered?.plan.shots.length }));
+  let failedTaskReads = 0;
+  assert.equal(await waitForPersistedVimaxPlan({
+    taskId: 'task-plan-1',
+    intervalMs: 0,
+    maxAttempts: 3,
+    loadTask: async () => {
+      failedTaskReads += 1;
+      return { ...persistedTask, status: 'failed' };
+    },
+  }), null);
+  assert.equal(failedTaskReads, 1, 'terminal failures must not be polled repeatedly');
+
+  const routeSource = readFileSync('src/app/api/smart/vimax-agent-step/route.ts', 'utf8');
+  const clientSource = readFileSync('src/lib/skills/vimax-short-drama/use-vimax-short-drama-skill.ts', 'utf8');
+  assert.ok(
+    /send\('plan\.accepted'[\s\S]{0,500}await callArkTextStream\(/.test(routeSource),
+    'the recovery cursor must be sent before the provider call can outlive the browser stream',
+  );
+  assert.match(clientSource, /waitForPersistedVimaxPlan\(\{/);
+
+  console.log(JSON.stringify({ ok: true, recoveredShots: recovered?.plan.shots.length, loadAttempts }));
+}
+
+main().catch(error => {
+  console.error(error);
+  process.exitCode = 1;
+});
