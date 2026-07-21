@@ -520,7 +520,7 @@ export function GenerateWorkspace({
   const modelSettings = showModelSettings ? <BailianConnectionControl /> : null;
 
   return (
-    <div className="relative flex h-full w-full overflow-hidden bg-[#f6f7f9] text-[#181a20]">
+    <div className="relative flex h-full w-full overflow-hidden bg-[#090d15] text-slate-100">
       <div className="flex min-w-0 flex-1 flex-col">
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
           {workspaceView === 'home' ? (
@@ -590,9 +590,12 @@ export function GenerateWorkspace({
 
   function renderDock() {
     return (
-      <div className="rounded-[22px] border border-[#e1e5eb] bg-white p-3 shadow-[0_18px_45px_rgba(31,41,55,0.08)] transition focus-within:border-[#aac3ff] focus-within:shadow-[0_20px_52px_rgba(47,107,255,0.12)]">
+      <div
+        data-testid="creation-agent-composer"
+        className="rounded-lg border border-white/[0.11] bg-[#101620] p-3 shadow-[0_18px_48px_rgba(0,0,0,0.24)] transition focus-within:border-[#557fdc]/70 focus-within:bg-[#111925] focus-within:shadow-[0_22px_54px_rgba(0,0,0,0.3)]"
+      >
         <div className="flex items-start gap-2">
-          <button className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#e2e6ec] bg-[#f8f9fb] text-[#7c8490] transition hover:border-[#cdd6e3] hover:bg-[#f2f6ff] hover:text-[#2f6bff]" title="上传参考" type="button">
+          <button className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-400 transition hover:border-white/20 hover:bg-white/[0.07] hover:text-[#8eb1ff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5e8dff]/45" title="上传参考" type="button">
             <Plus className="h-4 w-4" />
           </button>
           <textarea
@@ -602,13 +605,13 @@ export function GenerateWorkspace({
             onKeyDown={onKeyDown}
             rows={2}
             placeholder="输入想法、剧本或上传参考，支持 “/” 使用技能，@ 添加主体，和 Agent 一起创作"
-            className="min-h-[58px] flex-1 resize-none bg-transparent py-1.5 text-sm leading-relaxed text-[#242830] outline-none placeholder:text-[#a4aab3]"
+            className="min-h-[58px] flex-1 resize-none bg-transparent py-1.5 text-sm leading-relaxed text-slate-100 outline-none placeholder:text-slate-500"
           />
         </div>
         <div className="mt-2 flex items-center gap-2">
           <div className="relative">
             {agentOnly ? (
-              <span className="flex items-center gap-1.5 rounded-lg bg-[#edf3ff] px-2.5 py-1.5 text-xs font-medium text-[#2f6bff] ring-1 ring-[#c9d8ff]">
+              <span className="flex items-center gap-1.5 rounded-lg bg-[#14254a] px-2.5 py-1.5 text-xs font-medium text-[#8eb1ff] ring-1 ring-[#355da9]">
                 <Sparkles className="h-4 w-4" /> Agent 模式
               </span>
             ) : (
@@ -654,7 +657,7 @@ export function GenerateWorkspace({
             <button
               type="button"
               onClick={() => { setModeMenuOpen(false); setSkillMenuOpen(false); setAtMenuOpen(false); setMediaModelMenuOpen(open => !open); }}
-              className="flex items-center gap-1 rounded-lg border border-[#e1e5eb] bg-white px-2.5 py-1.5 text-xs text-[#68717d] transition hover:border-[#cbd5e4] hover:text-[#272b32]"
+              className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.035] px-2.5 py-1.5 text-xs text-slate-400 transition hover:border-white/20 hover:bg-white/[0.07] hover:text-slate-100"
               title="画面比例与清晰度"
             >
               <ImageIcon className="h-3.5 w-3.5" /> 画面
@@ -681,7 +684,7 @@ export function GenerateWorkspace({
             <button
               type="button"
               onClick={() => { setModeMenuOpen(false); setMediaModelMenuOpen(false); setAtMenuOpen(false); setSkillMenuOpen(open => !open); }}
-              className="flex items-center gap-1 rounded-lg border border-[#e1e5eb] bg-white px-2.5 py-1.5 text-xs text-[#68717d] transition hover:border-[#cbd5e4] hover:text-[#272b32]"
+              className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.035] px-2.5 py-1.5 text-xs text-slate-400 transition hover:border-white/20 hover:bg-white/[0.07] hover:text-slate-100"
               title="使用技能"
             >
               <Wand2 className="h-3.5 w-3.5" /> {selectedSkill.name}
@@ -725,7 +728,7 @@ export function GenerateWorkspace({
             <button
               type="button"
               onClick={() => void openSubjectMenu()}
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#e1e5eb] bg-white text-[#68717d] transition hover:border-[#cbd5e4] hover:text-[#272b32]"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-400 transition hover:border-white/20 hover:bg-white/[0.07] hover:text-slate-100"
               title="添加主体"
             >
               <AtSign className="h-4 w-4" />
@@ -755,7 +758,7 @@ export function GenerateWorkspace({
             type="button"
             onClick={() => isLoading ? cancelCurrentRun() : void handleSend()}
             disabled={!isLoading && !input.trim()}
-            className={`ml-auto flex h-9 w-9 items-center justify-center rounded-xl text-white transition hover:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-40 ${isLoading ? 'bg-rose-500' : 'bg-[#2f6bff] shadow-[0_7px_18px_rgba(47,107,255,0.24)]'}`}
+            className={`ml-auto flex h-9 w-9 items-center justify-center rounded-lg text-white transition hover:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-40 ${isLoading ? 'bg-rose-500' : 'bg-[#356df3] shadow-[0_7px_18px_rgba(47,107,255,0.24)]'}`}
             title={isLoading ? '停止生成' : '发送'}
             aria-label={isLoading ? '停止生成' : '发送'}
           >
