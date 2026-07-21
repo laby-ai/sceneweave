@@ -28,8 +28,9 @@ assert.equal(connections.planning.apiBase, 'https://dashscope.aliyuncs.com/compa
 assert.equal(connections.video.apiBase, 'https://dashscope.aliyuncs.com/api/v1');
 
 const workspaceConnections = buildMemberBailianConnections({ ...profile, workspace_id: 'ws-member-test' });
-assert.equal(workspaceConnections.planning.apiBase, 'https://ws-member-test.cn-beijing.maas.aliyuncs.com/compatible-mode/v1');
-assert.equal(workspaceConnections.video.apiBase, 'https://ws-member-test.cn-beijing.maas.aliyuncs.com/api/v1');
+assert.equal(workspaceConnections.planning.model, 'qwen3.7-plus');
+assert.equal(workspaceConnections.planning.apiBase, 'https://dashscope.aliyuncs.com/compatible-mode/v1');
+assert.equal(workspaceConnections.video.apiBase, 'https://dashscope.aliyuncs.com/api/v1');
 
 const rootPage = await readFile(path.join(process.cwd(), 'src/app/page.tsx'), 'utf8');
 assert.match(rootPage, /redirect\(['"]\/embed\/creation-agent['"]\)/, 'the product root must enter the creation agent');

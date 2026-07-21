@@ -40,9 +40,7 @@ export function buildMemberBailianConnections(profile: MemberProviderProfile) {
   if (profile.provider_id !== 'aliyun-bailian' || profile.region !== 'cn-beijing') {
     throw new Error('unsupported_member_provider_profile');
   }
-  const apiHost = profile.workspace_id
-    ? `https://${profile.workspace_id}.cn-beijing.maas.aliyuncs.com`
-    : 'https://dashscope.aliyuncs.com';
+  const apiHost = 'https://dashscope.aliyuncs.com';
   return {
     planning: {
       provider: 'openai-compatible' as const,

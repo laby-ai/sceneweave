@@ -363,6 +363,7 @@ async function callArkTextStream(prompt: string, preset: VimaxSkillPreset, model
       enable_thinking: false,
       response_format: { type: 'json_object' },
       stream: true,
+      max_tokens: 4000,
       messages: buildVimaxPlanMessages(prompt, preset),
     }),
   });

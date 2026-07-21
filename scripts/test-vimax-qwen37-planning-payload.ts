@@ -20,7 +20,7 @@ assert.ok(streamStart >= 0 && streamEnd > streamStart, 'Vimax streaming planner 
 const streamPlanner = route.slice(streamStart, streamEnd);
 assert.match(streamPlanner, /enable_thinking:\s*false/, 'Qwen 3.7 planning must disable thinking for deterministic JSON');
 assert.match(streamPlanner, /response_format:\s*\{\s*type:\s*['"]json_object['"]\s*\}/, 'Qwen 3.7 planning must request JSON mode');
-assert.doesNotMatch(streamPlanner, /max_tokens\s*:/, 'Structured Qwen planning must not cap JSON output with max_tokens');
+assert.match(streamPlanner, /max_tokens:\s*4000/, 'Qwen 3.7 rejects full planning prompts without an explicit output-token budget');
 
 const rejection = createVimaxPlanningProviderError(400, {
   error: {
@@ -35,6 +35,12 @@ assert.doesNotMatch(rejection.message, /sensitive provider detail/);
 const authRejection = createVimaxPlanningProviderError(401, { error: { code: 'InvalidApiKey' } });
 assert.equal(sanitizeVimaxPlanningFailure(authRejection).code, 'planning_provider_auth_failed');
 assert.equal(getVimaxPlanningProviderDiagnostic(authRejection), 'http_401_InvalidApiKey');
+
+const missingModel = createVimaxPlanningProviderError(404, {
+  error: { code: 'InvalidEndpointOrModel.NotFound' },
+});
+assert.equal(sanitizeVimaxPlanningFailure(missingModel).code, 'planning_model_unavailable');
+assert.equal(getVimaxPlanningProviderDiagnostic(missingModel), 'http_404_InvalidEndpointOrModel.NotFound');
 
 assert.match(planningReadiness, /planning\.provider_rejected/);
 assert.match(route, /reportVimaxPlanningFailure\(error\)/);

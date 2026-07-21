@@ -109,7 +109,7 @@ src/components/generate/generate-workspace.tsx
 - 用户只填写 API Key，不要求业务空间 ID；默认使用百炼公共域名，旧 workspace 配置继续兼容；
 - 登录成员的 Key 由账号服务按 tenant/member 加密保存，读取接口只返回掩码；
 - Key 不进入 prompt、项目状态、日志、截图、文档或 Git；
-- 文本/视觉规划固定 `qwen3.7-plus`；
+- Base URL 默认为中国公共 DashScope，规划模型固定 `qwen3.7-plus`；旧 `workspace_id` 不再影响模型或请求端点；
 - 图像固定 `qwen-image-3.0-pro`，通过百炼原生 multimodal-generation 接口生成或编辑；
 - 视频默认固定 `happyhorse-1.1-i2v`；
 - 不允许静默降级到其他模型；
