@@ -29,16 +29,15 @@ function publicProfile() {
   return profile ? {
     configured: true,
     provider_id: 'aliyun-bailian',
-    workspace_id: profile.workspace_id,
     region: 'cn-beijing',
     secret_mask: '****only',
     text_model: 'qwen3.7-plus',
-    image_model: 'wan2.7-image-pro',
+    image_model: 'qwen-image-3.0-pro',
     tts_model: 'qwen-audio-3.0-tts-plus',
   } : {
     configured: false,
     text_model: 'qwen3.7-plus',
-    image_model: 'wan2.7-image-pro',
+    image_model: 'qwen-image-3.0-pro',
     tts_model: 'qwen-audio-3.0-tts-plus',
   };
 }
@@ -73,8 +72,8 @@ const accountServer = createServer(async (request, response) => {
     if (request.method === 'PUT') {
       const body = await requestBody(request);
       assert.equal(body.api_key, fixtureKey);
-      assert.equal(body.workspace_id, 'ws-fixture-browser');
-      profile = { api_key: body.api_key, workspace_id: body.workspace_id };
+      assert.equal('workspace_id' in body, false);
+      profile = { api_key: body.api_key };
       return json(response, 200, { profile: publicProfile() });
     }
     if (request.method === 'DELETE') {
@@ -86,7 +85,7 @@ const accountServer = createServer(async (request, response) => {
     if (!profile) return json(response, 404, { error: 'provider_profile_not_configured' });
     return json(response, 200, {
       provider_id: 'aliyun-bailian',
-      workspace_id: profile.workspace_id,
+      workspace_id: '',
       region: 'cn-beijing',
       api_key: profile.api_key,
     });
@@ -203,7 +202,7 @@ try {
     await settings.waitFor({ state: 'visible' });
     if (await settings.getAttribute('aria-expanded') !== 'true') await settings.click();
     await page.getByLabel('API Key').fill(fixtureKey);
-    await page.getByLabel('业务空间 ID').fill('ws-fixture-browser');
+    assert.equal(await page.getByLabel('业务空间 ID').count(), 0);
     await page.getByRole('button', { name: '保存到当前账号' }).click();
     await page.getByText('已保存到当前账号。', { exact: false }).waitFor({ state: 'visible' });
     await page.getByRole('button', { name: '关闭模型设置' }).click();

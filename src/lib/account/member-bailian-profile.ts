@@ -9,7 +9,7 @@ import { resolveAccountSessionFromRequest } from '@/lib/account/account-session'
 export type { MemberProviderProfile };
 
 export const BAILIAN_TEXT_MODEL = 'qwen3.7-plus';
-export const BAILIAN_IMAGE_MODEL = 'qwen-image-2.0';
+export const BAILIAN_IMAGE_MODEL = 'qwen-image-3.0-pro';
 export const BAILIAN_TTS_MODEL = 'qwen-audio-3.0-tts-plus';
 export const BAILIAN_VIDEO_MODEL = 'happyhorse-1.1-i2v';
 
@@ -18,7 +18,7 @@ export class MemberBailianProfileRequiredError extends Error {
   readonly code = 'bailian_profile_required';
 
   constructor() {
-    super('请先在右上角配置百炼 API Key 和业务空间 ID。');
+    super('请先在右上角配置百炼 API Key。');
     this.name = 'MemberBailianProfileRequiredError';
   }
 }
@@ -40,18 +40,20 @@ export function buildMemberBailianConnections(profile: MemberProviderProfile) {
   if (profile.provider_id !== 'aliyun-bailian' || profile.region !== 'cn-beijing') {
     throw new Error('unsupported_member_provider_profile');
   }
-  const workspaceHost = `https://${profile.workspace_id}.cn-beijing.maas.aliyuncs.com`;
+  const apiHost = profile.workspace_id
+    ? `https://${profile.workspace_id}.cn-beijing.maas.aliyuncs.com`
+    : 'https://dashscope.aliyuncs.com';
   return {
     planning: {
       provider: 'openai-compatible' as const,
-      apiBase: `${workspaceHost}/compatible-mode/v1`,
+      apiBase: `${apiHost}/compatible-mode/v1`,
       apiKey: profile.api_key,
       model: BAILIAN_TEXT_MODEL,
       imageModel: BAILIAN_IMAGE_MODEL,
     },
     video: {
       provider: 'happyhorse-dashscope' as const,
-      apiBase: `${workspaceHost}/api/v1`,
+      apiBase: `${apiHost}/api/v1`,
       apiKey: profile.api_key,
       videoModel: BAILIAN_VIDEO_MODEL,
     },

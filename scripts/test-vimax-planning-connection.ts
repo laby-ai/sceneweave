@@ -5,8 +5,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import {
-  BAILIAN_WORKSPACE_API_HOST,
+  BAILIAN_DEFAULT_API_HOST,
   clearPlanningSessionConnection,
+  DEFAULT_IMAGE_MODEL,
   DEFAULT_PLANNING_MODEL,
   DEFAULT_VIDEO_MODEL,
   formatProviderError,
@@ -50,7 +51,7 @@ assert.deepEqual(getPlanningSessionConnectionSummary('paper-host:planning-defaul
   configured: false,
   apiBase: '',
   model: 'qwen3.7-plus',
-  imageModel: 'wan2.7-image',
+  imageModel: DEFAULT_IMAGE_MODEL,
 });
 
 const scope = 'paper-host:planning-test';
@@ -69,16 +70,16 @@ assert.deepEqual(getPlanningSessionConnectionSummary(scope), {
   configured: true,
   apiBase: 'https://api.scnet.cn/api/llm/v1',
   model: 'Kimi-K3',
-  imageModel: 'wan2.7-image',
+  imageModel: DEFAULT_IMAGE_MODEL,
 });
 
 const headers = getBYOKRequestHeaders(scope);
 assert.equal(headers['x-yh-provider'], 'openai-compatible');
-assert.equal(headers['x-yh-api-base'], `${BAILIAN_WORKSPACE_API_HOST}/compatible-mode/v1`);
+assert.equal(headers['x-yh-api-base'], `${BAILIAN_DEFAULT_API_HOST}/compatible-mode/v1`);
 assert.equal(headers['x-yh-model'], DEFAULT_PLANNING_MODEL);
-assert.equal(headers['x-yh-image-model'], 'wan2.7-image');
+assert.equal(headers['x-yh-image-model'], DEFAULT_IMAGE_MODEL);
 assert.equal(headers['x-yh-video-provider'], 'happyhorse-dashscope');
-assert.equal(headers['x-yh-video-api-base'], `${BAILIAN_WORKSPACE_API_HOST}/api/v1`);
+assert.equal(headers['x-yh-video-api-base'], `${BAILIAN_DEFAULT_API_HOST}/api/v1`);
 assert.equal(headers['x-yh-video-model'], DEFAULT_VIDEO_MODEL);
 assert.equal(JSON.stringify(headers).includes('planning-secret'), true);
 assert.equal(JSON.stringify(headers).includes('video-secret'), true);
@@ -88,7 +89,7 @@ const fallbackHeaders = getBYOKRequestHeaders(scope);
 assert.equal(fallbackHeaders['x-yh-provider'], undefined, 'video credentials must never become the planning connection');
 assert.equal(fallbackHeaders['x-yh-api-key'], undefined, 'video credentials must not be sent in planning headers');
 assert.equal(fallbackHeaders['x-yh-video-provider'], 'happyhorse-dashscope');
-assert.equal(fallbackHeaders['x-yh-video-api-base'], `${BAILIAN_WORKSPACE_API_HOST}/api/v1`);
+assert.equal(fallbackHeaders['x-yh-video-api-base'], `${BAILIAN_DEFAULT_API_HOST}/api/v1`);
 assert.equal(fallbackHeaders['x-yh-video-model'], DEFAULT_VIDEO_MODEL);
 assert.equal(
   formatProviderError({
@@ -133,7 +134,7 @@ async function verifyTransactionalClientSave() {
       configured: true,
       apiBase: 'https://valid.example.com/v1',
       model: 'existing-model',
-      imageModel: 'wan2.7-image',
+      imageModel: DEFAULT_IMAGE_MODEL,
     }, 'an invalid candidate must not overwrite the last valid connection');
 
     globalThis.fetch = (async () => Response.json({ success: true, ready: true, provider: 'planning' })) as typeof fetch;
@@ -147,7 +148,7 @@ async function verifyTransactionalClientSave() {
       configured: true,
       apiBase: 'https://next.example.com/v1',
       model: 'next-model',
-      imageModel: 'wan2.7-image',
+      imageModel: DEFAULT_IMAGE_MODEL,
     });
   } finally {
     globalThis.fetch = originalFetch;
