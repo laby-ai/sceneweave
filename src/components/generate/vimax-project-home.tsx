@@ -14,8 +14,16 @@ function withBasePath(url: string) {
   return `${BASE_PATH}${url}`;
 }
 
-function heroPreview(width: 640 | 1080 | 1920) {
+function pageBackgroundPreview(width: 640 | 1080 | 1920) {
   return buildMediaPreviewImageUrl(withBasePath('/home/huiying-hero-cinematic-flow.png'), {
+    width,
+    quality: width >= 1080 ? 68 : 58,
+    basePath: BASE_PATH,
+  });
+}
+
+function heroPreview(width: 640 | 1080 | 1920) {
+  return buildMediaPreviewImageUrl(withBasePath('/home/huiying-hero-cosmic-reel-v2.png'), {
     width,
     quality: width >= 1080 ? 68 : 58,
     basePath: BASE_PATH,
@@ -56,14 +64,35 @@ export function VimaxProjectHome({
   return (
     <main
       data-testid="vimax-project-home"
-      className="relative mx-auto flex min-h-full w-full max-w-[1320px] flex-col bg-[#090d15] px-3 pb-14 pt-3 text-slate-100 sm:px-6 lg:px-8"
+      className="relative min-h-full w-full overflow-hidden bg-[#070a11] text-slate-100"
     >
-      {actions ? <div className="absolute right-6 top-6 z-30">{actions}</div> : null}
-      <div data-testid="creation-agent-main-stage" className="relative">
+      <div
+        data-testid="creation-agent-page-background"
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 h-[820px] overflow-hidden sm:h-[920px] lg:h-[1020px]"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={pageBackgroundPreview(1080)}
+          srcSet={`${pageBackgroundPreview(640)} 640w, ${pageBackgroundPreview(1080)} 1080w, ${pageBackgroundPreview(1920)} 1920w`}
+          sizes="100vw"
+          alt=""
+          loading="eager"
+          decoding="async"
+          className="absolute inset-0 h-full w-full object-cover object-[62%_center] opacity-40 sm:object-center sm:opacity-[0.34]"
+          draggable={false}
+        />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(4,7,13,0.38)_0%,rgba(7,10,17,0.52)_48%,#070a11_100%)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(7,10,17,0.44)_0%,transparent_42%,rgba(7,10,17,0.18)_72%,rgba(7,10,17,0.5)_100%)]" />
+      </div>
+
+      <div className="relative z-10 mx-auto flex w-full max-w-[1320px] flex-col px-3 pb-14 pt-3 sm:px-6 lg:px-8">
+        {actions ? <div className="absolute right-6 top-6 z-30">{actions}</div> : null}
+        <div data-testid="creation-agent-main-stage" className="relative">
         <section
           data-testid="creation-agent-hero"
-          aria-label="绘影视觉背景"
-          className="relative h-[170px] w-full shrink-0 overflow-hidden rounded-lg border border-white/[0.07] bg-[#050812] sm:h-[238px] lg:h-[292px]"
+          aria-label="绘影电影创作主视觉"
+          className="relative h-[220px] w-full shrink-0 overflow-hidden bg-[#050812] sm:h-[300px] lg:h-[360px]"
         >
           {/* The URL already targets the responsive Next image optimizer. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -71,20 +100,20 @@ export function VimaxProjectHome({
             src={heroPreview(1080)}
             srcSet={`${heroPreview(640)} 640w, ${heroPreview(1080)} 1080w, ${heroPreview(1920)} 1920w`}
             sizes="(max-width: 640px) 100vw, (max-width: 1200px) 94vw, 1260px"
-            alt="绘影镜头、分镜与制作台工作流"
+            alt="绘影音画创作与胶片叙事主视觉"
             loading="eager"
             decoding="async"
-            className="absolute inset-0 h-full w-full object-cover object-[62%_center] sm:object-center"
+            className="absolute inset-0 h-full w-full object-cover object-[68%_center] sm:object-center"
             draggable={false}
           />
-          <div className="absolute inset-x-0 top-0 h-1/3 bg-[linear-gradient(180deg,rgba(4,7,12,0.4),transparent)]" />
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(4,7,12,0.12)_0%,rgba(4,7,12,0.02)_44%,rgba(7,10,17,0.72)_100%)]" />
           <div
             data-testid="creation-agent-hero-fade"
-            className="absolute inset-x-0 bottom-0 h-3/4 bg-[linear-gradient(180deg,transparent_0%,rgba(9,13,21,0.28)_38%,#090d15_100%)]"
+            className="absolute inset-x-0 bottom-0 h-2/5 bg-[linear-gradient(180deg,transparent_0%,rgba(7,10,17,0.46)_56%,#070a11_100%)]"
           />
         </section>
 
-        <section className="relative z-10 mx-auto -mt-[76px] flex w-full max-w-[920px] flex-col items-center px-2 sm:-mt-[94px] lg:-mt-[112px]">
+        <section className="relative z-10 mx-auto -mt-[82px] flex w-full max-w-[920px] flex-col items-center px-2 sm:-mt-[108px] lg:-mt-[130px]">
         <div data-testid="creation-agent-brand-mark" className="mb-2 flex items-center gap-2 rounded-full border border-white/15 bg-[#0c1320]/90 px-3 py-1.5 text-xs font-medium text-[#78a2ff] shadow-[0_10px_30px_rgba(0,0,0,0.24)] backdrop-blur-xl">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={withBasePath('/brand/huiying-logo-icon.png')} alt="" className="h-5 w-5 object-contain" />
@@ -120,9 +149,9 @@ export function VimaxProjectHome({
           })}
         </div>
         </section>
-      </div>
+        </div>
 
-      <section data-testid="vimax-recent-projects" className="mt-10 w-full border-t border-white/[0.07] pt-6">
+        <section data-testid="vimax-recent-projects" className="mt-10 w-full border-t border-white/[0.09] pt-6">
         <div className="mb-4 flex items-end justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold tracking-[-0.02em]">最近项目</h2>
@@ -235,7 +264,8 @@ export function VimaxProjectHome({
             <ArrowRight className="h-4 w-4 shrink-0 text-slate-600 transition group-hover:translate-x-0.5" />
           </button>
         )}
-      </section>
+        </section>
+      </div>
     </main>
   );
 }
