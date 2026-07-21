@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { mergeVideosWithLocalFfmpeg } from '@/lib/local-video-merge';
 import { extractLastFrameForHandoff } from '@/lib/video-frame-extraction';
 import { resolvePaperHostCreationOwnerFromRequest } from '@/lib/task-access';
-import { createTask, failTask, getTaskForOwner, updateTask, type TaskOwner } from '@/lib/task-manager';
+import { getTaskForOwner, updateTask, type TaskOwner } from '@/lib/task-manager';
 import type { VimaxAgentPlan, VimaxAgentReferenceAsset, VimaxAgentStepBody } from '@/lib/skills/vimax-short-drama/vimax-agent-contract';
 import { VIMAX_PLAN_MODEL } from '@/lib/skills/vimax-short-drama/vimax-generation-preferences';
 import { buildProductionBackedVimaxPlan } from '@/lib/skills/vimax-short-drama/vimax-plan-artifacts';
-import { persistVimaxPlanTask } from '@/lib/skills/vimax-short-drama/vimax-plan-task';
+import { createVimaxPlanTask, failVimaxPlanTask, persistVimaxPlanTask } from '@/lib/skills/vimax-short-drama/vimax-plan-task';
 import { resolveCanonicalVimaxStageInput } from '@/lib/skills/vimax-short-drama/vimax-canonical-stage-input';
 import { resolveVimaxRecoveryCreatedAfter, restoreVimaxRecoveryTask } from '@/lib/skills/vimax-short-drama/vimax-recovery-session';
 import { createVimaxVideoTaskRuntime } from '@/lib/skills/vimax-short-drama/vimax-video-task-runtime';
@@ -303,19 +303,6 @@ function buildVimaxPlanEnvelope(
     continuity,
   });
   return { plan, productionPlan, productionProject, assemblyPlan };
-}
-
-function createVimaxPlanTask(owner: TaskOwner, prompt: string, body: VimaxAgentStepBody) {
-  return createTask('storyboard', {
-    prompt,
-    duration: `${body.duration || 30}s`,
-    ratio: body.ratio || '16:9',
-    resolution: body.resolution || '720p',
-    style: body.style || '电影感短剧',
-    sceneType: body.sceneType || 'drama',
-    workflow: 'vimax-agent',
-    skillId: body.skillId,
-  }, owner);
 }
 
 function createPersistedPlanEnvelope(
@@ -680,7 +667,7 @@ export async function POST(request: NextRequest) {
               );
               send('plan.complete', { success: true, phase: 'plan', model: result.model, ...envelope });
             } catch (error) {
-              failTask(planTaskId, 'planning_provider_failed');
+              failVimaxPlanTask(planTaskId);
               send('plan.error', { ...reportVimaxPlanningFailure(error), taskId: planTaskId });
             } finally { controller.close(); }
           },
