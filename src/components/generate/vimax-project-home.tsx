@@ -1,10 +1,26 @@
 'use client';
 
 import { useState, type ReactNode } from 'react';
-import { ArrowRight, Film, MoreHorizontal, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowRight, Film, MoreHorizontal, Plus, Trash2 } from 'lucide-react';
 
+import { buildMediaPreviewImageUrl } from '@/lib/media-preview';
 import type { VimaxProjectSummary } from '@/lib/skills/vimax-short-drama/vimax-project-catalog';
 import type { VimaxSkillPreset } from '@/lib/skills/vimax-short-drama/vimax-skill-presets';
+
+const BASE_PATH = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
+
+function withBasePath(url: string) {
+  if (!BASE_PATH || !url.startsWith('/') || url.startsWith(`${BASE_PATH}/`)) return url;
+  return `${BASE_PATH}${url}`;
+}
+
+function heroPreview(width: 640 | 1080 | 1920) {
+  return buildMediaPreviewImageUrl(withBasePath('/home/huiying-hero-cosmic-reel-v2.png'), {
+    width,
+    quality: width >= 1080 ? 68 : 58,
+    basePath: BASE_PATH,
+  });
+}
 
 interface VimaxProjectHomeProps {
   projects: VimaxProjectSummary[];
@@ -40,21 +56,42 @@ export function VimaxProjectHome({
   return (
     <main
       data-testid="vimax-project-home"
-      className="relative mx-auto flex min-h-full w-full max-w-[1180px] flex-col px-8 pb-14 pt-20 text-[#181a20]"
+      className="relative mx-auto flex min-h-full w-full max-w-[1320px] flex-col px-3 pb-14 pt-4 text-[#181a20] sm:px-6 lg:px-8"
     >
-      {actions ? <div className="absolute right-8 top-5 z-30">{actions}</div> : null}
-      <section className="mx-auto flex w-full max-w-[920px] flex-col items-center">
-        <div className="mb-4 flex items-center gap-2 rounded-full border border-[#dce7ff] bg-[#f3f7ff] px-3 py-1.5 text-xs font-medium text-[#2f6bff]">
-          <Sparkles className="h-3.5 w-3.5" />
+      {actions ? <div className="absolute right-6 top-6 z-30">{actions}</div> : null}
+      <section
+        data-testid="creation-agent-hero"
+        aria-label="绘影视觉背景"
+        className="relative h-[148px] w-full shrink-0 overflow-hidden rounded-lg border border-white/10 bg-[#050812] shadow-[0_22px_60px_rgba(0,0,0,0.28)] sm:h-[210px] lg:h-[260px]"
+      >
+        {/* The URL already targets the responsive Next image optimizer. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={heroPreview(1080)}
+          srcSet={`${heroPreview(640)} 640w, ${heroPreview(1080)} 1080w, ${heroPreview(1920)} 1920w`}
+          sizes="(max-width: 640px) 100vw, (max-width: 1200px) 94vw, 1260px"
+          alt="绘影宇宙胶卷制作流"
+          loading="eager"
+          decoding="async"
+          className="absolute inset-0 h-full w-full object-cover object-center"
+          draggable={false}
+        />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(3,5,10,0.06),rgba(3,5,10,0.38))]" />
+      </section>
+
+      <section className="relative z-10 mx-auto -mt-6 flex w-full max-w-[920px] flex-col items-center sm:-mt-8">
+        <div data-testid="creation-agent-brand-mark" className="mb-3 flex items-center gap-2 rounded-full border border-white/15 bg-[#0d1422]/92 px-3 py-1.5 text-xs font-medium text-[#78a2ff] shadow-[0_10px_30px_rgba(0,0,0,0.3)] backdrop-blur-xl">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={withBasePath('/brand/huiying-logo-icon.png')} alt="" className="h-5 w-5 object-contain" />
           创作智能体
         </div>
-        <h1 className="text-center text-[34px] font-semibold tracking-[-0.035em] text-[#15171c]">
+        <h1 className="text-center text-[28px] font-semibold text-[#15171c] sm:text-[32px]">
           你好，想创作什么？
         </h1>
         <p className="mt-3 text-center text-sm leading-6 text-[#737a87]">
           输入想法、脚本或参考资料，从创意规划到分镜、素材与成片持续推进。
         </p>
-        <div className="mt-8 w-full">{composer}</div>
+        <div className="mt-6 w-full">{composer}</div>
 
         <div className="mt-5 flex max-w-[880px] flex-wrap justify-center gap-2.5" aria-label="快捷 Skill">
           {skills.map(skill => {
@@ -79,7 +116,7 @@ export function VimaxProjectHome({
         </div>
       </section>
 
-      <section data-testid="vimax-recent-projects" className="mt-16 w-full">
+      <section data-testid="vimax-recent-projects" className="mt-12 w-full">
         <div className="mb-5 flex items-end justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold tracking-[-0.02em]">最近项目</h2>
@@ -100,7 +137,7 @@ export function VimaxProjectHome({
             {projects.map(project => (
               <article
                 key={project.id}
-                className="group relative min-h-[152px] rounded-2xl border border-[#e5e8ed] bg-white shadow-[0_8px_28px_rgba(31,41,55,0.045)] transition duration-200 hover:-translate-y-1 hover:border-[#cfd9e8] hover:shadow-[0_16px_34px_rgba(31,41,55,0.08)]"
+                className="group relative min-h-[152px] rounded-lg border border-[#e5e8ed] bg-white shadow-[0_8px_28px_rgba(31,41,55,0.045)] transition duration-200 hover:-translate-y-1 hover:border-[#cfd9e8] hover:shadow-[0_16px_34px_rgba(31,41,55,0.08)]"
               >
                 <button
                   type="button"
@@ -108,7 +145,7 @@ export function VimaxProjectHome({
                     closeProjectMenu();
                     onOpenProject(project.id);
                   }}
-                  className="h-full min-h-[152px] w-full rounded-2xl p-5 pr-14 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f6bff]/30"
+                  className="h-full min-h-[152px] w-full rounded-lg p-5 pr-14 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f6bff]/30"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#f0f4ff] text-[#2f6bff]">

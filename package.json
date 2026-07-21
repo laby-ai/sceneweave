@@ -55,6 +55,7 @@
     "qa:smart-vimax-agent-render": "node scripts/qa-smart-vimax-agent-render.mjs",
     "qa:v8-user-journey": "node scripts/qa-v8-user-journey.mjs",
     "qa:creation-agent-user-journey": "node scripts/qa-creation-agent-user-journey.mjs",
+    "test:creation-agent-layout": "tsx scripts/test-creation-agent-layout.ts",
     "qa:canvas-open-source-alignment": "node scripts/qa-canvas-open-source-alignment.mjs",
     "qa:canvas-node-placement": "tsx scripts/qa-canvas-node-placement.ts",
     "qa:production-export": "node scripts/qa-production-export.mjs",

@@ -14,6 +14,7 @@ const fixtureKey = ['fixture', 'browser', 'only'].join('-');
 const outputRoot = path.join(process.cwd(), 'output', 'creation-agent-user-journey');
 let profile = null;
 const accountCalls = [];
+const appOutput = [];
 
 function json(response, status, body) {
   const bytes = Buffer.from(JSON.stringify(body));
@@ -56,7 +57,13 @@ const accountServer = createServer(async (request, response) => {
     return json(response, 200, {
       tenant_id: 'tenant-fixture',
       tenant_name: '隔离测试团队',
-      member: { id: 'member-fixture', display_name: '创作测试员', role_key: 'member', status: 'active' },
+      member: {
+        id: 'member-fixture',
+        display_name: '创作测试员',
+        email: 'creator@example.test',
+        role_key: 'member',
+        status: 'active',
+      },
       expires_at: '2099-01-01T00:00:00.000Z',
     });
   }
@@ -146,10 +153,16 @@ try {
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-  const appOutput = [];
   app.stdout.on('data', chunk => appOutput.push(String(chunk)));
   app.stderr.on('data', chunk => appOutput.push(String(chunk)));
   await waitForHealth();
+
+  const normalizedRoot = await fetch(`${appOrigin}/`, { redirect: 'manual' });
+  assert.equal(normalizedRoot.status, 308);
+  assert.match(normalizedRoot.headers.get('location') || '', /\/huiying$/);
+  const creationRedirect = await fetch(appOrigin, { redirect: 'manual' });
+  assert.equal(creationRedirect.status, 307);
+  assert.match(creationRedirect.headers.get('location') || '', /\/huiying\/embed\/creation-agent$/);
 
   browser = await chromium.launch({ headless: true });
   const viewports = [
@@ -159,7 +172,6 @@ try {
   ];
   const results = [];
   for (const viewport of viewports) {
-    profile = null;
     const context = await browser.newContext({ viewport });
     await context.addCookies([{ name: 'huiying_account_token', value: fixtureToken, url: origin }]);
     await context.addInitScript(token => localStorage.setItem('account_entitlement_token', token), fixtureToken);
@@ -170,20 +182,41 @@ try {
     page.on('pageerror', error => errors.push(error.message));
     page.on('response', response => { if (response.status() >= 400) failedResponses.push({ status: response.status(), url: response.url() }); });
 
-    await page.goto(`${appOrigin}/`, { waitUntil: 'networkidle' });
+    await page.goto(`${appOrigin}/embed/creation-agent`, { waitUntil: 'commit' });
     assert.match(page.url(), /\/huiying\/embed\/creation-agent$/);
     await page.locator('[data-testid="vimax-project-home"]').waitFor({ state: 'visible' });
     await assertDarkAndContained(page, viewport.name);
     assert.equal(await page.getByRole('button', { name: 'Agent 模式' }).count(), 0, 'agent-only mode must not open legacy choices');
 
+    const header = page.locator('header');
+    await header.getByRole('img', { name: '绘影' }).waitFor({ state: 'visible' });
+    await header.getByRole('button', { name: '账号信息' }).waitFor({ state: 'visible' });
+    const hero = page.locator('[data-testid="creation-agent-hero"]');
+    await hero.waitFor({ state: 'visible' });
+    await page.locator('[data-testid="creation-agent-brand-mark"]').waitFor({ state: 'visible' });
+    const heroBox = await page.locator('[data-testid="creation-agent-hero"]').boundingBox();
+    assert(heroBox && heroBox.height >= (viewport.width <= 640 ? 140 : 200), `${viewport.name} hero is too small`);
+
     const settings = page.getByRole('button', { name: '百炼模型设置' });
+    assert.equal(await settings.count(), 1, `${viewport.name} duplicated Bailian settings`);
+    assert.equal(await header.getByRole('button', { name: '百炼模型设置' }).count(), 1, `${viewport.name} settings are not in the global header`);
     await settings.waitFor({ state: 'visible' });
+    if (await settings.getAttribute('aria-expanded') !== 'true') await settings.click();
     await page.getByLabel('API Key').fill(fixtureKey);
     await page.getByLabel('业务空间 ID').fill('ws-fixture-browser');
     await page.getByRole('button', { name: '保存到当前账号' }).click();
     await page.getByText('已保存到当前账号。', { exact: false }).waitFor({ state: 'visible' });
     await page.getByRole('button', { name: '关闭模型设置' }).click();
     await page.getByText('百炼已配置', { exact: true }).waitFor({ state: 'visible' });
+
+    const accountButton = header.getByRole('button', { name: '账号信息' });
+    await accountButton.click();
+    await page.getByText('creator@example.test', { exact: true }).waitFor({ state: 'visible' });
+    await page.getByText('所属团队：隔离测试团队', { exact: true }).waitFor({ state: 'visible' });
+    await page.keyboard.press('Escape');
+    await page.getByText('creator@example.test', { exact: true }).waitFor({ state: 'hidden' });
+
+    await page.screenshot({ path: path.join(outputRoot, `${viewport.name}-home.png`), fullPage: true });
 
     await page.getByTitle('使用技能').click();
     await page.getByPlaceholder('搜索短剧、电商、分镜…').fill('电商');
@@ -194,7 +227,7 @@ try {
     await page.getByRole('button', { name: '超清', exact: true }).click();
     await page.getByRole('button', { name: '创建第一个项目' }).click();
     await page.getByRole('button', { name: '返回项目' }).waitFor({ state: 'visible' });
-    await page.reload({ waitUntil: 'networkidle' });
+    await page.reload({ waitUntil: 'domcontentloaded' });
     await page.getByRole('button', { name: '返回项目' }).waitFor({ state: 'visible' });
 
     const leaked = await page.evaluate(secret => ({
@@ -205,13 +238,25 @@ try {
     assert.deepEqual(leaked, { body: false, local: false, session: false });
     assert.deepEqual(errors, [], `${viewport.name} console errors: ${errors.join(' | ')}`);
     assert.deepEqual(failedResponses, [], `${viewport.name} failed responses: ${JSON.stringify(failedResponses)}`);
-    await page.screenshot({ path: path.join(outputRoot, `${viewport.name}.png`), fullPage: true });
-    results.push({ viewport: viewport.name, dark: true, overflow: false, profileSaved: true, projectRecovered: true });
+    await page.screenshot({ path: path.join(outputRoot, `${viewport.name}-project.png`), fullPage: true });
+    results.push({
+      viewport: viewport.name,
+      dark: true,
+      overflow: false,
+      accountVisible: true,
+      heroVisible: true,
+      heroBounds: { y: Math.round(heroBox.y), height: Math.round(heroBox.height) },
+      profileSaved: true,
+      projectRecovered: true,
+    });
     await context.close();
   }
 
   assert(accountCalls.some(call => call.method === 'PUT' && call.url === '/v1/me/provider-key-profile'));
   console.log(JSON.stringify({ ok: true, results, usedProductionAccount: false, usedPaidProvider: false }, null, 2));
+} catch (error) {
+  console.error(appOutput.join(''));
+  throw error;
 } finally {
   if (browser) await browser.close().catch(() => undefined);
   if (app && !app.killed) app.kill('SIGTERM');

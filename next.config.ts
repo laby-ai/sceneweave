@@ -10,6 +10,15 @@ const basePath = rawBasePath && rawBasePath.startsWith('/') ? rawBasePath : '';
 
 const nextConfig: NextConfig = {
   ...(basePath ? { basePath, assetPrefix: basePath } : {}),
+  async redirects() {
+    return [
+      {
+        source: '/',
+        destination: '/embed/creation-agent',
+        permanent: false,
+      },
+    ];
+  },
   allowedDevOrigins: ['localhost', '127.0.0.1'],
   // Keep the native object-storage boundary portable across Windows builds and
   // Linux releases. Turbopack otherwise emits host-specific hashed externals.

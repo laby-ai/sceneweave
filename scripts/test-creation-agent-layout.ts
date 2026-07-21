@@ -1,0 +1,32 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+
+const shell = readFileSync('src/components/creation-agent/vimax-creation-agent-shell.tsx', 'utf8');
+const home = readFileSync('src/components/generate/vimax-project-home.tsx', 'utf8');
+const workspace = readFileSync('src/components/generate/generate-workspace.tsx', 'utf8');
+const account = readFileSync('src/components/home/account-status-button.tsx', 'utf8');
+const nextConfig = readFileSync('next.config.ts', 'utf8');
+
+assert.match(shell, /AccountStatusButton/);
+assert.match(shell, /BailianConnectionControl/);
+assert.match(shell, /\/brand\/huiying-logo-icon\.png/);
+assert.match(shell, /showModelSettings=\{false\}/);
+
+assert.match(home, /data-testid="creation-agent-hero"/);
+assert.match(home, /huiying-hero-cosmic-reel-v2\.png/);
+assert.match(home, /data-testid="creation-agent-brand-mark"/);
+
+assert.match(workspace, /showModelSettings\?: boolean/);
+assert.match(workspace, /showModelSettings = true/);
+assert.match(workspace, /showModelSettings \? <BailianConnectionControl \/> : null/);
+assert.match(workspace, /if \(workspaceView !== 'project'\) return;/);
+
+assert.match(account, /variant\?: 'rail' \| 'header'/);
+assert.match(account, /variant = 'rail'/);
+assert.match(account, /variant === 'header'/);
+
+assert.match(nextConfig, /source: '\/'/);
+assert.match(nextConfig, /destination: '\/embed\/creation-agent'/);
+assert.match(nextConfig, /permanent: false/);
+
+console.log('creation agent layout contract: ok');
