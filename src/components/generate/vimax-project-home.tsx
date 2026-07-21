@@ -14,15 +14,7 @@ function withBasePath(url: string) {
   return `${BASE_PATH}${url}`;
 }
 
-function pageBackgroundPreview(width: 640 | 1080 | 1920) {
-  return buildMediaPreviewImageUrl(withBasePath('/home/huiying-hero-cinematic-flow.png'), {
-    width,
-    quality: width >= 1080 ? 68 : 58,
-    basePath: BASE_PATH,
-  });
-}
-
-function heroPreview(width: 640 | 1080 | 1920) {
+function backgroundPreview(width: 640 | 1080 | 1920) {
   return buildMediaPreviewImageUrl(withBasePath('/home/huiying-hero-cosmic-reel-v2.png'), {
     width,
     quality: width >= 1080 ? 68 : 58,
@@ -69,21 +61,19 @@ export function VimaxProjectHome({
       <div
         data-testid="creation-agent-page-background"
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 top-0 h-[820px] overflow-hidden sm:h-[920px] lg:h-[1020px]"
+        className="pointer-events-none absolute inset-x-0 top-0 h-[760px] overflow-hidden sm:h-[860px] lg:h-[940px]"
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={pageBackgroundPreview(1080)}
-          srcSet={`${pageBackgroundPreview(640)} 640w, ${pageBackgroundPreview(1080)} 1080w, ${pageBackgroundPreview(1920)} 1920w`}
+          src={backgroundPreview(1080)}
+          srcSet={`${backgroundPreview(640)} 640w, ${backgroundPreview(1080)} 1080w, ${backgroundPreview(1920)} 1920w`}
           sizes="100vw"
           alt=""
           loading="eager"
           decoding="async"
-          className="absolute inset-0 h-full w-full object-cover object-[62%_center] opacity-40 sm:object-center sm:opacity-[0.34]"
+          className="absolute inset-x-0 top-0 h-[520px] w-full object-cover object-[70%_center] opacity-95 [mask-image:linear-gradient(to_bottom,black_0%,black_46%,rgba(0,0,0,0.72)_66%,transparent_100%)] sm:h-[680px] sm:object-[68%_center] lg:h-[760px]"
           draggable={false}
         />
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(4,7,13,0.38)_0%,rgba(7,10,17,0.52)_48%,#070a11_100%)]" />
-        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(7,10,17,0.44)_0%,transparent_42%,rgba(7,10,17,0.18)_72%,rgba(7,10,17,0.5)_100%)]" />
       </div>
 
       <div className="relative z-10 mx-auto flex w-full max-w-[1320px] flex-col px-3 pb-14 pt-3 sm:px-6 lg:px-8">
@@ -92,37 +82,19 @@ export function VimaxProjectHome({
         <section
           data-testid="creation-agent-hero"
           aria-label="绘影电影创作主视觉"
-          className="relative h-[220px] w-full shrink-0 overflow-hidden bg-[#050812] sm:h-[300px] lg:h-[360px]"
-        >
-          {/* The URL already targets the responsive Next image optimizer. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={heroPreview(1080)}
-            srcSet={`${heroPreview(640)} 640w, ${heroPreview(1080)} 1080w, ${heroPreview(1920)} 1920w`}
-            sizes="(max-width: 640px) 100vw, (max-width: 1200px) 94vw, 1260px"
-            alt="绘影音画创作与胶片叙事主视觉"
-            loading="eager"
-            decoding="async"
-            className="absolute inset-0 h-full w-full object-cover object-[68%_center] sm:object-center"
-            draggable={false}
-          />
-          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(4,7,12,0.12)_0%,rgba(4,7,12,0.02)_44%,rgba(7,10,17,0.72)_100%)]" />
-          <div
-            data-testid="creation-agent-hero-fade"
-            className="absolute inset-x-0 bottom-0 h-2/5 bg-[linear-gradient(180deg,transparent_0%,rgba(7,10,17,0.46)_56%,#070a11_100%)]"
-          />
-        </section>
+          className="relative h-[260px] w-full shrink-0 sm:h-[340px] lg:h-[420px]"
+        />
 
-        <section className="relative z-10 mx-auto -mt-[82px] flex w-full max-w-[920px] flex-col items-center px-2 sm:-mt-[108px] lg:-mt-[130px]">
+        <section className="relative z-10 mx-auto -mt-[76px] flex w-full max-w-[920px] flex-col items-center px-2 sm:-mt-[96px] lg:-mt-[122px]">
         <div data-testid="creation-agent-brand-mark" className="mb-2 flex items-center gap-2 rounded-full border border-white/15 bg-[#0c1320]/90 px-3 py-1.5 text-xs font-medium text-[#78a2ff] shadow-[0_10px_30px_rgba(0,0,0,0.24)] backdrop-blur-xl">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={withBasePath('/brand/huiying-logo-icon.png')} alt="" className="h-5 w-5 object-contain" />
           创作智能体
         </div>
-        <h1 className="text-center text-[28px] font-semibold text-white sm:text-[32px]">
+        <h1 className="text-center text-[28px] font-semibold text-white [text-shadow:0_2px_18px_rgba(0,0,0,0.8)] sm:text-[32px]">
           你好，想创作什么？
         </h1>
-        <p className="mt-2 text-center text-sm leading-6 text-slate-400">
+        <p className="mt-2 text-center text-sm leading-6 text-slate-300 [text-shadow:0_1px_12px_rgba(0,0,0,0.85)]">
           输入想法、脚本或参考资料，从创意规划到分镜、素材与成片持续推进。
         </p>
         <div className="mt-6 w-full">{composer}</div>

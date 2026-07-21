@@ -16,15 +16,17 @@ assert.match(shell, /max-w-\[1320px\]/);
 
 assert.match(home, /data-testid="creation-agent-hero"/);
 assert.match(home, /data-testid="creation-agent-page-background"/);
-assert.match(home, /huiying-hero-cinematic-flow\.png/);
 assert.match(home, /huiying-hero-cosmic-reel-v2\.png/);
-assert.match(home, /pageBackgroundPreview/);
-assert.match(home, /heroPreview/);
-assert.equal((home.match(/quality: width >= 1080 \? 68 : 58/g) || []).length, 2);
-assert.match(home, /object-\[68%_center\] sm:object-center/);
+assert.doesNotMatch(home, /huiying-hero-cinematic-flow\.png/);
+assert.match(home, /backgroundPreview/);
+assert.doesNotMatch(home, /heroPreview/);
+assert.equal((home.match(/quality: width >= 1080 \? 68 : 58/g) || []).length, 1);
+assert.match(home, /object-\[70%_center\]/);
+assert.match(home, /sm:object-\[68%_center\]/);
+assert.match(home, /\[mask-image:linear-gradient/);
 assert.match(home, /data-testid="creation-agent-brand-mark"/);
 assert.match(home, /data-testid="creation-agent-main-stage"/);
-assert.match(home, /data-testid="creation-agent-hero-fade"/);
+assert.doesNotMatch(home, /data-testid="creation-agent-hero-fade"/);
 assert.match(home, /data-testid="vimax-project-empty-state"/);
 assert.match(home, /min-h-\[112px\]/);
 
