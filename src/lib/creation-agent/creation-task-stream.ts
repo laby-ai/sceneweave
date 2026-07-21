@@ -1,5 +1,6 @@
 import type { CreationEvent, CreationResult, CreationStatus } from './creation-agent-model';
 import { parseCreationProductionPlan } from './creation-production-plan';
+import { clientApiRequest } from '@/lib/client-api';
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -80,12 +81,13 @@ export async function streamCreationTask(input: StreamCreationTaskInput): Promis
     ? Number(input.afterSeq)
     : 0;
   const query = afterSeq > 0 ? `?afterSeq=${afterSeq}` : '';
-  const response = await fetch(`/api/tasks/${encodeURIComponent(input.taskId)}/events${query}`, {
+  const response = await clientApiRequest(`/api/tasks/${encodeURIComponent(input.taskId)}/events${query}`, {
     headers: {
       ...input.headers,
       ...(afterSeq > 0 ? { 'Last-Event-ID': String(afterSeq) } : {}),
     },
     signal: input.signal,
+    redirectOnUnauthorized: false,
   });
   if (!response.ok || !response.body) throw new Error(`task_stream_${response.status}`);
 

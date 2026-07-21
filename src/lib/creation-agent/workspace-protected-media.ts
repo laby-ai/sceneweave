@@ -1,3 +1,5 @@
+import { clientApiDownloadBlob, ClientRequestError } from '@/lib/client-api';
+
 const FINAL_VIDEO_PATH = /\/api\/final-videos\/[0-9a-f-]{36}$/;
 
 export function isWorkspaceProtectedMediaUrl(url: string) {
@@ -13,7 +15,16 @@ export async function fetchWorkspaceProtectedMedia(
   requestHeaders: Record<string, string>,
   signal?: AbortSignal,
 ) {
-  const response = await fetch(url, { headers: requestHeaders, signal });
-  if (!response.ok) throw new Error(`成片读取失败（${response.status}）`);
-  return response.blob();
+  try {
+    return await clientApiDownloadBlob(url, {
+      headers: requestHeaders,
+      signal,
+      redirectOnUnauthorized: false,
+    });
+  } catch (error) {
+    if (error instanceof ClientRequestError && error.status) {
+      throw new Error(`成片读取失败（${error.status}）`);
+    }
+    throw error;
+  }
 }
