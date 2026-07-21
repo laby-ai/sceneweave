@@ -11,17 +11,24 @@ assert.match(shell, /AccountStatusButton/);
 assert.match(shell, /BailianConnectionControl/);
 assert.match(shell, /\/brand\/huiying-logo-icon\.png/);
 assert.match(shell, /showModelSettings=\{false\}/);
+assert.match(shell, /data-testid="creation-agent-header-inner"/);
+assert.match(shell, /max-w-\[1320px\]/);
 
 assert.match(home, /data-testid="creation-agent-hero"/);
 assert.match(home, /huiying-hero-cinematic-flow\.png/);
 assert.doesNotMatch(home, /huiying-hero-cosmic-reel-v2\.png/);
 assert.match(home, /object-\[62%_center\] sm:object-center/);
 assert.match(home, /data-testid="creation-agent-brand-mark"/);
+assert.match(home, /data-testid="creation-agent-main-stage"/);
+assert.match(home, /data-testid="creation-agent-hero-fade"/);
+assert.match(home, /data-testid="vimax-project-empty-state"/);
+assert.match(home, /min-h-\[112px\]/);
 
 assert.match(workspace, /showModelSettings\?: boolean/);
 assert.match(workspace, /showModelSettings = true/);
 assert.match(workspace, /showModelSettings \? <BailianConnectionControl \/> : null/);
 assert.match(workspace, /if \(workspaceView !== 'project'\) return;/);
+assert.match(workspace, /data-testid="creation-agent-composer"/);
 
 assert.match(account, /variant\?: 'rail' \| 'header'/);
 assert.match(account, /variant = 'rail'/);
