@@ -15,7 +15,7 @@ function withBasePath(url: string) {
 }
 
 function backgroundPreview(width: 640 | 1080 | 1920) {
-  return buildMediaPreviewImageUrl(withBasePath('/home/huiying-hero-cosmic-reel-v2.png'), {
+  return buildMediaPreviewImageUrl(withBasePath('/home/huiying-creation-agent-cosmic-4k.webp'), {
     width,
     quality: width >= 1080 ? 68 : 58,
     basePath: BASE_PATH,
@@ -71,7 +71,7 @@ export function VimaxProjectHome({
           alt=""
           loading="eager"
           decoding="async"
-          className="absolute inset-x-0 top-0 h-[520px] w-full object-cover object-[70%_center] opacity-95 [mask-image:linear-gradient(to_bottom,black_0%,black_46%,rgba(0,0,0,0.72)_66%,transparent_100%)] sm:h-[680px] sm:object-[68%_center] lg:h-[760px]"
+          className="absolute inset-x-0 top-0 h-[520px] w-full object-cover object-center sm:h-[680px] lg:h-[760px]"
           draggable={false}
         />
       </div>
