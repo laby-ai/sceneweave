@@ -101,6 +101,7 @@ export function reportVimaxPlanningFailure(error: unknown): VimaxPlanningFailure
 function planningFailureCodeForStatus(status: number): VimaxPlanningFailureCode {
   if (status === 401) return 'planning_provider_auth_failed';
   if (status === 403) return 'planning_provider_permission_denied';
+  if (status === 404) return 'planning_model_unavailable';
   return 'planning_provider_failed';
 }
 
