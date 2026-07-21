@@ -23,7 +23,7 @@ import {
   resolveBYOKConnectionsForRequest,
   type BYOKConnection,
 } from '@/lib/byok-provider';
-import { MemberBailianApiBaseRequiredError, MemberBailianProfileRequiredError } from '@/lib/account/member-bailian-profile';
+import { MemberBailianProfileRequiredError } from '@/lib/account/member-bailian-profile';
 import { applyVimaxShotGenerationRoutes } from '@/lib/skills/vimax-short-drama/vimax-shot-generation-route';
 import { buildVimaxPlanMessages } from '@/lib/skills/vimax-short-drama/vimax-plan-prompt';
 import {
@@ -845,7 +845,7 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   } catch (error) {
-    if (error instanceof MemberBailianProfileRequiredError || error instanceof MemberBailianApiBaseRequiredError) {
+    if (error instanceof MemberBailianProfileRequiredError) {
       return NextResponse.json(
         { success: false, error: error.message, code: error.code, provider: 'aliyun-bailian' },
         { status: error.status, headers: { 'Cache-Control': 'no-store' } },

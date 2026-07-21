@@ -106,11 +106,11 @@ src/components/generate/generate-workspace.tsx
 当前界面只支持阿里云百炼连接：
 
 - API Base 固定在应用内，不让用户填写；
-- 用户填写百炼工作空间 API Base 与 API Key，不单独填写业务空间 ID；服务端只保存解析后的 workspace 标识和加密密钥；
+- 用户只填写百炼 API Key；文本、图像、视频模型的官方 API 地址由系统按模型内置，服务端只读取账号中心加密密钥；
 - 登录成员的 Key 由账号服务按 tenant/member 加密保存，读取接口只返回掩码；
 - Key 不进入 prompt、项目状态、日志、截图、文档或 Git；
-- Base URL 必须是中国区百炼工作空间 HTTPS 地址，规划模型固定 `qwen3.7-plus`，图像与视频共用同一工作空间路由；
-- 图像默认 `qwen-image-3.0-pro`，通过百炼工作空间的原生 multimodal-generation 接口生成或编辑；
+- 规划模型固定 `qwen3.7-plus`；文本、图像与视频分别使用代码内置的中国区百炼官方路由；
+- 图像默认 `qwen-image-3.0-pro`，通过百炼公共域名的原生 multimodal-generation 接口生成或编辑；
 - 视频默认固定 `happyhorse-1.1-i2v`；
 - 不允许静默降级到其他模型；
 - 连接验证失败不会覆盖之前的有效连接；
