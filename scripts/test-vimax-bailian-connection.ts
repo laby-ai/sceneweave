@@ -24,7 +24,7 @@ class MemoryStorage implements Storage {
 }
 
 assert.equal(DEFAULT_PLANNING_MODEL, 'qwen3.7-plus');
-assert.equal(DEFAULT_IMAGE_MODEL, 'qwen-image-3.0-pro');
+assert.equal(DEFAULT_IMAGE_MODEL, 'qwen-image-2.0-pro');
 assert.equal(DEFAULT_VIDEO_MODEL, 'happyhorse-1.1-i2v');
 assert.equal(BAILIAN_UNIVERSAL_API_HOST, 'https://dashscope.aliyuncs.com');
 assert.equal(BAILIAN_DEFAULT_API_HOST, BAILIAN_UNIVERSAL_API_HOST);
@@ -172,7 +172,7 @@ try {
 
   globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body || '{}')) as { parameters?: Record<string, unknown> };
-    assert.equal('size' in (body.parameters || {}), false, 'Qwen Image 3.0 must auto-select size when none is requested');
+    assert.equal('size' in (body.parameters || {}), false, 'Qwen Image must auto-select size when none is requested');
     return Response.json({
       output: { choices: [{ message: { content: [{ image: 'https://media.example.com/auto-size.png' }] } }] },
     });
