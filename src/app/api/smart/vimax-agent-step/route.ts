@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { mergeVideosWithLocalFfmpeg } from '@/lib/local-video-merge';
 import { extractLastFrameForHandoff } from '@/lib/video-frame-extraction';
 import { resolvePaperHostCreationOwnerFromRequest } from '@/lib/task-access';
-import { createTask, getTaskForOwner, updateTask, type TaskOwner } from '@/lib/task-manager';
+import { getTaskForOwner, updateTask, type TaskOwner } from '@/lib/task-manager';
 import type { VimaxAgentPlan, VimaxAgentReferenceAsset, VimaxAgentStepBody } from '@/lib/skills/vimax-short-drama/vimax-agent-contract';
 import { VIMAX_PLAN_MODEL } from '@/lib/skills/vimax-short-drama/vimax-generation-preferences';
 import { buildProductionBackedVimaxPlan } from '@/lib/skills/vimax-short-drama/vimax-plan-artifacts';
-import { persistVimaxPlanTask } from '@/lib/skills/vimax-short-drama/vimax-plan-task';
+import { createVimaxPlanTask, failVimaxPlanTask, persistVimaxPlanTask } from '@/lib/skills/vimax-short-drama/vimax-plan-task';
 import { resolveCanonicalVimaxStageInput } from '@/lib/skills/vimax-short-drama/vimax-canonical-stage-input';
 import { resolveVimaxRecoveryCreatedAfter, restoreVimaxRecoveryTask } from '@/lib/skills/vimax-short-drama/vimax-recovery-session';
 import { createVimaxVideoTaskRuntime } from '@/lib/skills/vimax-short-drama/vimax-video-task-runtime';
@@ -313,17 +313,9 @@ function createPersistedPlanEnvelope(
   body: VimaxAgentStepBody,
   planConnection?: BYOKConnection,
   videoConnection?: BYOKConnection,
+  existingTaskId?: string,
 ) {
-  const taskId = createTask('storyboard', {
-    prompt,
-    duration: `${body.duration || 30}s`,
-    ratio: body.ratio || '16:9',
-    resolution: body.resolution || '720p',
-    style: body.style || '电影感短剧',
-    sceneType: body.sceneType || 'drama',
-    workflow: 'vimax-agent',
-    skillId: body.skillId,
-  }, owner);
+  const taskId = existingTaskId || createVimaxPlanTask(owner, prompt, body);
   const { plan, productionPlan, productionProject, assemblyPlan } = buildVimaxPlanEnvelope(
     prompt,
     model,
@@ -652,12 +644,14 @@ export async function POST(request: NextRequest) {
       }
 
       if (wantStream) {
+        const planTaskId = createVimaxPlanTask(owner, prompt, trustedBody);
         const encoder = new TextEncoder();
         const stream = new ReadableStream({
           async start(controller) {
             const send = (event: string, data: unknown) => controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
             try {
               send('plan.start', { phase: 'plan' });
+              send('plan.accepted', { taskId: planTaskId });
               const result = await callArkTextStream(prompt, preset, body.model, (delta) => {
                 send('plan.delta', { delta });
               }, planConnection);
@@ -669,13 +663,13 @@ export async function POST(request: NextRequest) {
                 trustedBody,
                 planConnection,
                 videoConnection,
+                planTaskId,
               );
               send('plan.complete', { success: true, phase: 'plan', model: result.model, ...envelope });
             } catch (error) {
-              send('plan.error', reportVimaxPlanningFailure(error));
-            } finally {
-              controller.close();
-            }
+              failVimaxPlanTask(planTaskId);
+              send('plan.error', { ...reportVimaxPlanningFailure(error), taskId: planTaskId });
+            } finally { controller.close(); }
           },
         });
         return new Response(stream, { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' } });

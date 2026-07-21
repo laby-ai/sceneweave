@@ -2,9 +2,12 @@ import type { ProductionAssemblyPlan } from '@/lib/production-assembly-plan';
 import type { ProductionProject } from '@/lib/production-project';
 import {
   completeTask,
+  createTask,
+  failTask,
   startTask,
+  type TaskOwner,
 } from '@/lib/task-manager';
-import type { VimaxAgentPlan } from '@/lib/skills/vimax-short-drama/vimax-agent-contract';
+import type { VimaxAgentPlan, VimaxAgentStepBody } from '@/lib/skills/vimax-short-drama/vimax-agent-contract';
 import type { VimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 
 interface PersistVimaxPlanTaskInput {
@@ -14,6 +17,23 @@ interface PersistVimaxPlanTaskInput {
   productionProject: ProductionProject;
   assemblyPlan: ProductionAssemblyPlan;
   productionPlan: VimaxProductionPlan | unknown;
+}
+
+export function createVimaxPlanTask(owner: TaskOwner, prompt: string, body: VimaxAgentStepBody) {
+  return createTask('storyboard', {
+    prompt,
+    duration: `${body.duration || 30}s`,
+    ratio: body.ratio || '16:9',
+    resolution: body.resolution || '720p',
+    style: body.style || '电影感短剧',
+    sceneType: body.sceneType || 'drama',
+    workflow: 'vimax-agent',
+    skillId: body.skillId,
+  }, owner);
+}
+
+export function failVimaxPlanTask(taskId: string) {
+  return failTask(taskId, 'planning_provider_failed');
 }
 
 export function persistVimaxPlanTask(input: PersistVimaxPlanTaskInput) {
