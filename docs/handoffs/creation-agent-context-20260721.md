@@ -110,7 +110,7 @@ src/components/generate/generate-workspace.tsx
 - 登录成员的 Key 由账号服务按 tenant/member 加密保存，读取接口只返回掩码；
 - Key 不进入 prompt、项目状态、日志、截图、文档或 Git；
 - Base URL 默认为中国公共 DashScope，规划模型固定 `qwen3.7-plus`；旧 `workspace_id` 不再影响模型或请求端点；
-- 图像固定 `qwen-image-3.0-pro`，通过百炼原生 multimodal-generation 接口生成或编辑；
+- 图像默认 `qwen-image-2.0-pro`，通过百炼原生 multimodal-generation 接口生成或编辑；
 - 视频默认固定 `happyhorse-1.1-i2v`；
 - 不允许静默降级到其他模型；
 - 连接验证失败不会覆盖之前的有效连接；
@@ -197,7 +197,7 @@ src/lib/skills/vimax-short-drama/vimax-generation-preferences.ts
 
 1. 第一个镜头以主体、场景、道具、shot reference 和 production plan continuity 生成 canonical 首帧；
 2. 后续镜头再加入上一镜最后成功尾帧；
-3. canonical 首帧使用既有 `imageWithBYOK` 和 `qwen-image-3.0-pro` 生成；
+3. canonical 首帧使用既有 `imageWithBYOK` 和 `qwen-image-2.0-pro` 生成；
 4. 首帧状态保存 version、status、artifactVersion、image URL、来源尾帧、来源参考图、模型、完成时间或错误；
 5. 缺上一镜尾帧、缺批准参考图、artifact version 过期或来源变化时，视频提交前阻断；
 6. 所有自动镜头 route 为 `first-frame`，模型为 `happyhorse-1.1-i2v`；

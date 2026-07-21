@@ -18,7 +18,7 @@ const settings = resolveVimaxGenerationSettings({
 
 assert.deepEqual(settings, {
   planModel: VIMAX_PLAN_MODEL,
-  imageModel: 'qwen-image-3.0-pro',
+  imageModel: 'qwen-image-2.0-pro',
   videoModel: 'happyhorse-1.1-i2v',
   ratio: '9:16',
   resolution: '1080p',
@@ -51,7 +51,7 @@ assert.deepEqual(
   resolveVimaxGenerationSettings({ model: '', ratio: '2:1', quality: '未知' }),
   {
     planModel: VIMAX_PLAN_MODEL,
-    imageModel: 'qwen-image-3.0-pro',
+    imageModel: 'qwen-image-2.0-pro',
     videoModel: 'happyhorse-1.1-i2v',
     ratio: '16:9',
     resolution: '720p',
@@ -62,7 +62,7 @@ assert.deepEqual(
   resolveVimaxGenerationSettings({ model: 'Qwen3.6-Plus', ratio: '16:9', quality: '高清' }),
   {
     planModel: 'Qwen3.6-Plus',
-    imageModel: 'qwen-image-3.0-pro',
+    imageModel: 'qwen-image-2.0-pro',
     videoModel: 'happyhorse-1.1-i2v',
     ratio: '16:9',
     resolution: '720p',
