@@ -629,7 +629,7 @@ export async function POST(request: NextRequest) {
     const phase = body.phase || 'plan';
     const hasExplicitConnection = ['x-yh-provider', 'x-yh-api-base', 'x-yh-api-key', 'x-yh-model'].every(name => request.headers.get(name)?.trim());
     const requestConnections = phase === 'planning_connection_validate'
-      ? { planning: hasExplicitConnection ? extractBYOKConnection(request.headers) : undefined, video: undefined } : await resolveBYOKConnectionsForRequest(request);
+      ? { planning: hasExplicitConnection ? extractBYOKConnection(request.headers) : undefined, video: undefined } : await resolveBYOKConnectionsForRequest(request, access.sessionMode === 'member' ? owner : undefined);
     const planningConnection = requestConnections.planning;
     const connectionResponse = await resolveVimaxPlanningConnectionPhase(phase, planningConnection, getArkConfig().apiKey);
     if (connectionResponse) return NextResponse.json(connectionResponse.payload, { status: connectionResponse.status });
