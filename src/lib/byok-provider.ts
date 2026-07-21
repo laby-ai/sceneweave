@@ -106,11 +106,11 @@ function buildImageGenerationsUrl(apiBase: string): string {
 function isBailianMultimodalImageModel(model: string): boolean {
   const value = model.trim();
   return /^wan2\.7-image(?:-pro)?$/i.test(value)
-    || /^qwen-image-2\.0(?:-pro)?(?:-\d{4}-\d{2}-\d{2})?$/i.test(value);
+    || /^qwen-image-(?:2\.0(?:-pro)?(?:-\d{4}-\d{2}-\d{2})?|3\.0-pro)$/i.test(value);
 }
 
-function isQwenImage2Model(model: string): boolean {
-  return /^qwen-image-2\.0(?:-pro)?(?:-\d{4}-\d{2}-\d{2})?$/i.test(model.trim());
+function isQwenImageReferenceModel(model: string): boolean {
+  return /^qwen-image-(?:2\.0(?:-pro)?(?:-\d{4}-\d{2}-\d{2})?|3\.0-pro)$/i.test(model.trim());
 }
 
 function buildBailianMultimodalImageUrl(apiBase: string): string {
@@ -306,16 +306,17 @@ export async function imageWithBYOK(
           role: 'user',
           content: [
             ...(params.referenceImages || [])
-              .slice(0, isQwenImage2Model(model) ? 3 : 9)
+              .slice(0, isQwenImageReferenceModel(model) ? 3 : 9)
               .map(image => ({ image })),
             { text: params.prompt },
           ],
         }],
       },
       parameters: {
-        size: params.size?.replace(/x/i, '*') || '2K',
+        ...(params.size ? { size: params.size.replace(/x/i, '*') } : {}),
         n: params.n ?? 1,
         watermark: false,
+        ...(isQwenImageReferenceModel(model) ? { prompt_extend: true } : {}),
       },
     } : {
       model,
@@ -345,9 +346,7 @@ export async function imageWithBYOK(
         output?: { choices?: Array<{ message?: { content?: Array<{ type?: string; image?: string; image_url?: string; url?: string }> } }> };
       }).output?.choices?.[0]?.message?.content
     : undefined;
-  const multimodalImage = multimodalContent?.find(
-    item => item.type === 'image' && (item.image || item.image_url || item.url),
-  );
+  const multimodalImage = multimodalContent?.find(item => item.image || item.image_url || item.url);
 
   const imageUrl = multimodalImage?.image || multimodalImage?.image_url || multimodalImage?.url
     || firstImage?.url

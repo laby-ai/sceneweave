@@ -13,7 +13,6 @@ import {
 
 type PublicProfile = {
   configured: boolean;
-  workspace_id?: string;
   secret_mask?: string;
   text_model: string;
   image_model: string;
@@ -26,7 +25,6 @@ export function BailianConnectionControl() {
   const [open, setOpen] = useState(false);
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [apiKey, setApiKey] = useState('');
-  const [workspaceId, setWorkspaceId] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
@@ -39,7 +37,6 @@ export function BailianConnectionControl() {
         redirectOnUnauthorized: false,
       });
       setProfile(result.profile);
-      setWorkspaceId(result.profile.workspace_id || '');
       if (!result.profile.configured) setOpen(true);
     } catch (cause) {
       setProfile(null);
@@ -56,8 +53,8 @@ export function BailianConnectionControl() {
   }, [loadProfile]);
 
   const save = async () => {
-    if (!apiKey.trim() || !workspaceId.trim()) {
-      setError('请填写百炼 API Key 和业务空间 ID。');
+    if (!apiKey.trim()) {
+      setError('请填写百炼 API Key。');
       return;
     }
     setBusy(true);
@@ -68,7 +65,6 @@ export function BailianConnectionControl() {
         method: 'PUT',
         body: JSON.stringify({
           api_key: apiKey.trim(),
-          workspace_id: workspaceId.trim(),
           region: 'cn-beijing',
         }),
         redirectOnUnauthorized: false,
@@ -79,7 +75,7 @@ export function BailianConnectionControl() {
     } catch (cause) {
       setError(cause instanceof ClientRequestError && cause.status === 401
         ? '登录已失效，请重新登录后保存。'
-        : '保存失败，请检查 API Key 和业务空间 ID。');
+        : '保存失败，请检查 API Key。');
     } finally {
       setBusy(false);
     }
@@ -96,7 +92,6 @@ export function BailianConnectionControl() {
       });
       setProfile(result.profile);
       setApiKey('');
-      setWorkspaceId('');
       setNotice('当前账号的百炼配置已移除。');
     } catch {
       setError('移除失败，请稍后重试。');
@@ -134,14 +129,10 @@ export function BailianConnectionControl() {
             </button>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div>
             <label className="block text-xs font-medium text-slate-300">
               API Key
               <input type="password" value={apiKey} onChange={event => setApiKey(event.target.value)} placeholder={configured ? `已保存 ${profile?.secret_mask || ''}，重新填写可更新` : '输入百炼 API Key'} autoComplete="new-password" className="mt-1.5 w-full rounded-lg border border-white/12 bg-black/20 px-3 py-2.5 text-xs text-white outline-none placeholder:text-slate-600 focus:border-blue-400/70" />
-            </label>
-            <label className="block text-xs font-medium text-slate-300">
-              业务空间 ID
-              <input value={workspaceId} onChange={event => setWorkspaceId(event.target.value)} placeholder="例如 ws-xxxxxxxx" autoComplete="off" className="mt-1.5 w-full rounded-lg border border-white/12 bg-black/20 px-3 py-2.5 text-xs text-white outline-none placeholder:text-slate-600 focus:border-blue-400/70" />
             </label>
           </div>
 
