@@ -15,7 +15,7 @@ function withBasePath(url: string) {
 }
 
 function heroPreview(width: 640 | 1080 | 1920) {
-  return buildMediaPreviewImageUrl(withBasePath('/home/huiying-hero-cosmic-reel-v2.png'), {
+  return buildMediaPreviewImageUrl(withBasePath('/home/huiying-hero-cinematic-flow.png'), {
     width,
     quality: width >= 1080 ? 68 : 58,
     basePath: BASE_PATH,
@@ -70,10 +70,10 @@ export function VimaxProjectHome({
           src={heroPreview(1080)}
           srcSet={`${heroPreview(640)} 640w, ${heroPreview(1080)} 1080w, ${heroPreview(1920)} 1920w`}
           sizes="(max-width: 640px) 100vw, (max-width: 1200px) 94vw, 1260px"
-          alt="绘影宇宙胶卷制作流"
+          alt="绘影镜头、分镜与制作台工作流"
           loading="eager"
           decoding="async"
-          className="absolute inset-0 h-full w-full object-cover object-center"
+          className="absolute inset-0 h-full w-full object-cover object-[62%_center] sm:object-center"
           draggable={false}
         />
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(3,5,10,0.06),rgba(3,5,10,0.38))]" />

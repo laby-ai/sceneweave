@@ -13,7 +13,9 @@ assert.match(shell, /\/brand\/huiying-logo-icon\.png/);
 assert.match(shell, /showModelSettings=\{false\}/);
 
 assert.match(home, /data-testid="creation-agent-hero"/);
-assert.match(home, /huiying-hero-cosmic-reel-v2\.png/);
+assert.match(home, /huiying-hero-cinematic-flow\.png/);
+assert.doesNotMatch(home, /huiying-hero-cosmic-reel-v2\.png/);
+assert.match(home, /object-\[62%_center\] sm:object-center/);
 assert.match(home, /data-testid="creation-agent-brand-mark"/);
 
 assert.match(workspace, /showModelSettings\?: boolean/);
