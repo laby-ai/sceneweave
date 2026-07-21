@@ -642,6 +642,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         timestamp: Date.now(),
         generationStatus: 'failed',
         generationStepInfo: { step: 'blocked', progress: 0, totalSteps: 4, currentStepLabel: '需要先生成参考图' },
+        quickOptions: ['确认分镜，生成参考图', '调整分镜', '取消'],
       }]);
       return;
     }

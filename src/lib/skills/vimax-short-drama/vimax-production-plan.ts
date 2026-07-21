@@ -350,9 +350,24 @@ export function parseVimaxProductionPlan(value: unknown): VimaxProductionPlan | 
     && validCheckpointDecision
     && validLastSuccessfulResult;
 
-  return validRoutes && validMaterials && validCheckpoints && validCost && validRender
-    ? { ...value, workflow, governance, continuity } as unknown as VimaxProductionPlan
-    : undefined;
+  if (!validRoutes || !validMaterials || !validCheckpoints || !validCost || !validRender) return undefined;
+
+  const videoModel = value.providerRoutes.find(route => (
+    isRecord(route) && route.stage === 'video'
+  ))?.model;
+  const requiresCanonicalReference = isHappyHorseI2VModel(videoModel)
+    || isHappyHorseR2VModel(videoModel);
+  const checkpoints = requiresCanonicalReference
+    ? value.checkpoints.map(checkpoint => (
+      isRecord(checkpoint)
+      && checkpoint.id === 'reference_assets'
+      && checkpoint.status === 'skipped'
+        ? { ...checkpoint, status: 'pending' }
+        : checkpoint
+    ))
+    : value.checkpoints;
+
+  return { ...value, checkpoints, workflow, governance, continuity } as unknown as VimaxProductionPlan;
 }
 
 export function refreshVimaxProductionPlanContinuity(input: {
