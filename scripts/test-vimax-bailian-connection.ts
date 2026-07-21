@@ -24,7 +24,7 @@ class MemoryStorage implements Storage {
 }
 
 assert.equal(DEFAULT_PLANNING_MODEL, 'qwen3.7-plus');
-assert.equal(DEFAULT_IMAGE_MODEL, 'qwen-image-2.0-pro');
+assert.equal(DEFAULT_IMAGE_MODEL, 'qwen-image-3.0-pro');
 assert.equal(DEFAULT_VIDEO_MODEL, 'happyhorse-1.1-i2v');
 assert.equal(BAILIAN_UNIVERSAL_API_HOST, 'https://dashscope.aliyuncs.com');
 assert.equal(BAILIAN_DEFAULT_API_HOST, BAILIAN_UNIVERSAL_API_HOST);
@@ -195,7 +195,7 @@ try {
 
 process.stdout.write(`${JSON.stringify({
   ok: true,
-  path: 'one Bailian API key -> fixed models on the universal endpoint',
+  path: 'Bailian connections keep fixed model contracts',
   planningModel: DEFAULT_PLANNING_MODEL,
   imageModel: DEFAULT_IMAGE_MODEL,
   videoModel: DEFAULT_VIDEO_MODEL,

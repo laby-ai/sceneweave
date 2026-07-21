@@ -9,11 +9,13 @@ import {
   BAILIAN_TEXT_MODEL,
   BAILIAN_TTS_MODEL,
   BAILIAN_VIDEO_MODEL,
+  parseBailianWorkspaceId,
 } from '@/lib/account/member-bailian-profile';
 
 type PublicProfile = {
   configured: boolean;
   secret_mask?: string;
+  workspace_id?: string;
   text_model: string;
   image_model: string;
   tts_model: string;
@@ -25,6 +27,7 @@ export function BailianConnectionControl() {
   const [open, setOpen] = useState(false);
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [apiKey, setApiKey] = useState('');
+  const [apiBase, setApiBase] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
@@ -37,7 +40,10 @@ export function BailianConnectionControl() {
         redirectOnUnauthorized: false,
       });
       setProfile(result.profile);
-      if (!result.profile.configured) setOpen(true);
+      setApiBase(result.profile.workspace_id
+        ? `https://${result.profile.workspace_id}.cn-beijing.maas.aliyuncs.com`
+        : '');
+      if (!result.profile.configured || !result.profile.workspace_id) setOpen(true);
     } catch (cause) {
       setProfile(null);
       setError(cause instanceof ClientRequestError && cause.status === 401
@@ -53,8 +59,15 @@ export function BailianConnectionControl() {
   }, [loadProfile]);
 
   const save = async () => {
-    if (!apiKey.trim()) {
-      setError('请填写百炼 API Key。');
+    if (!apiBase.trim() || !apiKey.trim()) {
+      setError('请填写百炼 API Base 和 API Key。');
+      return;
+    }
+    let workspaceId = '';
+    try {
+      workspaceId = parseBailianWorkspaceId(apiBase);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '百炼 API Base 无效。');
       return;
     }
     setBusy(true);
@@ -65,12 +78,14 @@ export function BailianConnectionControl() {
         method: 'PUT',
         body: JSON.stringify({
           api_key: apiKey.trim(),
+          workspace_id: workspaceId,
           region: 'cn-beijing',
         }),
         redirectOnUnauthorized: false,
       });
       setProfile(result.profile);
       setApiKey('');
+      setApiBase('');
       setNotice('已保存到当前账号。后续生成由服务端安全读取，不会把密钥返回浏览器。');
     } catch (cause) {
       setError(cause instanceof ClientRequestError && cause.status === 401
@@ -101,20 +116,21 @@ export function BailianConnectionControl() {
   };
 
   const configured = profile?.configured === true;
+  const routeReady = configured && Boolean(profile?.workspace_id);
 
   return (
     <div className="relative" data-testid="bailian-model-settings">
       <button
         type="button"
         onClick={() => setOpen(value => !value)}
-        className={`inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-sm font-medium transition ${configured
+        className={`inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-sm font-medium transition ${routeReady
           ? 'border-emerald-400/35 bg-emerald-400/10 text-emerald-300 hover:bg-emerald-400/15'
           : 'border-white/15 bg-white/5 text-slate-200 hover:border-white/25 hover:bg-white/10'}`}
         aria-expanded={open}
         aria-label="百炼模型设置"
       >
-        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : configured ? <Check className="h-4 w-4" /> : <Settings2 className="h-4 w-4" />}
-        {configured ? '百炼已配置' : '先配置模型'}
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : routeReady ? <Check className="h-4 w-4" /> : <Settings2 className="h-4 w-4" />}
+        {routeReady ? '百炼已配置' : configured ? '补充 API Base' : '先配置模型'}
       </button>
 
       {open ? (
@@ -129,7 +145,11 @@ export function BailianConnectionControl() {
             </button>
           </div>
 
-          <div>
+          <div className="space-y-3">
+            <label className="block text-xs font-medium text-slate-300">
+              API Base
+              <input type="url" value={apiBase} onChange={event => setApiBase(event.target.value)} placeholder="https://你的工作空间.cn-beijing.maas.aliyuncs.com" autoComplete="url" className="mt-1.5 w-full rounded-lg border border-white/12 bg-black/20 px-3 py-2.5 text-xs text-white outline-none placeholder:text-slate-600 focus:border-blue-400/70" />
+            </label>
             <label className="block text-xs font-medium text-slate-300">
               API Key
               <input type="password" value={apiKey} onChange={event => setApiKey(event.target.value)} placeholder={configured ? `已保存 ${profile?.secret_mask || ''}，重新填写可更新` : '输入百炼 API Key'} autoComplete="new-password" className="mt-1.5 w-full rounded-lg border border-white/12 bg-black/20 px-3 py-2.5 text-xs text-white outline-none placeholder:text-slate-600 focus:border-blue-400/70" />
@@ -142,7 +162,7 @@ export function BailianConnectionControl() {
             <div><span className="block text-[10px] text-slate-500">视频</span><span className="mt-1 block font-medium">{BAILIAN_VIDEO_MODEL}</span></div>
             <div><span className="block text-[10px] text-slate-500">配音</span><span className="mt-1 block font-medium">{BAILIAN_TTS_MODEL}</span></div>
           </div>
-          <p className="mt-3 rounded-lg bg-blue-400/10 px-3 py-2 text-[11px] leading-5 text-slate-400">保存不会调用模型或产生费用。开始生成前仍会显示真实任务与费用确认。</p>
+          <p className="mt-3 rounded-lg bg-blue-400/10 px-3 py-2 text-[11px] leading-5 text-slate-400">API Base 使用百炼工作空间 HTTPS 地址。保存不会调用模型或产生费用。</p>
           {error ? <p className="mt-2 text-xs text-rose-300">{error}</p> : null}
           {notice ? <p className="mt-2 text-xs text-emerald-300">{notice}</p> : null}
           <div className="mt-4 flex items-center justify-between">

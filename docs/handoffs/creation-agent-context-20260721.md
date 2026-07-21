@@ -106,11 +106,11 @@ src/components/generate/generate-workspace.tsx
 当前界面只支持阿里云百炼连接：
 
 - API Base 固定在应用内，不让用户填写；
-- 用户只填写 API Key，不要求业务空间 ID；默认使用百炼公共域名，旧 workspace 配置继续兼容；
+- 用户填写百炼工作空间 API Base 与 API Key，不单独填写业务空间 ID；服务端只保存解析后的 workspace 标识和加密密钥；
 - 登录成员的 Key 由账号服务按 tenant/member 加密保存，读取接口只返回掩码；
 - Key 不进入 prompt、项目状态、日志、截图、文档或 Git；
-- Base URL 默认为中国公共 DashScope，规划模型固定 `qwen3.7-plus`；旧 `workspace_id` 不再影响模型或请求端点；
-- 图像默认 `qwen-image-2.0-pro`，通过百炼原生 multimodal-generation 接口生成或编辑；
+- Base URL 必须是中国区百炼工作空间 HTTPS 地址，规划模型固定 `qwen3.7-plus`，图像与视频共用同一工作空间路由；
+- 图像默认 `qwen-image-3.0-pro`，通过百炼工作空间的原生 multimodal-generation 接口生成或编辑；
 - 视频默认固定 `happyhorse-1.1-i2v`；
 - 不允许静默降级到其他模型；
 - 连接验证失败不会覆盖之前的有效连接；
@@ -197,7 +197,7 @@ src/lib/skills/vimax-short-drama/vimax-generation-preferences.ts
 
 1. 第一个镜头以主体、场景、道具、shot reference 和 production plan continuity 生成 canonical 首帧；
 2. 后续镜头再加入上一镜最后成功尾帧；
-3. canonical 首帧使用既有 `imageWithBYOK` 和 `qwen-image-2.0-pro` 生成；
+3. canonical 首帧使用既有 `imageWithBYOK` 和 `qwen-image-3.0-pro` 生成；
 4. 首帧状态保存 version、status、artifactVersion、image URL、来源尾帧、来源参考图、模型、完成时间或错误；
 5. 缺上一镜尾帧、缺批准参考图、artifact version 过期或来源变化时，视频提交前阻断；
 6. 所有自动镜头 route 为 `first-frame`，模型为 `happyhorse-1.1-i2v`；

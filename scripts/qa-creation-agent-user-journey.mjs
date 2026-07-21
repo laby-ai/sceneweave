@@ -31,6 +31,7 @@ function publicProfile() {
     provider_id: 'aliyun-bailian',
     region: 'cn-beijing',
     secret_mask: '****only',
+    workspace_id: 'ws-fixture',
     text_model: 'qwen3.7-plus',
     image_model: 'qwen-image-3.0-pro',
     tts_model: 'qwen-audio-3.0-tts-plus',
@@ -72,8 +73,8 @@ const accountServer = createServer(async (request, response) => {
     if (request.method === 'PUT') {
       const body = await requestBody(request);
       assert.equal(body.api_key, fixtureKey);
-      assert.equal('workspace_id' in body, false);
-      profile = { api_key: body.api_key };
+      assert.equal(body.workspace_id, 'ws-fixture');
+      profile = { api_key: body.api_key, workspace_id: body.workspace_id };
       return json(response, 200, { profile: publicProfile() });
     }
     if (request.method === 'DELETE') {
@@ -85,7 +86,7 @@ const accountServer = createServer(async (request, response) => {
     if (!profile) return json(response, 404, { error: 'provider_profile_not_configured' });
     return json(response, 200, {
       provider_id: 'aliyun-bailian',
-      workspace_id: '',
+      workspace_id: profile.workspace_id,
       region: 'cn-beijing',
       api_key: profile.api_key,
     });
@@ -201,6 +202,7 @@ try {
     assert.equal(await header.getByRole('button', { name: '百炼模型设置' }).count(), 1, `${viewport.name} settings are not in the global header`);
     await settings.waitFor({ state: 'visible' });
     if (await settings.getAttribute('aria-expanded') !== 'true') await settings.click();
+    await page.getByLabel('API Base').fill('https://ws-fixture.cn-beijing.maas.aliyuncs.com');
     await page.getByLabel('API Key').fill(fixtureKey);
     assert.equal(await page.getByLabel('业务空间 ID').count(), 0);
     await page.getByRole('button', { name: '保存到当前账号' }).click();
