@@ -230,6 +230,33 @@ try {
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.getByRole('button', { name: '返回项目' }).waitFor({ state: 'visible' });
 
+    await page.getByRole('button', { name: '返回项目' }).click();
+    const recentProjects = page.locator('[data-testid="vimax-recent-projects"]');
+    await recentProjects.waitFor({ state: 'visible' });
+    let projectCard = recentProjects.locator('article').first();
+    await projectCard.waitFor({ state: 'visible' });
+    assert.equal(await recentProjects.locator('article').count(), 1, `${viewport.name} did not persist the first project`);
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await recentProjects.waitFor({ state: 'visible' });
+    projectCard = recentProjects.locator('article').first();
+    await projectCard.waitFor({ state: 'visible' });
+    const openProjectButton = projectCard.locator('button').first();
+    await openProjectButton.focus();
+    await page.keyboard.press('Enter');
+    await page.getByRole('button', { name: '返回项目' }).waitFor({ state: 'visible' });
+
+    await page.getByRole('button', { name: '返回项目' }).click();
+    projectCard = recentProjects.locator('article').first();
+    const manageProjectButton = projectCard.getByRole('button', { name: /^管理项目 / });
+    await manageProjectButton.click();
+    await projectCard.getByRole('button', { name: '删除项目' }).click();
+    await projectCard.getByRole('button', { name: '确认删除' }).click();
+    await page.getByRole('button', { name: '创建第一个项目' }).waitFor({ state: 'visible' });
+    assert.equal(await recentProjects.locator('article').count(), 0, `${viewport.name} kept the deleted project`);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: '创建第一个项目' }).waitFor({ state: 'visible' });
+
     const leaked = await page.evaluate(secret => ({
       body: document.body.innerText.includes(secret),
       local: Object.values(localStorage).some(value => String(value).includes(secret)),
@@ -248,6 +275,8 @@ try {
       heroBounds: { y: Math.round(heroBox.y), height: Math.round(heroBox.height) },
       profileSaved: true,
       projectRecovered: true,
+      projectReopenedWithKeyboard: true,
+      projectDeletionPersisted: true,
     });
     await context.close();
   }
