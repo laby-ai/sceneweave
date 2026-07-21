@@ -656,6 +656,7 @@ export async function POST(request: NextRequest) {
         const stream = new ReadableStream({
           async start(controller) {
             const send = (event: string, data: unknown) => controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+            let persistedTaskId = '';
             try {
               send('plan.start', { phase: 'plan' });
               const result = await callArkTextStream(prompt, preset, body.model, (delta) => {
@@ -670,12 +671,11 @@ export async function POST(request: NextRequest) {
                 planConnection,
                 videoConnection,
               );
+              send('plan.persisted', { taskId: (persistedTaskId = envelope.taskId) });
               send('plan.complete', { success: true, phase: 'plan', model: result.model, ...envelope });
             } catch (error) {
-              send('plan.error', reportVimaxPlanningFailure(error));
-            } finally {
-              controller.close();
-            }
+              send('plan.error', { ...reportVimaxPlanningFailure(error), taskId: persistedTaskId || undefined });
+            } finally { controller.close(); }
           },
         });
         return new Response(stream, { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' } });

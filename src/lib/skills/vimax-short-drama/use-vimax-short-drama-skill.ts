@@ -20,8 +20,9 @@ import {
   type VimaxProductionPlan,
 } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 import { waitForVimaxBackgroundVideoTask } from '@/lib/skills/vimax-short-drama/vimax-background-video-task';
+import { recoverPersistedVimaxPlan } from '@/lib/skills/vimax-short-drama/vimax-plan-stream-recovery';
 import { formatProviderError } from '@/lib/byok-client';
-import { clientApiRequest, ClientRequestError } from '@/lib/client-api';
+import { clientApiFetch, clientApiRequest, ClientRequestError } from '@/lib/client-api';
 
 /**
  * ViMAX 短剧制作 = Agent 驱动的一个 skill。
@@ -269,77 +270,108 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       let shots: PartialPlan['shots'] = [];
       let planModel = '';
       let planTaskId = '';
+      let persistedTaskId = '';
       let productionPlan: VimaxProductionPlan | undefined;
       let streamError = '';
 
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        sseBuffer += decoder.decode(value, { stream: true });
-        const blocks = sseBuffer.split('\n\n');
-        sseBuffer = blocks.pop() || '';
-        for (const block of blocks) {
-          const lines = block.split('\n');
-          let event = '';
-          let dataStr = '';
-          for (const line of lines) {
-            if (line.startsWith('event: ')) event = line.slice(7).trim();
-            else if (line.startsWith('data: ')) dataStr = line.slice(6);
-          }
-          if (!dataStr) continue;
-          try {
-            const data = JSON.parse(dataStr);
-            if (event === 'plan.delta' && data.delta) {
-              rawPlanText += data.delta;
-              const partial = parsePartialPlan(rawPlanText);
-              const planned = Math.min(15 + partial.assets.length * 6 + partial.shots.length * 8, 95);
-              updateRunMessages(run, prev => prev.map(m => m.id === progressMsgId ? {
-                ...m,
-                content: partial.title
-                  ? `正在规划「${partial.title}」… 已生成 ${partial.shots.length} 个镜头`
-                  : '正在逐条规划你的短剧分镜…',
-                generationProgress: planned,
-                generationStepInfo: {
-                  step: 'vimax-agent-plan',
-                  progress: planned,
-                  totalSteps: 4,
-                  currentStepLabel: partial.title ? `规划：${partial.title}` : '剧本规划',
-                },
-                vimaxAgent: {
-                  phase: 'plan',
-                  title: partial.title || '短剧制作计划',
-                  summary: partial.summary || '',
-                  model: '规划中…',
-                  generationSettings,
-                  costState: 'incurred',
-                  nextAction: '正在逐条生成分镜，请稍候。',
-                  assets: partial.assets.map(asset => ({
-                    kind: (asset.kind as NonNullable<NonNullable<ChatMessage['vimaxAgent']>['assets']>[number]['kind']) || 'reference',
-                    label: asset.label || '参考素材',
-                    prompt: asset.prompt || '',
-                    status: 'planned' as const,
-                  })),
-                  shots: partial.shots.map((shot, index) => ({
-                    index: Number(shot.index) || index + 1,
-                    title: shot.title || `Clip ${index + 1}`,
-                    duration: Number(shot.duration) || 6,
-                    camera: shot.camera || '固定镜头',
-                    prompt: shot.prompt || '',
-                    status: 'planned' as const,
-                  })),
-                },
-              } : m));
-            } else if (event === 'plan.complete') {
-              plan = data.plan || {};
-              assets = Array.isArray(plan.assets) ? plan.assets : [];
-              shots = Array.isArray(plan.shots) ? plan.shots : [];
-              planModel = data.model || '';
-              planTaskId = typeof data.taskId === 'string' ? data.taskId : '';
-              productionPlan = parseVimaxProductionPlan(data.productionPlan);
-            } else if (event === 'plan.error') {
-              streamError = formatProviderError(data, '规划暂时不可用，请稍后重试。');
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          sseBuffer += decoder.decode(value, { stream: true });
+          const blocks = sseBuffer.split('\n\n');
+          sseBuffer = blocks.pop() || '';
+          for (const block of blocks) {
+            const lines = block.split('\n');
+            let event = '';
+            let dataStr = '';
+            for (const line of lines) {
+              if (line.startsWith('event: ')) event = line.slice(7).trim();
+              else if (line.startsWith('data: ')) dataStr = line.slice(6);
             }
-          } catch { /* skip */ }
+            if (!dataStr) continue;
+            try {
+              const data = JSON.parse(dataStr);
+              if (event === 'plan.delta' && data.delta) {
+                rawPlanText += data.delta;
+                const partial = parsePartialPlan(rawPlanText);
+                const planned = Math.min(15 + partial.assets.length * 6 + partial.shots.length * 8, 95);
+                updateRunMessages(run, prev => prev.map(m => m.id === progressMsgId ? {
+                  ...m,
+                  content: partial.title
+                    ? `正在规划「${partial.title}」… 已生成 ${partial.shots.length} 个镜头`
+                    : '正在逐条规划你的短剧分镜…',
+                  generationProgress: planned,
+                  generationStepInfo: {
+                    step: 'vimax-agent-plan',
+                    progress: planned,
+                    totalSteps: 4,
+                    currentStepLabel: partial.title ? `规划：${partial.title}` : '剧本规划',
+                  },
+                  vimaxAgent: {
+                    phase: 'plan',
+                    title: partial.title || '短剧制作计划',
+                    summary: partial.summary || '',
+                    model: '规划中…',
+                    generationSettings,
+                    costState: 'incurred',
+                    nextAction: '正在逐条生成分镜，请稍候。',
+                    assets: partial.assets.map(asset => ({
+                      kind: (asset.kind as NonNullable<NonNullable<ChatMessage['vimaxAgent']>['assets']>[number]['kind']) || 'reference',
+                      label: asset.label || '参考素材',
+                      prompt: asset.prompt || '',
+                      status: 'planned' as const,
+                    })),
+                    shots: partial.shots.map((shot, index) => ({
+                      index: Number(shot.index) || index + 1,
+                      title: shot.title || `Clip ${index + 1}`,
+                      duration: Number(shot.duration) || 6,
+                      camera: shot.camera || '固定镜头',
+                      prompt: shot.prompt || '',
+                      status: 'planned' as const,
+                    })),
+                  },
+                } : m));
+              } else if (event === 'plan.persisted') {
+                persistedTaskId = typeof data.taskId === 'string' ? data.taskId : '';
+              } else if (event === 'plan.complete') {
+                plan = data.plan || {};
+                assets = Array.isArray(plan.assets) ? plan.assets : [];
+                shots = Array.isArray(plan.shots) ? plan.shots : [];
+                planModel = data.model || '';
+                planTaskId = typeof data.taskId === 'string' ? data.taskId : '';
+                persistedTaskId = planTaskId || persistedTaskId;
+                productionPlan = parseVimaxProductionPlan(data.productionPlan);
+              } else if (event === 'plan.error') {
+                streamError = formatProviderError(data, '规划暂时不可用，请稍后重试。');
+                if (typeof data.taskId === 'string') persistedTaskId = data.taskId;
+              }
+            } catch { /* skip */ }
+          }
+        }
+      } catch (error) {
+        if (run.signal.aborted) throw error;
+        streamError = '规划结果连接中断，正在从已保存的项目恢复。';
+      }
+
+      if (persistedTaskId && (streamError || !plan.title || !productionPlan)) {
+        try {
+          const persisted = await clientApiFetch<{ task?: unknown }>(
+            `/api/tasks/${encodeURIComponent(persistedTaskId)}`,
+            { headers: requestHeaders, signal: run.signal, redirectOnUnauthorized: false },
+          );
+          const recovered = recoverPersistedVimaxPlan(persisted.task, persistedTaskId);
+          if (recovered) {
+            plan = recovered.plan;
+            assets = recovered.plan.assets;
+            shots = recovered.plan.shots;
+            planModel = generationSettings.planModel;
+            planTaskId = recovered.taskId;
+            productionPlan = recovered.productionPlan;
+            streamError = '';
+          }
+        } catch {
+          // The owner-scoped task route fails closed; preserve the original stream error.
         }
       }
 
