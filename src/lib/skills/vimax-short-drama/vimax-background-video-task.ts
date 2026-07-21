@@ -1,5 +1,6 @@
 import type { CreationEvent } from '@/lib/creation-agent/creation-agent-model';
 import { streamCreationTask } from '@/lib/creation-agent/creation-task-stream';
+import { clientApiRequest } from '@/lib/client-api';
 
 export interface VimaxBackgroundVideoResult {
   videoUrl: string;
@@ -40,9 +41,10 @@ export async function waitForVimaxBackgroundVideoTask(
       onEvent: event => input.onProgress?.(event),
     });
 
-    const response = await fetch(`/api/tasks/${encodeURIComponent(input.taskId)}`, {
+    const response = await clientApiRequest(`/api/tasks/${encodeURIComponent(input.taskId)}`, {
       headers: input.headers,
       signal: input.signal,
+      redirectOnUnauthorized: false,
     });
     const payload = await response.json().catch(() => ({})) as { task?: PublicVideoTask; error?: string };
     if (!response.ok || !payload.task) throw new Error(payload.error || '后台视频任务无法恢复。');

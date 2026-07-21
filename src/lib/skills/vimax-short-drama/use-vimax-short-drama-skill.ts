@@ -21,6 +21,7 @@ import {
 } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 import { waitForVimaxBackgroundVideoTask } from '@/lib/skills/vimax-short-drama/vimax-background-video-task';
 import { formatProviderError } from '@/lib/byok-client';
+import { clientApiRequest, ClientRequestError } from '@/lib/client-api';
 
 /**
  * ViMAX 短剧制作 = Agent 驱动的一个 skill。
@@ -60,6 +61,10 @@ interface PartialPlan {
   summary?: string;
   assets: Array<{ kind?: VimaxAssetKind; label?: string; prompt?: string }>;
   shots: Array<{ index?: number; title?: string; duration?: number; camera?: string; prompt?: string }>;
+}
+
+function isUnauthorized(error: unknown): error is ClientRequestError {
+  return error instanceof ClientRequestError && error.code === 'unauthorized';
 }
 
 /** 从数组字段里抽出「已完整闭合」的对象，未闭合的尾部对象直接忽略，实现逐条出现。 */
@@ -161,11 +166,12 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
     if (planningReadinessPendingRef.current) return;
     planningReadinessPendingRef.current = true;
     try {
-      const readinessResponse = await fetch('/api/smart/vimax-agent-step', {
+      const readinessResponse = await clientApiRequest('/api/smart/vimax-agent-step', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...requestHeaders },
         body: JSON.stringify({ phase: 'planning_readiness' }),
         signal: AbortSignal.timeout(10_000),
+        redirectOnUnauthorized: false,
       });
       const readiness = await readinessResponse.json().catch(() => null) as { ready?: boolean } | null;
       if (!readinessResponse.ok || readiness?.ready !== true) {
@@ -185,13 +191,17 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         setInputValue(prompt);
         return;
       }
-    } catch {
+    } catch (error) {
+      const authenticationRequired = isUnauthorized(error);
+      if (authenticationRequired) onAuthenticationRequired?.('当前创作需要登录后继续，已保留本页内容。');
       setMessages(prev => [...prev,
         { id: userMsgId, role: 'user', content: prompt, timestamp: Date.now() },
         {
           id: progressMsgId,
           role: 'assistant',
-          content: '规划暂时失败，输入和项目已保留，请稍后重试或更换规划模型。',
+          content: authenticationRequired
+            ? '当前创作需要登录后继续，输入和项目已保留。'
+            : '规划暂时失败，输入和项目已保留，请稍后重试或更换规划模型。',
           timestamp: Date.now(),
           generationStatus: 'failed',
           generationProgress: 100,
@@ -236,18 +246,13 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
     ]);
 
     try {
-      const response = await fetch('/api/smart/vimax-agent-step', {
+      const response = await clientApiRequest('/api/smart/vimax-agent-step', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...requestHeaders },
         body: JSON.stringify(buildVimaxPlanRequest({ ...context, settings: generationSettings })),
         signal: run.signal,
+        redirectOnUnauthorized: false,
       });
-
-      if (response.status === 401) {
-        const reason = '当前创作需要登录后继续，已保留本页内容。';
-        onAuthenticationRequired?.(reason);
-        throw new Error(reason);
-      }
       if (!response.ok || !response.body) {
         const failure = await response.json().catch(() => null);
         throw new Error(formatProviderError(failure, '规划暂时不可用，请稍后重试。'));
@@ -386,8 +391,11 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       setCurrentStep(5);
     } catch (error) {
       if (!runCoordinator.isCurrent(run)) return;
+      if (isUnauthorized(error)) onAuthenticationRequired?.('当前创作需要登录后继续，已保留本页内容。');
       const rawMessage = error instanceof Error ? error.message : '';
-      const failureMessage = /^(规划模型连接不可用|规划模型暂不可用|规划暂时失败)/.test(rawMessage)
+      const failureMessage = isUnauthorized(error)
+        ? '当前创作需要登录后继续。'
+        : /^(规划模型连接不可用|规划模型暂不可用|规划暂时失败)/.test(rawMessage)
         ? rawMessage
         : formatProviderError({ provider: 'planning', code: 'planning_provider_failed' }, '规划暂时不可用，请稍后重试。');
       setInputValue(prompt);
@@ -469,7 +477,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
     } as ChatMessage]);
 
     try {
-      const response = await fetch('/api/smart/vimax-agent-step', {
+      const response = await clientApiRequest('/api/smart/vimax-agent-step', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...requestHeaders },
         body: JSON.stringify({
@@ -496,13 +504,9 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
           },
         }),
         signal: run.signal,
+        redirectOnUnauthorized: false,
       });
       const data = await response.json();
-      if (response.status === 401) {
-        const reason = '当前创作需要登录后继续，已保留分镜计划。';
-        onAuthenticationRequired?.(reason);
-        throw new Error(reason);
-      }
       if (!response.ok || !data.success) {
         throw new Error(data.error || '千问参考素材生成失败');
       }
@@ -558,9 +562,12 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       } : message));
     } catch (error) {
       if (!runCoordinator.isCurrent(run)) return;
+      if (isUnauthorized(error)) onAuthenticationRequired?.('当前创作需要登录后继续，已保留分镜计划。');
       updateRunMessages(run, prev => prev.map(message => message.id === progressMsgId ? {
         ...message,
-        content: `参考图生成失败：${error instanceof Error ? error.message : '未知错误'}\n可调整描述后重试。`,
+        content: isUnauthorized(error)
+          ? '当前创作需要登录后继续，分镜计划已保留。'
+          : `参考图生成失败：${error instanceof Error ? error.message : '未知错误'}\n可调整描述后重试。`,
         generationStatus: 'failed',
         generationProgress: 100,
         generationStepInfo: { step: 'seedream-reference', progress: 100, totalSteps: 4, currentStepLabel: '参考图失败' },
@@ -635,7 +642,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
     } as ChatMessage]);
 
     try {
-      const response = await fetch('/api/smart/vimax-agent-step', {
+      const response = await clientApiRequest('/api/smart/vimax-agent-step', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...requestHeaders },
         body: JSON.stringify({
@@ -675,13 +682,9 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
           })),
         }),
         signal: run.signal,
+        redirectOnUnauthorized: false,
       });
       let data = await response.json().catch(() => ({}));
-      if (response.status === 401) {
-        const reason = '当前成片生成需要登录后继续，分镜与参考素材已保留。';
-        onAuthenticationRequired?.(reason);
-        throw new Error(reason);
-      }
       if (response.status === 202 && data.success && data.accepted) {
         if (typeof data.backgroundTaskId !== 'string' || !data.backgroundTaskId) {
           throw new Error('后台视频任务已受理，但没有返回可恢复的任务号。');
@@ -742,9 +745,12 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       } : message));
     } catch (error) {
       if (!runCoordinator.isCurrent(run)) return;
+      if (isUnauthorized(error)) onAuthenticationRequired?.('当前成片生成需要登录后继续，分镜与参考素材已保留。');
       updateRunMessages(run, prev => prev.map(message => message.id === progressMsgId ? {
         ...message,
-        content: `视频生成失败：${error instanceof Error ? error.message : '未知错误'}\n可调整分镜或连续性约束后重试。`,
+        content: isUnauthorized(error)
+          ? '当前成片生成需要登录后继续，分镜与参考素材已保留。'
+          : `视频生成失败：${error instanceof Error ? error.message : '未知错误'}\n可调整分镜或连续性约束后重试。`,
         generationStatus: 'failed',
         generationProgress: 100,
         generationStepInfo: { step: 'seedance-video', progress: 100, totalSteps: 4, currentStepLabel: recoverCompleted ? '片段恢复失败' : '视频生成失败' },
