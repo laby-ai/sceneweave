@@ -70,7 +70,9 @@ jobs:
           pnpm run test:film-mobile-viewport
 
       - name: Check Vimax boundary
-        run: pnpm run qa:smart-vimax-agent-render
+        run: |
+          pnpm run test:creation-agent-layout
+          pnpm run qa:smart-vimax-agent-render
 
       - name: Check compose durability
         run: |

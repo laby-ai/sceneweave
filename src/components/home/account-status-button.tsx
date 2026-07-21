@@ -21,7 +21,11 @@ type AccountMeResponse = {
 const baseButtonClass =
   'flex h-12 w-full flex-col items-center justify-center rounded-2xl text-foreground/60 transition-all hover:bg-white/[0.06] hover:text-foreground';
 
-export function AccountStatusButton() {
+interface AccountStatusButtonProps {
+  variant?: 'rail' | 'header';
+}
+
+export function AccountStatusButton({ variant = 'rail' }: AccountStatusButtonProps) {
   const [member, setMember] = useState<AccountMember | null>(null);
   const [tenantName, setTenantName] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -30,6 +34,7 @@ export function AccountStatusButton() {
   const [logoutError, setLogoutError] = useState('');
   const [loginHref, setLoginHref] = useState('/account-login.html?next=%2Fhuiying');
   const containerRef = useRef<HTMLDivElement>(null);
+  const header = variant === 'header';
 
   useEffect(() => {
     setLoginHref(accountLoginUrl());
@@ -60,7 +65,14 @@ export function AccountStatusButton() {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) setOpen(false);
     };
     window.addEventListener('pointerdown', onPointerDown);
-    return () => window.removeEventListener('pointerdown', onPointerDown);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('keydown', onKeyDown);
+    };
   }, [open]);
 
   const handleLogout = async () => {
@@ -86,9 +98,18 @@ export function AccountStatusButton() {
 
   if (!member) {
     return (
-      <a href={loginHref} target="_blank" rel="noopener noreferrer" aria-label="登录" title="登录账号" className={baseButtonClass}>
+      <a
+        href={loginHref}
+        target={header ? undefined : '_blank'}
+        rel={header ? undefined : 'noopener noreferrer'}
+        aria-label="登录"
+        title="登录账号"
+        className={header
+          ? 'inline-flex h-10 items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2.5 text-xs font-medium text-slate-300 transition hover:border-white/25 hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400 sm:px-3'
+          : baseButtonClass}
+      >
         <User className="h-5 w-5" />
-        <span className="mt-0.5 text-[10px] leading-tight">{loading ? '···' : '登录'}</span>
+        <span className={header ? '' : 'mt-0.5 text-[10px] leading-tight'}>{loading ? '···' : '登录'}</span>
       </a>
     );
   }
@@ -97,19 +118,22 @@ export function AccountStatusButton() {
   const initial = label.charAt(0).toUpperCase();
 
   return (
-    <div ref={containerRef} className="relative w-full">
+    <div ref={containerRef} className={header ? 'relative shrink-0' : 'relative w-full'}>
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
         aria-label="账号信息"
         title={label}
-        className="flex h-12 w-full flex-col items-center justify-center rounded-2xl text-foreground/80 transition-all hover:bg-white/[0.06] hover:text-foreground"
+        aria-expanded={open}
+        className={header
+          ? 'inline-flex h-10 max-w-[150px] items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2 text-slate-200 transition hover:border-white/25 hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400 sm:px-2.5'
+          : 'flex h-12 w-full flex-col items-center justify-center rounded-2xl text-foreground/80 transition-all hover:bg-white/[0.06] hover:text-foreground'}
       >
-        <span className="grid h-6 w-6 place-items-center rounded-full bg-[#4F6CFF] text-[11px] font-semibold text-white">{initial}</span>
-        <span className="mt-0.5 max-w-full truncate px-1 text-[10px] leading-tight">{label}</span>
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#4F6CFF] text-[11px] font-semibold text-white">{initial}</span>
+        <span className={header ? 'hidden min-w-0 truncate text-xs font-medium sm:block' : 'mt-0.5 max-w-full truncate px-1 text-[10px] leading-tight'}>{label}</span>
       </button>
       {open && (
-        <div className="absolute bottom-0 left-[64px] z-[60] w-60 rounded-2xl border border-white/10 bg-[#0c0f18]/95 p-3 shadow-2xl shadow-black/60 backdrop-blur-2xl">
+        <div className={`absolute z-[60] w-64 rounded-xl border border-white/10 bg-[#0c0f18]/98 p-3 shadow-2xl shadow-black/60 backdrop-blur-2xl ${header ? 'right-0 top-full mt-2' : 'bottom-0 left-[64px]'}`}>
           <div className="flex items-center gap-2.5">
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#4F6CFF] text-sm font-semibold text-white">{initial}</span>
             <div className="min-w-0">

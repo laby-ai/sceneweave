@@ -112,6 +112,7 @@ function parseVimaxDurationSpec(text: string) {
 interface GenerateWorkspaceProps {
   initialPrompt?: string;
   agentOnly?: boolean;
+  showModelSettings?: boolean;
   onNavigate?: (section: string, prompt?: string, transfer?: { imageRefs?: string[] }) => void;
   requestHeaders?: Record<string, string>;
   storageScope?: string;
@@ -124,6 +125,7 @@ type SubjectItem = { id: string; name: string; type: 'character' | 'scene' | 'ob
 export function GenerateWorkspace({
   initialPrompt,
   agentOnly = false,
+  showModelSettings = true,
   onNavigate,
   requestHeaders,
   storageScope,
@@ -221,8 +223,9 @@ export function GenerateWorkspace({
   const runCoordinator = runCoordinatorRef.current;
   const scrollRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
+    if (workspaceView !== 'project') return;
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, workspaceView]);
 
   const { handlePlanStep, handleReferenceAssetsStep, handleVideoStep, cancelCurrentRun } = useVimaxShortDramaSkill({
     messagesRef,
@@ -514,9 +517,7 @@ export function GenerateWorkspace({
     void handleSend(context.sourcePrompt, context.presetId);
   }, [handleSend, messages, restoreSkillPreset]);
 
-  const modelSettings = (
-    <BailianConnectionControl />
-  );
+  const modelSettings = showModelSettings ? <BailianConnectionControl /> : null;
 
   return (
     <div className="relative flex h-full w-full overflow-hidden bg-[#f6f7f9] text-[#181a20]">
