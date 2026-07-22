@@ -80,6 +80,7 @@
     "qa:happyhorse-video-provider": "tsx scripts/qa-happyhorse-video-provider.ts",
     "qa:vimax-shot-generation-route": "tsx scripts/qa-vimax-shot-generation-route.ts",
     "test:vimax-happyhorse-video": "tsx scripts/test-vimax-happyhorse-video.ts",
+    "test:vimax-i2v-frame-handoff": "tsx scripts/qa-vimax-canonical-first-frame.ts",
     "test:vimax-bailian-connection": "tsx scripts/test-vimax-bailian-connection.ts",
     "test:member-bailian-profile": "tsx scripts/test-member-bailian-profile.ts",
     "test:vimax-r2v-full-route": "tsx scripts/test-vimax-r2v-full-route.ts",

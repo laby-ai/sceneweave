@@ -1,4 +1,4 @@
-import { imageWithBYOK, type BYOKConnection } from '@/lib/byok-provider';
+import type { BYOKConnection } from '@/lib/byok-provider';
 import type { ProductionSegmentPlan } from '@/lib/production-assembly-plan';
 import type { VimaxAgentReferenceAsset } from '@/lib/skills/vimax-short-drama/vimax-agent-contract';
 
@@ -21,6 +21,8 @@ export interface VimaxCanonicalFirstFrameSpec {
   artifactVersion: string;
   sourcePreviousLastFrameUrl: string | null;
   referenceImages: string[];
+  firstFrameImage: string | null;
+  strategy: 'direct-previous-tail' | 'approved-shot-reference';
   prompt: string;
 }
 
@@ -42,10 +44,11 @@ export function buildVimaxCanonicalFirstFrameSpec(input: {
   const referenceImages = uniqueUrls([previousTail, shotAsset?.url, ...subjectViews]);
   const requiresPreviousTail = input.segment.generationRoute?.requiresPreviousLastFrame
     ?? input.segment.index > 0;
+  const firstFrameImage = requiresPreviousTail ? previousTail : shotAsset?.url || null;
   const blockers = [
     requiresPreviousTail && !previousTail ? 'previous-tail-missing' : null,
-    !shotAsset?.url ? 'approved-shot-reference-missing' : null,
-    referenceImages.length === 0 ? 'canonical-frame-reference-missing' : null,
+    !requiresPreviousTail && !shotAsset?.url ? 'approved-shot-reference-missing' : null,
+    !firstFrameImage ? 'canonical-frame-reference-missing' : null,
   ].filter((value): value is string => Boolean(value));
   const contract = input.segment.shotFrameContract;
 
@@ -56,6 +59,8 @@ export function buildVimaxCanonicalFirstFrameSpec(input: {
     artifactVersion: input.artifactVersion,
     sourcePreviousLastFrameUrl: previousTail,
     referenceImages,
+    firstFrameImage,
+    strategy: requiresPreviousTail ? 'direct-previous-tail' : 'approved-shot-reference',
     prompt: [
       `为短剧镜头 ${input.segment.index + 1} 编译唯一权威首帧。`,
       previousTail
@@ -88,6 +93,9 @@ export function evaluateVimaxCanonicalFirstFrameReadiness(input: {
     && input.state.sourcePreviousLastFrameUrl !== input.previousLastFrameUrl) {
     return { ok: false, code: 'canonical-first-frame-source-changed' };
   }
+  if (input.requiresPreviousLastFrame && input.state.imageUrl !== input.previousLastFrameUrl) {
+    return { ok: false, code: 'canonical-first-frame-not-direct-tail' };
+  }
   return { ok: true, imageUrl: input.state.imageUrl };
 }
 
@@ -99,28 +107,16 @@ export async function compileVimaxCanonicalFirstFrame(input: {
   continuityPrompt?: string;
 }): Promise<VimaxCanonicalFirstFrameState> {
   const spec = buildVimaxCanonicalFirstFrameSpec(input);
-  if (!spec.ready) {
+  if (!spec.ready || !spec.firstFrameImage) {
     throw new Error(`权威首帧素材未就绪：${spec.blockers.join(', ')}。未提交视频任务。`);
   }
-  const imageModel = input.connection.imageModel;
-  if (!imageModel) {
-    throw new Error('缺少已验证的图像模型，无法编译权威首帧；未提交视频任务。');
-  }
-  const generated = await imageWithBYOK(input.connection, {
-    model: imageModel,
-    prompt: spec.prompt,
-    size: '2560x1440',
-    n: 1,
-    referenceImages: spec.referenceImages,
-  });
   return {
     version: spec.version,
     status: 'ready',
     artifactVersion: spec.artifactVersion,
-    imageUrl: generated.url,
+    imageUrl: spec.firstFrameImage,
     sourcePreviousLastFrameUrl: spec.sourcePreviousLastFrameUrl,
-    sourceReferenceUrls: spec.referenceImages,
-    imageModel,
+    sourceReferenceUrls: [spec.firstFrameImage],
     compiledAt: new Date().toISOString(),
   };
 }
