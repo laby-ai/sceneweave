@@ -8,6 +8,7 @@ import {
   getAllTasksForOwner,
   getTaskForOwner,
   getTaskFresh,
+  retryTask,
   updateTask,
   type TaskOwner,
 } from '@/lib/task-manager';
@@ -95,7 +96,11 @@ export function queueProductionAssemblySegments(input: {
       previousChildTaskId,
     });
     previousChildTaskId = childTaskId;
-    const childTask = getTaskFresh(childTaskId);
+    const existingChildTask = getTaskFresh(childTaskId);
+    const childTask = canReuse
+      && (existingChildTask?.status === 'failed' || existingChildTask?.status === 'cancelled')
+      ? retryTask(childTaskId)
+      : existingChildTask;
     if (childTask) {
       updateTask(childTaskId, { config: { ...childTask.config, ...dependencyConfig } });
     }

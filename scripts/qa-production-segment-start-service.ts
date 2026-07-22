@@ -12,6 +12,7 @@ process.env.HUIYING_TASKS_FILE = tasksFile;
 
 async function main() {
   const taskManager = await import('../src/lib/task-manager');
+  const assemblyQueue = await import('../src/lib/production-assembly-queue');
   const startService = await import('../src/lib/production-segment-start');
   const segmentAssets = await import('../src/lib/production-segment-assets');
   const storyContract = await import('../src/lib/production-story-segment-contract');
@@ -141,10 +142,11 @@ async function main() {
     readiness: { pass: true, blockers: [], warnings: [] },
   });
 
+  const fixtureOwner = { tenantId: 'tenant-segment-start-qa', memberId: 'member-segment-start-qa' };
   const parentTaskId = taskManager.createTask('storyboard', {
     workflow: 'smart-director-chain',
     prompt: 'A producer starts a segment without spending cost.',
-  });
+  }, fixtureOwner);
   const childTaskId = taskManager.createTask('video', {
     workflow: 'production-assembly-segment',
     parentTaskId,
@@ -153,7 +155,7 @@ async function main() {
     productionProjectId: 'production-start-qa',
     shotId: 'shot-1',
     ratio: '16:9',
-  });
+  }, fixtureOwner);
   const secondChildTaskId = taskManager.createTask('video', {
     workflow: 'production-assembly-segment',
     parentTaskId,
@@ -162,7 +164,7 @@ async function main() {
     productionProjectId: 'production-start-qa',
     shotId: 'shot-2',
     ratio: '16:9',
-  });
+  }, fixtureOwner);
 
   taskManager.updateTask(parentTaskId, {
     status: 'completed',
@@ -554,6 +556,19 @@ async function main() {
     'duplicate segment start should expose a stable recovery code',
   );
   assert(duplicateProviderCalls === 0, 'duplicate segment start must not submit another provider job');
+  assert(taskManager.failTask(secondChildTaskId, 'fixture terminal failure'), 'fixture should fail the claimed child task');
+  const requeued = assemblyQueue.queueProductionAssemblySegments({
+    owner: fixtureOwner,
+    taskId: parentTaskId,
+  });
+  assert(
+    requeued.childTaskIds[1] === secondChildTaskId,
+    'failed child task should retain its durable task id when the project is resumed',
+  );
+  assert(
+    taskManager.getTaskFresh(secondChildTaskId)?.status === 'pending',
+    'failed child task must return to pending before a confirmed project retry',
+  );
   assert(
     String(secondDryRun.startPayload.providerPrompt).includes('本段不是上一段重复') &&
       String(secondDryRun.startPayload.providerPrompt).includes('不得整段停留在上一段场景'),
