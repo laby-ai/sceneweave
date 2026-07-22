@@ -811,7 +811,7 @@ export async function POST(request: NextRequest) {
           : videoConnection?.provider === 'happyhorse-dashscope'
             ? await runVimaxProductionVideoOrchestrator({
               owner, parentTaskId: canonical.taskId,
-              connection: videoConnection, imageConnection: planConnection, model: videoModel,
+              connection: videoConnection, model: videoModel,
               generateAudio: true,
               shots: canonical.plan.shots,
               onSegmentState: persistSegment,

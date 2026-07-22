@@ -133,13 +133,6 @@ void (async () => {
       }],
     }],
     continuityPrompt: '角色与服饰批准版本 v3，保持从左向右。',
-    connection: {
-      provider: 'happyhorse-dashscope',
-      apiBase: 'https://example.invalid/compatible-mode/v1',
-      apiKey: 'redacted-test-key',
-      imageModel: 'wan2.7-image',
-      videoModel: 'happyhorse-1.1-i2v',
-    },
   });
   assert.equal(compiled.imageUrl, 'https://example.invalid/shot-1-tail.jpg');
   assert.deepEqual(compiled.sourceReferenceUrls, ['https://example.invalid/shot-1-tail.jpg']);
@@ -159,13 +152,6 @@ void (async () => {
       shotIndex: 1,
       url: 'https://example.invalid/shot-1-approved.jpg',
     }],
-    connection: {
-      provider: 'happyhorse-dashscope',
-      apiBase: 'https://example.invalid/compatible-mode/v1',
-      apiKey: 'redacted-test-key',
-      imageModel: 'wan2.7-image',
-      videoModel: 'happyhorse-1.1-i2v',
-    },
   });
   assert.equal(opening.imageUrl, 'https://example.invalid/shot-1-approved.jpg');
   assert.deepEqual(opening.sourceReferenceUrls, ['https://example.invalid/shot-1-approved.jpg']);
@@ -190,13 +176,6 @@ void (async () => {
       shotIndex: index + 1,
       url: `https://example.invalid/shot-${index + 1}-approved.jpg`,
     }],
-    connection: {
-      provider: 'happyhorse-dashscope',
-      apiBase: 'https://example.invalid/compatible-mode/v1',
-      apiKey: 'redacted-test-key',
-      imageModel: 'wan2.7-image',
-      videoModel: 'happyhorse-1.1-i2v',
-    },
   })));
   assert.deepEqual(fourShotFirstFrames.map(frame => frame.imageUrl), [
     'https://example.invalid/shot-1-approved.jpg',
@@ -218,13 +197,6 @@ void (async () => {
     },
     artifactVersion: 'rev-test-2',
     referenceAssets: [],
-    connection: {
-      provider: 'happyhorse-dashscope',
-      apiBase: 'https://example.invalid/compatible-mode/v1',
-      apiKey: 'redacted-test-key',
-      imageModel: 'wan2.7-image',
-      videoModel: 'happyhorse-1.1-i2v',
-    },
   }), /权威首帧素材未就绪/);
   global.fetch = originalFetch;
   assert.equal(blockedProviderCalls, 0, 'missing canonical inputs must fail before image or video provider submission');

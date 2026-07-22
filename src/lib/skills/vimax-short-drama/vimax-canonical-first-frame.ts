@@ -1,4 +1,3 @@
-import type { BYOKConnection } from '@/lib/byok-provider';
 import type { ProductionSegmentPlan } from '@/lib/production-assembly-plan';
 import type { VimaxAgentReferenceAsset } from '@/lib/skills/vimax-short-drama/vimax-agent-contract';
 
@@ -103,7 +102,6 @@ export async function compileVimaxCanonicalFirstFrame(input: {
   segment: ProductionSegmentPlan;
   artifactVersion: string;
   referenceAssets: VimaxAgentReferenceAsset[];
-  connection: BYOKConnection;
   continuityPrompt?: string;
 }): Promise<VimaxCanonicalFirstFrameState> {
   const spec = buildVimaxCanonicalFirstFrameSpec(input);
