@@ -21,4 +21,12 @@ assert.equal(standalone.storageScope, undefined);
 assert.equal(standalone.resumeTaskId, undefined);
 assert.deepEqual(standalone.requestHeaders, {});
 
-console.log('PASS paper-host Vimax embed context isolates guest requests and storage');
+const authenticatedResume = resolvePaperHostEmbedContext('?taskId=d693d425-268d-471f-ad97-565ba7cbebb5');
+assert.equal(authenticatedResume.embedded, false);
+assert.equal(authenticatedResume.resumeTaskId, 'd693d425-268d-471f-ad97-565ba7cbebb5');
+assert.deepEqual(authenticatedResume.requestHeaders, {});
+
+const invalidResume = resolvePaperHostEmbedContext('?taskId=../../foreign-task');
+assert.equal(invalidResume.resumeTaskId, undefined);
+
+console.log('PASS creation-agent context isolates guest storage and preserves safe task resume links');

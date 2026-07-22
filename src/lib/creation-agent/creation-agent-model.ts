@@ -100,6 +100,7 @@ export function resolvePaperHostEmbedContext(search: string): PaperHostEmbedCont
   if (params.get('embed') !== 'creation-agent' || !PAPER_HOST_GUEST_WORKSPACE_PATTERN.test(workspace)) {
     return {
       embedded: false,
+      resumeTaskId,
       requestHeaders: {},
     };
   }
