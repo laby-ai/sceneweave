@@ -9,7 +9,21 @@ const productionPlan = {
   workflow: { presetId: 'short-drama', operationOrder: ['plan', 'video'] },
   preferences: { ratio: '16:9', resolution: '720p' },
   continuity: { artifactRevision: 'rev-1' },
-  governance: { status: 'delivery-ready' },
+  governance: { status: 'delivery-ready', decisionLog: [] },
+  checkpoints: [
+    { id: 'plan', name: '制作计划确认', status: 'completed' },
+    { id: 'reference_assets', name: '参考素材确认', status: 'awaiting-human' },
+    { id: 'video', name: '视频生成确认', status: 'pending' },
+    { id: 'render', name: '成片合成确认', status: 'completed' },
+  ],
+  estimatedCost: {
+    currency: 'CNY',
+    amount: null,
+    status: 'confirmed',
+    billingSource: 'external-byok',
+    requiresConfirmation: true,
+    reason: '真实媒体费用由供应商结算。',
+  },
   render: {
     status: 'completed',
     lastSuccessfulResult: {
@@ -48,6 +62,10 @@ assert.equal(recovered.project.messages[0].content, '同一主体连续穿过三
 assert.equal(recovered.project.messages[1].generatedVideo?.url, '/sceneweave/api/final-videos/11111111-1111-4111-8111-111111111111');
 assert.equal(recovered.project.messages[1].vimaxAgent?.taskId, 'task-1');
 assert.equal(recovered.project.messages[1].vimaxAgent?.shots?.length, 3);
+assert.deepEqual(
+  recovered.project.messages[1].vimaxAgent?.productionPlan?.checkpoints.map(checkpoint => checkpoint.status),
+  ['completed', 'completed', 'completed', 'completed'],
+);
 assert.equal(buildVimaxResultDelivery(recovered.project.messages[1]).downloads[0]?.url, '/sceneweave/api/final-videos/11111111-1111-4111-8111-111111111111');
 
 const recoveredReferences = recoverVimaxTaskProject({
