@@ -104,9 +104,12 @@ export function queueProductionAssemblySegments(input: {
     if (childTask) {
       updateTask(childTaskId, { config: { ...childTask.config, ...dependencyConfig } });
     }
+    const reusableCompletion = canReuse
+      && childTask?.status === 'completed'
+      && Boolean(segment.expectedOutputs?.videoUrl);
     return {
       ...segment,
-      status: 'queued' as const,
+      status: reusableCompletion ? 'completed' as const : 'queued' as const,
       expectedOutputs: {
         ...segment.expectedOutputs,
         taskId: childTaskId,
@@ -124,9 +127,15 @@ export function queueProductionAssemblySegments(input: {
   const childTaskIds = queuedSegments
     .map(segment => segment.expectedOutputs.taskId)
     .filter((taskId): taskId is string => Boolean(taskId));
+  const queuedSegmentCount = queuedSegments.filter(segment => segment.status !== 'completed').length;
+  const completedSegmentCount = queuedSegments.length - queuedSegmentCount;
   const updatedAssemblyPlan: ProductionAssemblyPlan = {
     ...assemblyPlan,
-    status: 'planned',
+    status: queuedSegmentCount === 0
+      ? 'completed'
+      : completedSegmentCount > 0
+        ? 'partial'
+        : 'planned',
     segments: queuedSegments,
     nextAction: '片段子任务已排队。下一步逐段生成；相邻段之间必须先完成边界桥接并写回下一段入口。',
   };
@@ -134,13 +143,15 @@ export function queueProductionAssemblySegments(input: {
     version: 'yh-assembly-queue-v1' as const,
     sourceTaskId: task.id,
     status: 'queued' as const,
-    queuedSegmentCount: queuedSegments.length,
+    queuedSegmentCount,
     childTaskIds,
     updatedAt: new Date().toISOString(),
   };
   updateTask(task.id, {
     result: { ...task.result, assemblyPlan: updatedAssemblyPlan, assemblyQueue },
-    message: `已为 ${queuedSegments.length} 个分镜片段创建可追踪视频子任务，尚未调用真实供应商。`,
+    message: completedSegmentCount > 0
+      ? `已保留 ${completedSegmentCount} 个完成片段，其余 ${queuedSegmentCount} 个片段已重新排队。`
+      : `已为 ${queuedSegmentCount} 个分镜片段创建可追踪视频子任务，尚未调用真实供应商。`,
   });
   return {
     success: true as const,
@@ -148,7 +159,7 @@ export function queueProductionAssemblySegments(input: {
     incurredCost: false,
     taskId: task.id,
     productionProjectId: assemblyPlan.productionProjectId,
-    queuedSegmentCount: queuedSegments.length,
+    queuedSegmentCount,
     childTaskIds,
     assemblyQueue,
     segments: queuedSegments.map(segment => ({

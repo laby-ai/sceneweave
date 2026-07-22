@@ -91,6 +91,7 @@
     "test:vimax-video-input-assets": "tsx scripts/test-vimax-video-input-assets.ts",
     "test:vimax-plan-stream-recovery": "tsx scripts/test-vimax-plan-stream-recovery.ts",
     "test:vimax-split-media-connection": "tsx scripts/test-vimax-split-media-connection.ts",
+    "test:vimax-resume-queue": "tsx scripts/test-vimax-resume-queue.ts",
     "test:happyhorse-connection-ui": "tsx scripts/test-happyhorse-connection-ui.ts",
     "ops:scnet-transition-demo": "tsx scripts/run-scnet-transition-demo.ts",
     "qa:ark-video-status-shape": "node scripts/qa-ark-video-status-shape.mjs",
