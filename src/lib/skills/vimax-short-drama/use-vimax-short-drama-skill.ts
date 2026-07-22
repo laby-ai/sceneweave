@@ -139,6 +139,7 @@ interface VimaxShortDramaSkillDeps {
   runCoordinator?: VimaxRunCoordinator;
   requestHeaders?: Record<string, string>;
   onAuthenticationRequired?: (reason: string) => void;
+  onTaskIdAvailable?: (taskId: string) => void;
 }
 
 export interface VimaxShortDramaSkill {
@@ -158,6 +159,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
     runCoordinator: providedRunCoordinator,
     requestHeaders,
     onAuthenticationRequired,
+    onTaskIdAvailable,
   } = deps;
   const fallbackRunCoordinatorRef = useRef<VimaxRunCoordinator | null>(null);
   const planningReadinessPendingRef = useRef(false);
@@ -344,6 +346,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
                 } : m));
               } else if (event === 'plan.accepted') {
                 persistedTaskId = typeof data.taskId === 'string' ? data.taskId : '';
+                if (persistedTaskId) onTaskIdAvailable?.(persistedTaskId);
               } else if (event === 'plan.complete') {
                 plan = data.plan || {};
                 assets = Array.isArray(plan.assets) ? plan.assets : [];
@@ -351,6 +354,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
                 planModel = data.model || '';
                 planTaskId = typeof data.taskId === 'string' ? data.taskId : '';
                 persistedTaskId = planTaskId || persistedTaskId;
+                if (persistedTaskId) onTaskIdAvailable?.(persistedTaskId);
                 productionPlan = parseVimaxProductionPlan(data.productionPlan);
               } else if (event === 'plan.error') {
                 streamError = formatProviderError(data, '规划暂时不可用，请稍后重试。');
@@ -462,7 +466,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
     } finally {
       if (runCoordinator.finish(run)) setIsLoading(false);
     }
-  }, [messagesRef, onAuthenticationRequired, requestHeaders, runCoordinator, setMessages, setIsLoading, setInputValue, setCurrentStep, updateRunMessages]);
+  }, [messagesRef, onAuthenticationRequired, onTaskIdAvailable, requestHeaders, runCoordinator, setMessages, setIsLoading, setInputValue, setCurrentStep, updateRunMessages]);
 
   const handleReferenceAssetsStep = useCallback(async () => {
     const planMessage = findVimaxReferencePlanMessage(messagesRef.current);
