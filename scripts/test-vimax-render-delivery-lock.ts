@@ -12,6 +12,7 @@ import {
   approveVimaxProductionRender,
   assertVimaxProductionFinalDelivery,
   assertVimaxProductionRenderCheckpoint,
+  recoverVimaxPersistedSuccessfulRender,
   recordVimaxSuccessfulRender,
 } from '../src/lib/skills/vimax-short-drama/vimax-render-delivery-lock';
 import { generateShotsFromUserPrompt } from '../src/lib/storyboard-generator';
@@ -87,6 +88,64 @@ assert.throws(
   () => approveVimaxProductionRender(plan, { productionProject, assemblyPlan }),
   /边界桥接/,
   'render approval must reject a completed-looking assembly whose transition bridge is still missing',
+);
+
+const canonicalFirstFrameUrl = '/generated/images/segment-2-canonical-first.jpg';
+const directCanonicalAssemblyPlan = {
+  ...assemblyPlan,
+  segments: assemblyPlan.segments.map((segment, index) => index === 1
+    ? {
+        ...segment,
+        expectedInputs: {
+          ...segment.expectedInputs,
+          bridgeStrategy: 'direct-tail-frame-fallback' as const,
+          previousLastFrameUrl: assemblyPlan.segments[0].expectedOutputs.lastFrameUrl,
+          firstFrameUrl: canonicalFirstFrameUrl,
+          canonicalFirstFrame: {
+            version: 'sceneweave-canonical-first-frame-v1' as const,
+            status: 'ready' as const,
+            artifactVersion,
+            imageUrl: canonicalFirstFrameUrl,
+            sourcePreviousLastFrameUrl: assemblyPlan.segments[0].expectedOutputs.lastFrameUrl,
+            sourceReferenceUrls: ['/generated/images/shot-2-reference.jpg'],
+          },
+        },
+      }
+    : segment),
+};
+
+assert.doesNotThrow(
+  () => approveVimaxProductionRender(plan, {
+    productionProject,
+    assemblyPlan: directCanonicalAssemblyPlan,
+  }),
+  'a ready canonical first frame with current-version provenance from the previous tail must satisfy continuity',
+);
+
+const recoveredPersisted = recoverVimaxPersistedSuccessfulRender(plan, {
+  productionProject,
+  assemblyPlan: directCanonicalAssemblyPlan,
+  completedAt: '2026-07-18T09:00:00.000Z',
+  videoResult: {
+    videoUrl: '/sceneweave/api/final-videos/persisted-final',
+    merge: {
+      renderReport: {
+        version: 'sceneweave-render-report-v1',
+        status: 'passed',
+        runtime: 'sceneweave-segmented-ffmpeg-v1',
+        checkedAt: '2026-07-18T09:00:00.000Z',
+        segmentCount: directCanonicalAssemblyPlan.segmentCount,
+        expectedDurationSeconds: directCanonicalAssemblyPlan.totalDuration,
+        actualDurationSeconds: directCanonicalAssemblyPlan.totalDuration,
+        outputBytes: 4096,
+      },
+    },
+  },
+});
+assert.equal(
+  recoveredPersisted.render.lastSuccessfulResult?.videoUrl,
+  '/sceneweave/api/final-videos/persisted-final',
+  'persisted final video and render report must be recoverable without another provider or merge call',
 );
 
 const bridgedAssemblyPlan = applyBoundaryBridgeArtifactWriteback({

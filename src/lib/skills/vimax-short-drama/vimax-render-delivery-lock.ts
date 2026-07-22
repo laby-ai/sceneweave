@@ -2,6 +2,7 @@ import type { ProductionAssemblyPlan } from '@/lib/production-assembly-plan';
 import { computeProductionArtifactRevision } from '@/lib/production-artifact-stale';
 import type { ProductionProject } from '@/lib/production-project';
 
+import { evaluateVimaxCanonicalFirstFrameReadiness } from './vimax-canonical-first-frame';
 import {
   parseVimaxProductionPlan,
   type VimaxProductionPlan,
@@ -65,6 +66,17 @@ function assertCurrentAssemblyArtifacts(context: VimaxRenderContext) {
         || segment.expectedInputs.bridgeFirstFrameUrl !== boundary.newCameraImageUrl) {
         throw new Error(`第 ${segment.index}->${segment.index + 1} 段边界桥接尚未生成或与当前片段版本不匹配，不能进入成片合成。`);
       }
+      continue;
+    }
+    const canonicalFirstFrame = evaluateVimaxCanonicalFirstFrameReadiness({
+      state: segment.expectedInputs.canonicalFirstFrame,
+      artifactVersion,
+      requiresPreviousLastFrame: true,
+      previousLastFrameUrl,
+    });
+    if (canonicalFirstFrame.ok
+      && segment.expectedInputs.firstFrameUrl === canonicalFirstFrame.imageUrl
+      && segment.expectedInputs.previousLastFrameUrl === previousLastFrameUrl) {
       continue;
     }
     if (!previousLastFrameUrl
@@ -169,6 +181,31 @@ export function recordVimaxSuccessfulRender(
       },
     },
   };
+}
+
+export function recoverVimaxPersistedSuccessfulRender(
+  value: unknown,
+  input: VimaxRenderContext & {
+    videoResult: unknown;
+    completedAt: string;
+  },
+): VimaxProductionPlan {
+  const videoResult = input.videoResult as {
+    videoUrl?: unknown;
+    merge?: { renderReport?: unknown };
+  } | undefined;
+  if (!videoResult
+    || typeof videoResult.videoUrl !== 'string'
+    || !videoResult.videoUrl.trim()
+    || !videoResult.merge?.renderReport) {
+    throw new Error('已持久化成片缺少视频地址或质量核验，不能恢复交付。');
+  }
+  const approved = approveVimaxProductionRender(value, input);
+  return recordVimaxSuccessfulRender(approved, {
+    ...input,
+    videoUrl: videoResult.videoUrl,
+    renderReport: videoResult.merge.renderReport as Omit<VimaxRenderReport, 'artifactVersion'>,
+  });
 }
 
 export function assertVimaxProductionFinalDelivery(
