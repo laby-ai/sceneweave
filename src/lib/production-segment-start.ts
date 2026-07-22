@@ -15,7 +15,6 @@ import type { VimaxAgentReferenceAsset } from '@/lib/skills/vimax-short-drama/vi
 import { buildVimaxContinuityPrompt } from '@/lib/skills/vimax-short-drama/vimax-continuity-contract';
 import {
   compileVimaxCanonicalFirstFrame,
-  evaluateVimaxCanonicalFirstFrameReadiness,
   type VimaxCanonicalFirstFrameState,
 } from '@/lib/skills/vimax-short-drama/vimax-canonical-first-frame';
 import { parseVimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
@@ -38,13 +37,6 @@ import {
   extractLastFrameForHandoff,
   type LastFrameExtractionResult,
 } from '@/lib/video-frame-extraction';
-
-export function selectVimaxCanonicalFrameConnection(
-  videoConnection: BYOKConnection,
-  imageConnection?: BYOKConnection,
-) {
-  return imageConnection || videoConnection;
-}
 
 function segmentAudioCue(segment: ProductionSegmentPlan) {
   return segment.audioState?.audioCue || segment.shotFrameContract?.audioDescription || null;
@@ -160,7 +152,6 @@ function updateParentSegment(
 
 async function runSegmentProviderJob(params: {
   byokConnection: BYOKConnection;
-  imageConnection?: BYOKConnection;
   parentTaskId: string;
   childTaskId: string;
   segmentIndex: number;
@@ -173,7 +164,6 @@ async function runSegmentProviderJob(params: {
 }) {
   const {
     byokConnection,
-    imageConnection,
     parentTaskId,
     childTaskId,
     segmentIndex,
@@ -210,45 +200,33 @@ async function runSegmentProviderJob(params: {
     if (resolvedVideoModel
       && isHappyHorseI2VModel(resolvedVideoModel)
       && segment.generationRoute?.canonicalFirstFrameRequired === true) {
-      const currentState = segment.expectedInputs.canonicalFirstFrame;
-      const currentReadiness = evaluateVimaxCanonicalFirstFrameReadiness({
-        state: currentState,
-        artifactVersion,
-        requiresPreviousLastFrame: segment.generationRoute?.requiresPreviousLastFrame ?? segment.index > 0,
-        previousLastFrameUrl: segment.expectedInputs.previousLastFrameUrl,
-      });
       let canonicalFirstFrame: VimaxCanonicalFirstFrameState;
-      if (currentReadiness.ok) {
-        canonicalFirstFrame = currentState as VimaxCanonicalFirstFrameState;
-      } else {
-        try {
-          canonicalFirstFrame = await compileVimaxCanonicalFirstFrame({
-            segment,
-            artifactVersion,
-            referenceAssets,
-            connection: selectVimaxCanonicalFrameConnection(byokConnection, imageConnection),
-            continuityPrompt: providerContinuityPrompt,
-          });
-        } catch (error) {
-          const failedState: VimaxCanonicalFirstFrameState = {
-            version: 'sceneweave-canonical-first-frame-v1',
-            status: 'failed',
-            artifactVersion,
-            imageUrl: null,
-            sourcePreviousLastFrameUrl: segment.expectedInputs.previousLastFrameUrl,
-            sourceReferenceUrls: [],
-            error: redactProductionSegmentStartError(error),
-          };
-          const currentTask = getTaskFresh(childTaskId);
-          updateTask(childTaskId, {
-            result: { ...(currentTask?.result || {}), canonicalFirstFrame: failedState },
-          });
-          updateParentSegment(parentTaskId, segmentIndex, {
-            status: 'running',
-            expectedInputs: { ...segment.expectedInputs, canonicalFirstFrame: failedState },
-          });
-          throw error;
-        }
+      try {
+        canonicalFirstFrame = await compileVimaxCanonicalFirstFrame({
+          segment,
+          artifactVersion,
+          referenceAssets,
+          continuityPrompt: providerContinuityPrompt,
+        });
+      } catch (error) {
+        const failedState: VimaxCanonicalFirstFrameState = {
+          version: 'sceneweave-canonical-first-frame-v1',
+          status: 'failed',
+          artifactVersion,
+          imageUrl: null,
+          sourcePreviousLastFrameUrl: segment.expectedInputs.previousLastFrameUrl,
+          sourceReferenceUrls: [],
+          error: redactProductionSegmentStartError(error),
+        };
+        const currentTask = getTaskFresh(childTaskId);
+        updateTask(childTaskId, {
+          result: { ...(currentTask?.result || {}), canonicalFirstFrame: failedState },
+        });
+        updateParentSegment(parentTaskId, segmentIndex, {
+          status: 'running',
+          expectedInputs: { ...segment.expectedInputs, canonicalFirstFrame: failedState },
+        });
+        throw error;
       }
       runtimeSegment = {
         ...segment,
@@ -443,7 +421,6 @@ async function runSegmentProviderJob(params: {
 export function startProductionAssemblySegment(
   input: StartProductionSegmentInput,
   byokConnection?: BYOKConnection,
-  imageConnection?: BYOKConnection,
 ): StartProductionSegmentResult {
   const { childTask, parentTaskId, segmentIndex } = getSegmentLocator(input);
 
@@ -595,7 +572,6 @@ export function startProductionAssemblySegment(
 
   void runSegmentProviderJob({
     byokConnection,
-    imageConnection,
     parentTaskId,
     childTaskId: resolvedChildTask.id,
     segmentIndex,

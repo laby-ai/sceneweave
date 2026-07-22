@@ -14,7 +14,7 @@ const productionPlan = {
     status: 'completed',
     lastSuccessfulResult: {
       artifactVersion: 'rev-1',
-      videoUrl: '/sceneweave/api/final-videos/final-1',
+      videoUrl: '/sceneweave/api/final-videos/11111111-1111-4111-8111-111111111111',
       completedAt: '2026-07-20T00:00:00.000Z',
     },
   },
@@ -31,7 +31,7 @@ const recovered = recoverVimaxTaskProject({
     vimaxReferenceAssets: [{ kind: 'character', label: '主体', url: 'https://example.com/subject.jpg' }],
     vimaxVideoResult: {
       model: 'happyhorse-1.1-r2v',
-      videoUrl: '/sceneweave/api/final-videos/final-1',
+      videoUrl: '/sceneweave/api/final-videos/11111111-1111-4111-8111-111111111111',
       duration: 15,
       segments: [
         { shotIndex: 1, shotTitle: '进入', duration: 5, status: 'succeeded', videoUrl: 'https://example.com/a.mp4' },
@@ -45,10 +45,10 @@ const recovered = recoverVimaxTaskProject({
 assert.ok(recovered);
 assert.equal(recovered.project.id, 'task:task-1');
 assert.equal(recovered.project.messages[0].content, '同一主体连续穿过三个空间。');
-assert.equal(recovered.project.messages[1].generatedVideo?.url, '/sceneweave/api/final-videos/final-1');
+assert.equal(recovered.project.messages[1].generatedVideo?.url, '/sceneweave/api/final-videos/11111111-1111-4111-8111-111111111111');
 assert.equal(recovered.project.messages[1].vimaxAgent?.taskId, 'task-1');
 assert.equal(recovered.project.messages[1].vimaxAgent?.shots?.length, 3);
-assert.equal(buildVimaxResultDelivery(recovered.project.messages[1]).downloads[0]?.url, '/sceneweave/api/final-videos/final-1');
+assert.equal(buildVimaxResultDelivery(recovered.project.messages[1]).downloads[0]?.url, '/sceneweave/api/final-videos/11111111-1111-4111-8111-111111111111');
 
 const recoveredReferences = recoverVimaxTaskProject({
   id: 'task-reference-1',

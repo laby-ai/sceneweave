@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 import { buildMemberBailianConnections } from '../src/lib/account/member-bailian-profile';
-import { selectVimaxCanonicalFrameConnection } from '../src/lib/production-segment-start';
 
 async function main() {
   const connections = buildMemberBailianConnections({
@@ -17,24 +16,22 @@ async function main() {
     api_key: 'fixture-key',
   });
 
-  const selected = selectVimaxCanonicalFrameConnection(connections.video, connections.planning);
-  assert.equal(selected.provider, 'openai-compatible');
-  assert.equal(selected.imageModel, 'qwen-image-2.0-pro');
-  assert.notEqual(selected.apiBase, connections.video.apiBase);
+  assert.equal(connections.planning.imageModel, 'qwen-image-2.0-pro');
+  assert.notEqual(connections.planning.apiBase, connections.video.apiBase);
 
   const [routeSource, orchestratorSource, segmentRouteSource] = await Promise.all([
     readFile('src/app/api/smart/vimax-agent-step/route.ts', 'utf8'),
     readFile('src/lib/skills/vimax-short-drama/vimax-production-video-orchestrator.ts', 'utf8'),
     readFile('src/app/api/production/assembly-plan/segment/start/route.ts', 'utf8'),
   ]);
-  assert.match(routeSource, /imageConnection:\s*planConnection/);
-  assert.match(orchestratorSource, /input\.connection,\s*input\.imageConnection/);
-  assert.match(segmentRouteSource, /startProductionAssemblySegment\(body, byokConnection, imageConnection\)/);
+  assert.doesNotMatch(routeSource, /imageConnection:\s*planConnection/);
+  assert.doesNotMatch(orchestratorSource, /imageConnection/);
+  assert.match(segmentRouteSource, /startProductionAssemblySegment\(body, byokConnection\)/);
 
   console.log(JSON.stringify({
     ok: true,
-    selectedProvider: selected.provider,
-    selectedImageModel: selected.imageModel,
+    planningProvider: connections.planning.provider,
+    planningImageModel: connections.planning.imageModel,
     videoProvider: connections.video.provider,
   }));
 }
