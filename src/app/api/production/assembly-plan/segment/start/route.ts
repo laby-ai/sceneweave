@@ -16,10 +16,13 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({})) as StartProductionSegmentInput;
     let byokConnection;
+    let imageConnection;
 
     if (body.dryRun === false && body.allowRealCost === true) {
       try {
-        byokConnection = (await resolveBYOKConnectionsForRequest(request)).video;
+        const connections = await resolveBYOKConnectionsForRequest(request);
+        byokConnection = connections.video;
+        imageConnection = connections.planning;
       } catch (error) {
         if (isBYOKConfigError(error)) {
           return NextResponse.json({
@@ -32,7 +35,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const result = startProductionAssemblySegment(body, byokConnection);
+    const result = startProductionAssemblySegment(body, byokConnection, imageConnection);
     return NextResponse.json(result);
   } catch (error) {
     if (error instanceof ProductionSegmentStartError) {

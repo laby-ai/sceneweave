@@ -42,6 +42,7 @@ export async function runVimaxProductionVideoOrchestrator(input: {
   owner: TaskOwner;
   parentTaskId: string;
   connection: BYOKConnection;
+  imageConnection?: BYOKConnection;
   model: string;
   generateAudio?: boolean;
   shots?: Array<{ index: number; title?: string }>;
@@ -60,7 +61,7 @@ export async function runVimaxProductionVideoOrchestrator(input: {
         dryRun: false,
         allowRealCost: true,
         generateAudio: input.generateAudio,
-      }, input.connection);
+      }, input.connection, input.imageConnection);
       await waitForOwnedTask(input.owner, childTaskId);
     }
     const latestParent = getTaskForOwner(input.parentTaskId, input.owner);
