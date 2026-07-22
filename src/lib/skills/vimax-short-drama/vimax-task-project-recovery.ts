@@ -15,6 +15,17 @@ const isRecord = (value: unknown): value is UnknownRecord => (
 const text = (value: unknown) => typeof value === 'string' ? value.trim() : '';
 const number = (value: unknown, fallback = 0) => Number.isFinite(value) ? Number(value) : fallback;
 
+export function normalizeRecoveredVimaxCompletedPlan(plan: VimaxProductionPlan): VimaxProductionPlan {
+  if (plan.governance.status !== 'delivery-ready' || plan.render.status !== 'completed') return plan;
+  return {
+    ...plan,
+    checkpoints: plan.checkpoints.map(checkpoint => ({
+      ...checkpoint,
+      status: checkpoint.status === 'skipped' ? 'skipped' : 'completed',
+    })),
+  };
+}
+
 function readLockedVideo(result: UnknownRecord) {
   const productionPlan = isRecord(result.productionPlan) ? result.productionPlan : null;
   const render = productionPlan && isRecord(productionPlan.render) ? productionPlan.render : null;
@@ -27,7 +38,11 @@ function readLockedVideo(result: UnknownRecord) {
   const videoUrl = text(video?.videoUrl);
   if (!productionPlan || !video || !lockedUrl || lockedUrl !== videoUrl) return null;
   if (currentRevision && artifactVersion !== currentRevision) return null;
-  return { productionPlan: productionPlan as unknown as VimaxProductionPlan, video, videoUrl };
+  return {
+    productionPlan: normalizeRecoveredVimaxCompletedPlan(productionPlan as unknown as VimaxProductionPlan),
+    video,
+    videoUrl,
+  };
 }
 
 function readReferenceResult(result: UnknownRecord) {

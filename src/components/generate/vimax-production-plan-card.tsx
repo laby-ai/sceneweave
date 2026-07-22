@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { clientApiFetch, clientApiRequest } from '@/lib/client-api';
 import { buildVimaxProductionGovernanceView } from '@/lib/skills/vimax-short-drama/vimax-production-governance';
 import { parseVimaxProductionPlan, skipsVimaxReferenceAssets } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 import type { VimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
+import { normalizeRecoveredVimaxCompletedPlan } from '@/lib/skills/vimax-short-drama/vimax-task-project-recovery';
 
 const stageLabels: Record<VimaxProductionPlan['providerRoutes'][number]['stage'], string> = {
   plan: '策划',
@@ -17,13 +18,18 @@ interface ExportResponse {
   exportPackage: unknown;
 }
 
-export function VimaxProductionPlanCard({ plan, taskId, requestHeaders, onPlanChange }: {
+export function VimaxProductionPlanCard({ plan, taskId, requestHeaders, onPlanChange, finalVideoReady = false }: {
   plan: VimaxProductionPlan;
   taskId?: string;
   requestHeaders?: Record<string, string>;
   onPlanChange?: (plan: VimaxProductionPlan) => void;
+  finalVideoReady?: boolean;
 }) {
-  const [currentPlan, setCurrentPlan] = useState(plan);
+  const displayPlan = useMemo(
+    () => finalVideoReady ? normalizeRecoveredVimaxCompletedPlan(plan) : plan,
+    [finalVideoReady, plan],
+  );
+  const [currentPlan, setCurrentPlan] = useState(displayPlan);
   const [pendingAction, setPendingAction] = useState('');
   const [actionError, setActionError] = useState('');
   const onPlanChangeRef = useRef(onPlanChange);
@@ -33,8 +39,8 @@ export function VimaxProductionPlanCard({ plan, taskId, requestHeaders, onPlanCh
   }, [onPlanChange]);
 
   useEffect(() => {
-    setCurrentPlan(plan);
-  }, [plan]);
+    setCurrentPlan(displayPlan);
+  }, [displayPlan]);
 
   useEffect(() => {
     if (!taskId) return;
@@ -45,7 +51,8 @@ export function VimaxProductionPlanCard({ plan, taskId, requestHeaders, onPlanCh
     })
       .then(response => response.ok ? response.json() : null)
       .then(data => {
-        const recovered = parseVimaxProductionPlan(data?.task?.result?.productionPlan);
+        const parsed = parseVimaxProductionPlan(data?.task?.result?.productionPlan);
+        const recovered = parsed && finalVideoReady ? normalizeRecoveredVimaxCompletedPlan(parsed) : parsed;
         if (active && recovered) {
           setCurrentPlan(recovered);
           onPlanChangeRef.current?.(recovered);
@@ -53,7 +60,7 @@ export function VimaxProductionPlanCard({ plan, taskId, requestHeaders, onPlanCh
       })
       .catch(() => undefined);
     return () => { active = false; };
-  }, [requestHeaders, taskId]);
+  }, [finalVideoReady, requestHeaders, taskId]);
 
   const governance = buildVimaxProductionGovernanceView(currentPlan);
   const videoReady = currentPlan.providerRoutes.find(route => route.stage === 'video')?.ready === true;
@@ -178,7 +185,8 @@ export function VimaxProductionPlanCard({ plan, taskId, requestHeaders, onPlanCh
         <p className="mt-0.5 text-[10px] text-[#858e9a]">
           {currentPlan.estimatedCost.status === 'draft-only-confirmed'
             ? '已选择无成本草稿：不会调用图像或视频模型。'
-            : governance.mode === 'external'
+            : currentPlan.estimatedCost.status === 'confirmed'
+              && currentPlan.estimatedCost.billingSource === 'external-byok'
               ? '已确认使用当前账号的百炼配置；真实费用由供应商账单结算。'
             : '真实媒体费用待供应商确认；在获得明确报价前不会调用付费模型。'}
         </p>

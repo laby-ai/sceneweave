@@ -60,11 +60,14 @@ export function buildVimaxProductionGovernanceView(plan: VimaxProductionPlan): V
     };
   }
   if (plan.governance.status === 'delivery-ready') {
+    const finalVideoReady = plan.render.status === 'completed';
     return {
       state: 'delivery-ready',
-      label: '草稿已可交付',
+      label: finalVideoReady ? '成片已交付' : '草稿已可交付',
       canApprove: false,
-      description: '制作草稿已锁定到最后一次成功结果，可以安全下载。',
+      description: finalVideoReady
+        ? '最终成片已锁定到最后一次成功结果，可以安全播放和下载。'
+        : '制作草稿已锁定到最后一次成功结果，可以安全下载。',
     };
   }
   return {

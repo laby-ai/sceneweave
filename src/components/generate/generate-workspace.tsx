@@ -851,6 +851,7 @@ function MessageBubble({ message, onQuickOption, onResultIteration, onProduction
                 taskId={agent.taskId}
                 requestHeaders={requestHeaders}
                 onPlanChange={onProductionPlanChange}
+                finalVideoReady={agent.phase === 'video' && Boolean(message.generatedVideo?.url)}
               />
             ) : null}
             <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label="制作阶段">
