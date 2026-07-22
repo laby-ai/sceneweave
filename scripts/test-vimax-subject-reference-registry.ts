@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 
 import { callVimaxReferenceImages } from '../src/lib/skills/vimax-short-drama/vimax-reference-assets';
+import { buildVimaxPlanMessages } from '../src/lib/skills/vimax-short-drama/vimax-plan-prompt';
 import { resolveVimaxSkillPresetForRuntime } from '../src/lib/skills/vimax-short-drama/vimax-skill-presets';
 import type { VimaxContinuityContract } from '../src/lib/skills/vimax-short-drama/vimax-continuity-contract';
 
@@ -63,22 +64,26 @@ const continuity: VimaxContinuityContract = {
 
 async function main() {
 try {
+  const preset = resolveVimaxSkillPresetForRuntime('short-drama');
+  const planningSystemPrompt = buildVimaxPlanMessages('20秒，4个5秒分镜。', preset)[0].content;
+  assert.match(planningSystemPrompt, /每个 shots\[i\]\.prompt 只描述该镜头单帧/);
+  assert.match(planningSystemPrompt, /不得重复总时长、clip 数量、每段时长/);
   const result = await callVimaxReferenceImages({
     plan: {
       title: '雨夜回声',
       summary: '林夏在雨夜车站收到神秘录音。',
       assets: [
         { kind: 'character', label: '林夏', prompt: '24岁女性，黑色短发，蓝色雨衣，黑色长裤，白色运动鞋' },
-        { kind: 'scene', label: '雨夜车站', prompt: '冷蓝雨夜，旧车站站台' },
+        { kind: 'scene', label: '雨夜车站', prompt: '【制作要求】20秒，4个5秒分镜。冷蓝雨夜，旧车站站台' },
         { kind: 'prop', label: '红色录音笔', prompt: '红色录音笔，指示灯可见' },
       ],
       shots: [
-        { index: 1, title: '侧身停步', duration: 5, camera: '中景侧拍', prompt: '林夏侧身从左向右走入站台并停下' },
-        { index: 2, title: '背影回应', duration: 5, camera: '背面近景', prompt: '林夏背对镜头举起红色录音笔' },
+        { index: 1, title: '侧身停步', duration: 5, camera: '中景侧拍', prompt: '【短剧前提】雨夜车站，20秒，4个5秒分镜，无文字无水印，画面连续。林夏侧身从左向右走入站台并停下' },
+        { index: 2, title: '背影回应', duration: 5, camera: '背面近景', prompt: '【短剧前提】雨夜车站，20秒，4个5秒分镜，无文字无水印，画面连续。林夏背对镜头举起红色录音笔' },
       ],
       nextAction: '生成参考素材',
     },
-    preset: resolveVimaxSkillPresetForRuntime('short-drama'),
+    preset,
     continuity,
     config: {
       imageApiBase: 'https://fixture.invalid/v1',
@@ -96,8 +101,19 @@ try {
   assert.equal(requests.length, 5, 'one character should create three portraits before two shot references');
   assert.deepEqual(requests[1].reference_images, ['https://fixture.invalid/image-1.png']);
   assert.deepEqual(requests[2].reference_images, ['https://fixture.invalid/image-1.png']);
-  assert.deepEqual(requests[3].reference_images, ['https://fixture.invalid/image-2.png']);
-  assert.deepEqual(requests[4].reference_images, ['https://fixture.invalid/image-3.png']);
+  assert.equal(requests[3].reference_images, undefined, 'white-background portraits must not drive shot composition');
+  assert.equal(requests[4].reference_images, undefined, 'subject portraits are selector evidence, not generation inputs');
+
+  const firstShotPrompt = String(requests[3].prompt || '');
+  const secondShotPrompt = String(requests[4].prompt || '');
+  assert.match(firstShotPrompt, /侧身停步/);
+  assert.match(firstShotPrompt, /中景侧拍/);
+  assert.match(secondShotPrompt, /背影回应/);
+  assert.match(secondShotPrompt, /背面近景/);
+  assert.match(firstShotPrompt, /单张独立的16:9电影画面/);
+  assert.match(secondShotPrompt, /不是分镜板、拼贴、四宫格或多面板/);
+  assert.doesNotMatch(firstShotPrompt, /20秒|4个5秒分镜/);
+  assert.doesNotMatch(secondShotPrompt, /20秒|4个5秒分镜/);
 
   const shotAssets = result.assets.filter(asset => asset.kind === 'shot');
   assert.deepEqual(shotAssets.map(asset => (

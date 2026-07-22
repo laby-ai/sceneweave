@@ -106,7 +106,11 @@ async function generateReferenceTarget(input: {
   config: VimaxReferenceAssetConfig;
   firstShotIndex?: number;
 }) {
-  const referenceImages = input.target.selectedSubjectViews?.map(item => item.url) || [];
+  const selectorReferenceImages = input.target.selectedSubjectViews?.map(item => item.url) || [];
+  // Generated white-background turnarounds are identity evidence for selection.
+  // Passing them into shot generation makes image models copy the portrait framing
+  // and background instead of following the requested cinematic composition.
+  const generationReferenceImages = input.target.kind === 'shot' ? [] : selectorReferenceImages;
   const selectorReady = isVimaxImageSelectorReady(input.config);
   const candidateCount = selectorReady
     && input.target.kind === 'shot'
@@ -114,13 +118,13 @@ async function generateReferenceTarget(input: {
   const candidates = await generateImageCandidates(
     input.target,
     input.config,
-    referenceImages,
+    generationReferenceImages,
     candidateCount,
   );
   const candidateUrls = candidates.map(candidate => candidate.url);
   const selection = await selectVimaxBestImageCandidate({
     targetDescription: input.target.prompt,
-    referenceImages,
+    referenceImages: selectorReferenceImages,
     candidateUrls,
     config: input.config,
   });
@@ -254,6 +258,65 @@ function appendPresetDirection(prompt: string, preset: VimaxSkillPreset) {
   ].join(' ').trim();
 }
 
+function stripShotProductionMetadata(value: string) {
+  return value
+    .replace(/【(?:短剧前提|制作要求|交付要求|全局要求)】/g, '')
+    .replace(/\d+\s*个?\s*\d+(?:\.\d+)?\s*秒\s*(?:分镜|镜头)/gi, '')
+    .replace(/\d+\s*个?\s*(?:分镜|镜头|clips?)/gi, '')
+    .replace(/(?:总时长|成片时长)\s*[:：]?\s*\d+(?:\.\d+)?\s*秒/gi, '')
+    .replace(/\d+(?:\.\d+)?\s*秒/g, '')
+    .replace(/[，,、；;]\s*[，,、；;]+/g, '，')
+    .replace(/^[\s，,、；;。]+|[\s，,、；;。]+$/g, '')
+    .trim();
+}
+
+function shotCompositionDirection(
+  shot: VimaxAgentPlan['shots'][number],
+  position: number,
+  totalShots: number,
+) {
+  const descriptor = `${shot.title} ${shot.camera} ${shot.prompt}`;
+  if (/(全景|远景|广角|航拍|建立)/.test(descriptor)) {
+    return '环境建立镜头：空间和环境占画面主体，人物保持全身或较小比例，不得变成人像证件照或大头特写。';
+  }
+  if (/(细节|微距|手部|道具|胶片|特写)/.test(descriptor)) {
+    return '细节镜头：只突出本镜指定的动作或道具细节，构图必须与人物正面定妆照明显不同。';
+  }
+  if (position === totalShots - 1) {
+    return '收束镜头：呈现故事结束时的单一决定性瞬间，不得把多个过程拼在同一画面。';
+  }
+  return position === 0
+    ? '开场镜头：先建立地点、人物位置和空间关系。'
+    : '叙事推进镜头：只表现本镜动作和构图，不重复前一镜的景别。';
+}
+
+function buildShotReferencePrompt(input: {
+  shot: VimaxAgentPlan['shots'][number];
+  position: number;
+  totalShots: number;
+  characterHint: string;
+  selectedSubjectViews: VimaxSelectedSubjectView[];
+  continuity: VimaxContinuityContract;
+  preset: VimaxSkillPreset;
+}) {
+  const visibleEvent = stripShotProductionMetadata(input.shot.prompt)
+    || `${input.shot.title}，${input.shot.camera}`;
+  const identityHint = input.selectedSubjectViews.length > 0
+    ? `角色身份锚点：${input.selectedSubjectViews.map(item => `${item.label}（${item.view === 'front' ? '正面' : item.view === 'side' ? '侧面' : '背面'}身份参考）`).join('；')}。只保持身份、发型和服装，不复制白底、正面站姿或定妆照构图。`
+    : '';
+  return appendPresetDirection([
+    '生成单张独立的16:9电影画面，只呈现一个时刻；不是分镜板、拼贴、四宫格或多面板。',
+    `镜头身份：Clip ${input.shot.index} · ${input.shot.title}。`,
+    shotCompositionDirection(input.shot, input.position, input.totalShots),
+    `构图与机位：${input.shot.camera}。`,
+    `本镜唯一可见事件：${visibleEvent}。`,
+    input.characterHint ? `全片设定锚点（只用于连续性，不改变本镜构图）：${input.characterHint}。` : '',
+    identityHint,
+    buildVimaxContinuityPrompt(input.continuity, input.position),
+    '禁止文字、字幕、水印、界面、镜头编号、接触表、重复人物和多个时间状态。',
+  ].filter(Boolean).join('\n'), input.preset);
+}
+
 export async function callVimaxReferenceImages(input: {
   plan: VimaxAgentPlan;
   preset: VimaxSkillPreset;
@@ -264,14 +327,14 @@ export async function callVimaxReferenceImages(input: {
   const subjectRegistry = await generateSubjectReferenceRegistry(input);
   const characterHint = input.plan.assets
     .filter(asset => ['character', 'scene', 'prop'].includes(asset.kind))
-    .map(asset => `${asset.label}: ${asset.prompt}`)
+    .map(asset => `${asset.label}: ${stripShotProductionMetadata(asset.prompt)}`)
     .join('；')
     .slice(0, 600);
   const targets: ReferenceTarget[] = [];
 
   if (input.plan.shots.length > 0) {
-    for (const shot of input.plan.shots.slice(0, 8)) {
-      const base = shot.prompt || `${shot.title}, ${shot.camera}`;
+    const shots = input.plan.shots.slice(0, 8);
+    for (const [position, shot] of shots.entries()) {
       const selectedSubjectViews = selectSubjectViews(
         subjectRegistry,
         [shot.title, shot.camera, shot.prompt].filter(Boolean).join(' '),
@@ -281,13 +344,15 @@ export async function callVimaxReferenceImages(input: {
         label: `Clip ${shot.index} · ${shot.title}`,
         shotIndex: shot.index,
         selectedSubjectViews,
-        prompt: appendPresetDirection([
-          characterHint ? `${base}。角色与场景设定参考：${characterHint}` : base,
-          selectedSubjectViews.length > 0
-            ? `本镜角色参考：${selectedSubjectViews.map(item => `${item.label}使用${item.view === 'front' ? '正面' : item.view === 'side' ? '侧面' : '背面'}定妆`).join('；')}。`
-            : '',
-          buildVimaxContinuityPrompt(input.continuity, Math.max(0, shot.index - 1)),
-        ].join('\n'), input.preset),
+        prompt: buildShotReferencePrompt({
+          shot,
+          position,
+          totalShots: shots.length,
+          characterHint,
+          selectedSubjectViews,
+          continuity: input.continuity,
+          preset: input.preset,
+        }),
       });
     }
   } else {

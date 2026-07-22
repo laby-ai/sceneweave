@@ -17,6 +17,8 @@ export function buildVimaxPlanMessages(prompt: string, preset: VimaxSkillPreset)
     '  "nextAction": "下一步建议 string"',
     '}',
     'duration 必须是数字（秒），不能是 "0-5s" 这种字符串区间。',
+    '每个 shots[i].prompt 只描述该镜头单帧中可见的人物、动作、场景和道具状态；必须与 title 和 camera 对应。',
+    'shots[i].prompt 不得重复总时长、clip 数量、每段时长、输出格式、无水印等全局制作要求，也不得要求四宫格、拼贴或分镜板。',
     preset.id === 'storyboard-director'
       ? 'assets 给 3-6 个（角色/场景/道具/参考帧），shots 给 4-8 个；本预设只交付分镜与参考素材，不进入视频生成。'
       : 'assets 给 3-6 个（角色/场景/道具/参考帧），shots 给 4-8 个，全部用于后续视频生成。',
