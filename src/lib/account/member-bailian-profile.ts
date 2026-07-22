@@ -14,7 +14,7 @@ export interface MemberBailianOwner {
 }
 
 export const BAILIAN_TEXT_MODEL = 'qwen3.7-plus';
-export const BAILIAN_IMAGE_MODEL = 'qwen-image-3.0-pro';
+export const BAILIAN_IMAGE_MODEL = 'qwen-image-2.0-pro';
 export const BAILIAN_TTS_MODEL = 'qwen-audio-3.0-tts-plus';
 export const BAILIAN_VIDEO_MODEL = 'happyhorse-1.1-i2v';
 

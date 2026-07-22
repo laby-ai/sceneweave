@@ -16,14 +16,14 @@ const profile: MemberProviderProfile = {
   workspace_id: '',
   region: 'cn-beijing',
   text_model: 'qwen3.7-plus',
-  image_model: 'qwen-image-3.0-pro',
+  image_model: 'qwen-image-2.0-pro',
   tts_model: 'qwen-audio-3.0-tts-plus',
   api_key: 'fixture-key-not-a-real-secret',
 };
 
 const connections = buildMemberBailianConnections(profile);
 assert.equal(connections.planning.model, 'qwen3.7-plus');
-assert.equal(connections.planning.imageModel, 'qwen-image-3.0-pro');
+assert.equal(connections.planning.imageModel, 'qwen-image-2.0-pro');
 assert.equal(connections.video.videoModel, 'happyhorse-1.1-i2v');
 assert.equal(connections.planning.apiBase, 'https://dashscope.aliyuncs.com/compatible-mode/v1');
 assert.equal(connections.video.apiBase, 'https://dashscope.aliyuncs.com/api/v1');
