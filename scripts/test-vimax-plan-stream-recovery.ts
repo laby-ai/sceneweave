@@ -19,7 +19,7 @@ const productionPlan = buildVimaxProductionPlan({
   ratio: '16:9',
   resolution: '720p',
   planModel: 'qwen3.7-plus',
-  imageModel: 'qwen-image-3.0-pro',
+  imageModel: 'qwen-image-2.0-pro',
   videoModel: 'happyhorse-1.1-i2v',
   providerReadiness: { plan: true, referenceAssets: true, video: true },
   assets: [{ kind: 'scene', label: '城市天台', prompt: '雨夜城市天台' }],
