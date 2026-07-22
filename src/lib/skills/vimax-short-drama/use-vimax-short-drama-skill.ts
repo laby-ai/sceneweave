@@ -556,6 +556,10 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       const generatedAssets = Array.isArray(data.assets) ? data.assets : [];
       const portraitCount = generatedAssets.filter((asset: { subjectView?: unknown }) => typeof asset.subjectView === 'string').length;
       const shotReferenceCount = generatedAssets.filter((asset: { shotIndex?: unknown }) => typeof asset.shotIndex === 'number').length;
+      const failedShotIndices = Array.isArray(data.failedShotIndices)
+        ? data.failedShotIndices.filter((value: unknown): value is number => typeof value === 'number')
+        : [];
+      const referencesComplete = data.complete !== false && failedShotIndices.length === 0;
       // 把每张参考图按 shotIndex 归位到对应 Clip 上，让图片显示在分镜下方。
       const refByShot = new Map<number, string>();
       for (const asset of generatedAssets as Array<{ url?: string; shotIndex?: number }>) {
@@ -570,8 +574,10 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       }));
       updateRunMessages(run, prev => prev.map(message => message.id === progressMsgId ? {
         ...message,
-        content: `已生成 ${portraitCount} 张角色定妆参考和 ${shotReferenceCount} 张分镜参考图；分镜图已挂到对应 Clip。预览满意后可继续生成视频。`,
-        generationStatus: 'completed',
+        content: referencesComplete
+          ? `已生成 ${portraitCount} 张角色定妆参考和 ${shotReferenceCount} 张分镜参考图；分镜图已挂到对应 Clip。预览满意后可继续生成视频。`
+          : `已保留 ${shotReferenceCount} 张分镜参考图；镜头 ${failedShotIndices.join('、')} 尚未完成。重试只会生成缺失镜头，不会重复调用已成功结果。`,
+        generationStatus: referencesComplete ? 'completed' : 'failed',
         generationProgress: 100,
         generatedImages: generatedAssets
           .filter((asset: { url?: string }) => typeof asset.url === 'string')
@@ -582,13 +588,17 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
           })),
         assetType: '分镜',
         generationStepInfo: { step: 'seedream-reference', progress: 100, totalSteps: 4, currentStepLabel: '参考图已生成' },
-        quickOptions: ['确认参考图，继续生成视频', '重做某张参考图', '补充参考图'],
+        quickOptions: referencesComplete
+          ? ['确认参考图，继续生成视频', '重做某张参考图', '补充参考图']
+          : ['仅重试缺失参考图', '调整分镜', '取消'],
         vimaxAgent: {
           ...plan,
           phase: 'reference_assets',
           model: data.model || plan.model,
           costState: 'incurred',
-          nextAction: '确认参考素材后进入视频模型费用确认。',
+          nextAction: referencesComplete
+            ? '确认参考素材后进入视频模型费用确认。'
+            : `仅重试缺失镜头 ${failedShotIndices.join('、')}。`,
           shots: shotsWithRef,
           assets: generatedAssets.map((asset: { kind?: NonNullable<NonNullable<ChatMessage['vimaxAgent']>['assets']>[number]['kind']; label?: string; prompt?: string; url?: string; shotIndex?: number; subjectId?: string; subjectView?: 'front' | 'side' | 'back' }) => ({
             kind: asset.kind || 'reference',

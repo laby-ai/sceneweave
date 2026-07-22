@@ -10,8 +10,10 @@ import { VIMAX_PLAN_MODEL } from '../src/lib/skills/vimax-short-drama/vimax-gene
 const taskFile = path.join(tmpdir(), `sceneweave-vimax-subject-registry-${randomUUID()}.json`);
 process.env.HUIYING_TASKS_FILE = taskFile;
 process.env.ARK_API_KEY = 'fixture-selector-key';
+process.env.ARK_AGENT_MODEL = VIMAX_PLAN_MODEL;
 process.env.ARK_IMAGE_API_KEY = 'fixture-image-key';
 process.env.ARK_IMAGE_MODEL = 'fixture-image';
+process.env.ARK_VIDEO_MODEL = 'fixture-video';
 process.env.HUIYING_VIMAX_SELECTOR_MODEL = 'fixture-vlm';
 
 async function main() {
@@ -114,6 +116,7 @@ async function main() {
 
   let imageCalls = 0;
   let selectorCalls = 0;
+  let failedSecondShotOnce = false;
   const imagePrompts: string[] = [];
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input, init) => {
@@ -129,6 +132,13 @@ async function main() {
     imageCalls += 1;
     const body = JSON.parse(String(init?.body || '{}')) as { prompt?: string };
     imagePrompts.push(body.prompt || '');
+    if (!failedSecondShotOnce && /镜头身份：Clip 2/.test(body.prompt || '')) {
+      failedSecondShotOnce = true;
+      return new Response(JSON.stringify({ error: { code: 'fixture_rejected' } }), {
+        status: 422,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
     return new Response(JSON.stringify({ data: [{ url: `https://fixture.invalid/generated-${imageCalls}.png` }] }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
@@ -149,6 +159,8 @@ async function main() {
       success?: boolean;
       subjectRegistry?: { version?: string; subjects?: Array<{ label?: string }> };
       assets?: unknown[];
+      complete?: boolean;
+      failedShotIndices?: number[];
       error?: string;
     };
     assert.equal(response.status, 200, payload.error);
@@ -157,7 +169,9 @@ async function main() {
     const subjectCount = payload.subjectRegistry?.subjects?.length || 0;
     assert.equal(subjectCount, 1);
     assert.deepEqual(payload.subjectRegistry?.subjects?.map(subject => subject.label), ['林夏']);
-    assert.equal(payload.assets?.length, 5);
+    assert.equal(payload.complete, false);
+    assert.deepEqual(payload.failedShotIndices, [2]);
+    assert.equal(payload.assets?.length, 4);
     assert.equal(imageCalls, 7);
     assert.equal(selectorCalls, 1);
     const secondShotPrompt = imagePrompts.find(candidate => (
@@ -176,6 +190,26 @@ async function main() {
     }>).find(asset => asset.kind === 'shot' && asset.shotIndex === 1);
     assert.equal(selectedFirstShot?.candidateUrls?.length, 3);
     assert.equal(selectedFirstShot?.selectedCandidateIndex, 1);
+
+    const partialPersisted = getTaskForOwner(taskId, owner)?.result;
+    assert.equal((partialPersisted?.vimaxReferenceAssets as unknown[] | undefined)?.length, 4);
+
+    const retryResponse = await route.POST(new NextRequest('http://localhost/api/smart/vimax-agent-step', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-paper-host-embed': 'creation-agent',
+        'x-paper-host-guest-workspace': workspace,
+      },
+      body: JSON.stringify({ taskId, phase: 'reference_assets' }),
+    }));
+    const retryPayload = await retryResponse.json() as typeof payload;
+    assert.equal(retryResponse.status, 200, retryPayload.error);
+    assert.equal(retryPayload.complete, true);
+    assert.deepEqual(retryPayload.failedShotIndices, []);
+    assert.equal(retryPayload.assets?.length, 5);
+    assert.equal(imageCalls, 8, 'retry must call only the missing second shot');
+    assert.equal(selectorCalls, 1, 'retry must not repeat first-shot selection');
 
     const persisted = getTaskForOwner(taskId, owner)?.result;
     assert.equal(
@@ -201,6 +235,8 @@ async function main() {
       providerCalls: 0,
       interceptedImageCalls: imageCalls,
       interceptedSelectorCalls: selectorCalls,
+      partialFailedShots: payload.failedShotIndices,
+      retryImageCalls: 1,
       assets: payload.assets?.length,
       subjects: payload.subjectRegistry?.subjects?.map(subject => subject.label),
     }));

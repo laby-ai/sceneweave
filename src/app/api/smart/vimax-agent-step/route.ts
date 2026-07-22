@@ -31,7 +31,7 @@ import {
   type HappyHorseVimaxSegment,
 } from '@/lib/skills/vimax-short-drama/happyhorse-vimax-video';
 import { resolveAndPersistVimaxVideoReferenceAssets } from '@/lib/skills/vimax-short-drama/vimax-video-reference-assets';
-import { callVimaxReferenceImages } from '@/lib/skills/vimax-short-drama/vimax-reference-assets';
+import { callVimaxReferenceImages, type VimaxSubjectReferenceRegistry } from '@/lib/skills/vimax-short-drama/vimax-reference-assets';
 import { callWithSanitizedVimaxPlanningFailure, createVimaxPlanningProviderError, reportVimaxPlanningFailure, resolveVimaxPlanningConnectionPhase, resolveVimaxPlanningReadinessFailure } from '@/lib/skills/vimax-short-drama/vimax-planning-readiness';
 import {
   buildVimaxContinuityContract,
@@ -696,6 +696,8 @@ export async function POST(request: NextRequest) {
 
     if (phase === 'reference_assets') {
       const canonical = resolveCanonicalVimaxStageInput({ taskId: body.taskId || '', owner });
+      const task = getTaskForOwner(canonical.taskId, owner);
+      if (!task) throw new Error('创作项目不存在或无权访问，参考素材无法保存。');
       const config = getArkConfig();
       const planConnection = requestConnections.planning;
       const productionPlan = assertVimaxProductionPlanForPhase(canonical.productionPlan, 'reference_assets', {
@@ -719,9 +721,11 @@ export async function POST(request: NextRequest) {
           selectorApiBase: planConnection?.apiBase || config.apiBase,
           selectorModel: planConnection?.model || config.selectorModel,
         },
+        existingAssets: Array.isArray(task.result?.vimaxReferenceAssets)
+          ? task.result.vimaxReferenceAssets as VimaxAgentReferenceAsset[]
+          : [],
+        existingSubjectRegistry: task.result?.vimaxSubjectReferenceRegistry as VimaxSubjectReferenceRegistry | undefined,
       });
-      const task = getTaskForOwner(canonical.taskId, owner);
-      if (!task) throw new Error('创作项目不存在或无权访问，参考素材无法保存。');
       if (!updateTask(task.id, {
         result: {
           ...(task.result || {}),
@@ -737,6 +741,8 @@ export async function POST(request: NextRequest) {
         model: result.model,
         assets: result.assets,
         subjectRegistry: result.subjectRegistry,
+        complete: result.complete,
+        failedShotIndices: result.failedShotIndices,
       });
     }
 
