@@ -1,4 +1,7 @@
-import type { VimaxAgentPlan } from '@/lib/skills/vimax-short-drama/vimax-agent-contract';
+import type {
+  VimaxAgentPlan,
+  VimaxAgentReferenceAsset,
+} from '@/lib/skills/vimax-short-drama/vimax-agent-contract';
 import { imageWithBYOK } from '@/lib/byok-provider';
 import {
   buildVimaxContinuityPrompt,
@@ -322,9 +325,11 @@ export async function callVimaxReferenceImages(input: {
   preset: VimaxSkillPreset;
   continuity: VimaxContinuityContract;
   config: VimaxReferenceAssetConfig;
+  existingAssets?: VimaxAgentReferenceAsset[];
+  existingSubjectRegistry?: VimaxSubjectReferenceRegistry;
 }) {
   if (!input.config.imageApiKey) throw new Error('缺少图像模型 API Key，无法进入参考素材阶段。');
-  const subjectRegistry = await generateSubjectReferenceRegistry(input);
+  const subjectRegistry = input.existingSubjectRegistry || await generateSubjectReferenceRegistry(input);
   const characterHint = input.plan.assets
     .filter(asset => ['character', 'scene', 'prop'].includes(asset.kind))
     .map(asset => `${asset.label}: ${stripShotProductionMetadata(asset.prompt)}`)
@@ -335,6 +340,13 @@ export async function callVimaxReferenceImages(input: {
   if (input.plan.shots.length > 0) {
     const shots = input.plan.shots.slice(0, 8);
     for (const [position, shot] of shots.entries()) {
+      const existing = input.existingAssets?.find(asset => (
+        asset.kind === 'shot'
+        && asset.shotIndex === shot.index
+        && typeof asset.url === 'string'
+        && asset.url.length > 0
+      ));
+      if (existing) continue;
       const selectedSubjectViews = selectSubjectViews(
         subjectRegistry,
         [shot.title, shot.camera, shot.prompt].filter(Boolean).join(' '),
@@ -364,7 +376,9 @@ export async function callVimaxReferenceImages(input: {
       });
     }
   }
-  if (targets.length === 0) throw new Error('当前计划没有可用于生成参考素材的提示词。');
+  if (targets.length === 0 && input.plan.shots.length === 0) {
+    throw new Error('当前计划没有可用于生成参考素材的提示词。');
+  }
 
   const settled = await Promise.allSettled(targets.map(target => generateReferenceTarget({
     target,
@@ -374,11 +388,16 @@ export async function callVimaxReferenceImages(input: {
   const generatedTargets = settled.flatMap(result => (
     result.status === 'fulfilled' ? [result.value] : []
   ));
-  if (generatedTargets.length === 0) {
+  if (generatedTargets.length === 0 && targets.length > 0 && input.plan.shots.length === 0) {
     const firstError = settled.find((result): result is PromiseRejectedResult => result.status === 'rejected');
     throw new Error(firstError?.reason instanceof Error ? firstError.reason.message : '参考图全部生成失败。');
   }
-  const portraitAssets = subjectRegistry.subjects.flatMap(subject => subject.views.map(view => ({
+  const failedShotIndices = settled.flatMap((result, index) => (
+    result.status === 'rejected' && typeof targets[index]?.shotIndex === 'number'
+      ? [targets[index].shotIndex]
+      : []
+  ));
+  const portraitAssets: VimaxAgentReferenceAsset[] = subjectRegistry.subjects.flatMap(subject => subject.views.map(view => ({
     kind: 'character' as const,
     label: `${subject.label} · ${view.view === 'front' ? '正面' : view.view === 'side' ? '侧面' : '背面'}定妆`,
     prompt: view.description,
@@ -387,9 +406,23 @@ export async function callVimaxReferenceImages(input: {
     subjectId: subject.id,
     subjectView: view.view,
   })));
+  const shotAssetsByIndex = new Map<number, VimaxAgentReferenceAsset>();
+  for (const asset of [...(input.existingAssets || []), ...generatedTargets]) {
+    if (asset.kind === 'shot' && typeof asset.shotIndex === 'number' && asset.url) {
+      shotAssetsByIndex.set(asset.shotIndex, asset);
+    }
+  }
+  const shotAssets = input.plan.shots
+    .slice(0, 8)
+    .flatMap(shot => {
+      const asset = shotAssetsByIndex.get(shot.index);
+      return asset ? [asset] : [];
+    });
   return {
     model: input.config.imageModel,
     subjectRegistry,
-    assets: [...portraitAssets, ...generatedTargets],
+    assets: [...portraitAssets, ...shotAssets],
+    complete: shotAssets.length === input.plan.shots.slice(0, 8).length,
+    failedShotIndices,
   };
 }
