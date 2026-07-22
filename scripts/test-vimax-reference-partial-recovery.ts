@@ -8,22 +8,31 @@ import type { VimaxContinuityContract } from '../src/lib/skills/vimax-short-dram
 const originalFetch = globalThis.fetch;
 const prompts: string[] = [];
 let failSecondShot = true;
+let inFlight = 0;
+let maxInFlight = 0;
 
 globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+  inFlight += 1;
+  maxInFlight = Math.max(maxInFlight, inFlight);
   const body = JSON.parse(String(init?.body || '{}')) as { prompt?: string };
   const prompt = String(body.prompt || '');
   prompts.push(prompt);
-  if (failSecondShot && /镜头身份：Clip 2/.test(prompt)) {
-    failSecondShot = false;
-    return new Response(JSON.stringify({ error: { code: 'fixture_rejected' } }), {
-      status: 422,
+  try {
+    await new Promise(resolve => setTimeout(resolve, 5));
+    if (failSecondShot && /镜头身份：Clip 2/.test(prompt)) {
+      failSecondShot = false;
+      return new Response(JSON.stringify({ error: { code: 'fixture_rejected' } }), {
+        status: 422,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    return new Response(JSON.stringify({ data: [{ url: `https://fixture.invalid/generated-${prompts.length}.png` }] }), {
+      status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
+  } finally {
+    inFlight -= 1;
   }
-  return new Response(JSON.stringify({ data: [{ url: `https://fixture.invalid/generated-${prompts.length}.png` }] }), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' },
-  });
 }) as typeof fetch;
 
 const continuity: VimaxContinuityContract = {
@@ -93,12 +102,14 @@ async function main() {
     assert.deepEqual(second.assets.filter(asset => asset.kind === 'shot').map(asset => asset.shotIndex), [1, 2]);
     assert.equal(prompts.length - callsAfterFirst, 1, 'retry must call only the missing shot');
     assert.match(prompts.at(-1) || '', /镜头身份：Clip 2/);
+    assert.equal(maxInFlight, 1, 'reference generation must respect single-concurrency BYOK quotas');
 
     console.log(JSON.stringify({
       ok: true,
       firstFailedShots: first.failedShotIndices,
       retryCalls: prompts.length - callsAfterFirst,
       finalShotCount: second.assets.filter(asset => asset.kind === 'shot').length,
+      maxInFlight,
       realProviderCalls: 0,
     }));
   } finally {
