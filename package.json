@@ -86,6 +86,7 @@
     "test:vimax-background-video-task": "tsx scripts/test-vimax-background-video-task.ts",
     "test:vimax-task-project-recovery": "tsx scripts/test-vimax-task-project-recovery.ts",
     "test:vimax-reference-request-timeout": "tsx scripts/test-vimax-reference-request-timeout.ts",
+    "test:vimax-video-input-assets": "tsx scripts/test-vimax-video-input-assets.ts",
     "test:vimax-plan-stream-recovery": "tsx scripts/test-vimax-plan-stream-recovery.ts",
     "test:happyhorse-connection-ui": "tsx scripts/test-happyhorse-connection-ui.ts",
     "ops:scnet-transition-demo": "tsx scripts/run-scnet-transition-demo.ts",

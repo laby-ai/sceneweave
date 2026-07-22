@@ -33,10 +33,20 @@ function readLockedVideo(result: UnknownRecord) {
 function readReferenceResult(result: UnknownRecord) {
   const productionPlan = isRecord(result.productionPlan) ? result.productionPlan : null;
   const plan = isRecord(result.vimaxPlan) ? result.vimaxPlan : null;
-  const references = Array.isArray(result.vimaxReferenceAssets)
+  const rawReferences = Array.isArray(result.vimaxReferenceAssets)
     ? result.vimaxReferenceAssets.filter(item => isRecord(item) && text(item.url))
     : [];
-  if (!productionPlan || !plan || references.length === 0) return null;
+  if (!productionPlan || !plan || rawReferences.length === 0) return null;
+  const uniqueReferences = [...new Map(rawReferences.map(item => [text(item.url), item])).values()];
+  const planShots = Array.isArray(plan.shots) ? plan.shots.filter(isRecord) : [];
+  const hasShotMetadata = uniqueReferences.some(item => text(item.kind) === 'shot' && number(item.shotIndex, 0) > 0);
+  const references = !hasShotMetadata && planShots.length > 0 && uniqueReferences.length === planShots.length
+    ? uniqueReferences.map((item, index) => ({
+        ...item,
+        kind: 'shot',
+        shotIndex: number(planShots[index]?.index, index + 1),
+      }))
+    : uniqueReferences;
   const routes = Array.isArray(productionPlan.providerRoutes)
     ? productionPlan.providerRoutes.filter(isRecord)
     : [];
