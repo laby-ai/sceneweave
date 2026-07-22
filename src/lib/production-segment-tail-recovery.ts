@@ -3,11 +3,16 @@ import type { ProductionProject } from '@/lib/production-project';
 import { applySegmentAssetWriteback } from '@/lib/production-segment-assets';
 import { evaluateSegmentTailFrameForHandoff } from '@/lib/production-segment-tail-frame';
 import {
-  completeTask,
+  completeFailedTaskRecovery,
+  getTaskForOwner,
   getTaskFresh,
+  type TaskResult,
+  type TaskOwner,
   updateTask,
 } from '@/lib/task-manager';
 import { extractLastFrameForHandoff } from '@/lib/video-frame-extraction';
+
+type TailFrameExtractor = typeof extractLastFrameForHandoff;
 
 function segmentAudioCue(segment: ProductionAssemblyPlan['segments'][number] | undefined) {
   return segment?.audioState?.audioCue || segment?.shotFrameContract?.audioDescription || null;
@@ -41,15 +46,19 @@ export class ProductionSegmentTailRecoveryError extends Error {
   }
 }
 
-function getParentSegment(childTaskId: string) {
-  const childTask = getTaskFresh(childTaskId);
+function scopedTask(taskId: string, owner?: TaskOwner) {
+  return owner ? getTaskForOwner(taskId, owner) : getTaskFresh(taskId);
+}
+
+function getParentSegment(childTaskId: string, owner?: TaskOwner) {
+  const childTask = scopedTask(childTaskId, owner);
   const parentTaskId = typeof childTask?.config?.parentTaskId === 'string'
     ? childTask.config.parentTaskId
     : undefined;
   const segmentIndex = typeof childTask?.config?.assemblySegmentIndex === 'number'
     ? childTask.config.assemblySegmentIndex
     : Number(childTask?.config?.assemblySegmentIndex);
-  const parentTask = parentTaskId ? getTaskFresh(parentTaskId) : undefined;
+  const parentTask = parentTaskId ? scopedTask(parentTaskId, owner) : undefined;
   const assemblyPlan = parentTask?.result?.assemblyPlan as ProductionAssemblyPlan | undefined;
 
   return {
@@ -88,8 +97,9 @@ function updateParentWithRecoveredTailFrame(params: {
   videoUrl: string;
   providerTaskId?: string;
   lastFrameUrl: string | null;
+  owner?: TaskOwner;
 }) {
-  const parentTask = getTaskFresh(params.parentTaskId);
+  const parentTask = scopedTask(params.parentTaskId, params.owner);
   if (!parentTask?.result) return null;
 
   const writeback = applySegmentAssetWriteback({
@@ -131,7 +141,9 @@ function updateParentWithRecoveredTailFrame(params: {
 }
 
 export async function recoverProductionSegmentTailFrame(
-  input: RecoverProductionSegmentTailFrameInput
+  input: RecoverProductionSegmentTailFrameInput,
+  owner?: TaskOwner,
+  options: { extractLastFrame?: TailFrameExtractor } = {},
 ): Promise<RecoverProductionSegmentTailFrameResult> {
   const {
     childTask,
@@ -139,7 +151,7 @@ export async function recoverProductionSegmentTailFrame(
     assemblyPlan,
     productionProject,
     segmentIndex,
-  } = getParentSegment(input.childTaskId);
+  } = getParentSegment(input.childTaskId, owner);
 
   if (!childTask || childTask.config?.workflow !== 'production-assembly-segment') {
     throw new ProductionSegmentTailRecoveryError('目标任务不是绘影片段视频子任务。', 404);
@@ -156,7 +168,7 @@ export async function recoverProductionSegmentTailFrame(
   const providerTaskId = typeof childTask.result?.providerTaskId === 'string'
     ? childTask.result.providerTaskId
     : undefined;
-  const extraction = await extractLastFrameForHandoff(videoUrl);
+  const extraction = await (options.extractLastFrame || extractLastFrameForHandoff)(videoUrl);
   const tailFrame = evaluateSegmentTailFrameForHandoff({
     segmentIndex,
     segmentCount: assemblyPlan.segmentCount,
@@ -178,7 +190,7 @@ export async function recoverProductionSegmentTailFrame(
     );
   }
 
-  completeTask(input.childTaskId, {
+  const recoveredResult: TaskResult = {
     ...(childTask.result || {}),
     videoUrl,
     providerTaskId,
@@ -203,7 +215,18 @@ export async function recoverProductionSegmentTailFrame(
       audioCue: segmentAudioCue(assemblyPlan.segments[segmentIndex]),
       hasAudio: childTask.result?.hasAudio === true ? true : null,
     }],
-  });
+  };
+  const transitioned = childTask.status === 'completed'
+    ? childTask.result?.lastFrameUrl === tailFrame.lastFrameUrl
+    : completeFailedTaskRecovery(input.childTaskId, recoveredResult, owner);
+  const persistedChild = scopedTask(input.childTaskId, owner);
+  if (!transitioned || persistedChild?.status !== 'completed' || persistedChild.result?.lastFrameUrl !== tailFrame.lastFrameUrl) {
+    throw new ProductionSegmentTailRecoveryError(
+      '尾帧已提取，但片段任务未能持久化为完成状态。',
+      409,
+      { errorType: 'segment-tail-frame-state-transition-failed' },
+    );
+  }
 
   const updatedParent = updateParentWithRecoveredTailFrame({
     parentTaskId,
@@ -213,7 +236,15 @@ export async function recoverProductionSegmentTailFrame(
     videoUrl,
     providerTaskId,
     lastFrameUrl: tailFrame.lastFrameUrl,
+    owner,
   });
+  if (!updatedParent) {
+    throw new ProductionSegmentTailRecoveryError(
+      '片段已恢复，但父任务写回失败，可安全重试本恢复操作。',
+      409,
+      { errorType: 'segment-tail-frame-parent-writeback-failed' },
+    );
+  }
   const nextSegment = (updatedParent?.result?.assemblyPlan as ProductionAssemblyPlan | undefined)
     ?.segments.find(item => item.index === segmentIndex + 1);
 

@@ -1,10 +1,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 
 const baseUrl = process.env.HUIYING_BASE_URL || 'http://localhost:5000';
 const tasksFile = process.env.HUIYING_TASKS_FILE || path.join('/tmp', 'dreambox-tasks', 'tasks.json');
 const lockFile = `${tasksFile}.qa.lock`;
 const sampleVideoUrl = `${baseUrl}/home/huiying-ark-test-clip.mp4`;
+const guestWorkspace = 'guest-creation-tail-recovery-owner-20260722';
+const foreignWorkspace = 'guest-creation-tail-recovery-foreign-20260722';
+const owner = {
+  tenantId: 'paper-host-guest',
+  memberId: `guest-${createHash('sha256').update(guestWorkspace).digest('hex').slice(0, 32)}`,
+};
+const authHeaders = {
+  'x-paper-host-embed': 'creation-agent',
+  'x-paper-host-guest-workspace': guestWorkspace,
+};
 let lockFd = null;
 
 function assert(condition, message) {
@@ -86,6 +97,7 @@ function createTask({ id, type, status, config, result, error }) {
     createdAt: timestamp,
     startedAt: timestamp,
     lastUpdatedAt: timestamp,
+    owner,
   };
 }
 
@@ -94,7 +106,9 @@ async function waitForRecoveredParent(parentTaskId, timeoutMs = 12000) {
   let last = null;
 
   while (Date.now() - started < timeoutMs) {
-    const detail = await fetchJson(`${baseUrl}/api/tasks/${encodeURIComponent(parentTaskId)}`);
+    const detail = await fetchJson(`${baseUrl}/api/tasks/${encodeURIComponent(parentTaskId)}`, {
+      headers: authHeaders,
+    });
     if (detail.res.ok) {
       last = detail.json.task;
       const first = last?.result?.assemblyPlan?.segments?.find(segment => segment.index === 0);
@@ -226,9 +240,27 @@ try {
   writeTasks([...existingTasks, parentTask, firstChildTask, secondChildTask]);
   await sleep(1300);
 
-  const recovery = await fetchJson(`${baseUrl}/api/production/assembly-plan/segment/recover-tail-frame`, {
+  const anonymous = await fetchJson(`${baseUrl}/api/production/assembly-plan/segment/recover-tail-frame`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ childTaskId: firstChildTaskId }),
+  });
+  assert(anonymous.res.status === 401, `anonymous recovery must return 401, received ${anonymous.res.status}`);
+
+  const foreign = await fetchJson(`${baseUrl}/api/production/assembly-plan/segment/recover-tail-frame`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-paper-host-embed': 'creation-agent',
+      'x-paper-host-guest-workspace': foreignWorkspace,
+    },
+    body: JSON.stringify({ childTaskId: firstChildTaskId }),
+  });
+  assert(foreign.res.status === 404, `cross-member recovery must return 404, received ${foreign.res.status}`);
+
+  const recovery = await fetchJson(`${baseUrl}/api/production/assembly-plan/segment/recover-tail-frame`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders },
     body: JSON.stringify({ childTaskId: firstChildTaskId }),
   });
   assert(recovery.res.ok, `recover-tail-frame route failed: ${recovery.res.status} ${JSON.stringify(recovery.json)}`);
@@ -238,7 +270,9 @@ try {
   assert(recovery.json.nextSegmentFirstFrameUrl, 'route recovery should return next segment first frame');
 
   const recoveredParent = await waitForRecoveredParent(parentTaskId);
-  const recoveredChild = await fetchJson(`${baseUrl}/api/tasks/${encodeURIComponent(firstChildTaskId)}`);
+  const recoveredChild = await fetchJson(`${baseUrl}/api/tasks/${encodeURIComponent(firstChildTaskId)}`, {
+    headers: authHeaders,
+  });
   assert(recoveredChild.res.ok, `GET recovered child failed: ${recoveredChild.res.status}`);
   assert(recoveredChild.json.task.status === 'completed', 'recovered child should be completed');
   assert(recoveredChild.json.task.result?.lastFrameUrl, 'recovered child should have lastFrameUrl');
@@ -264,6 +298,8 @@ try {
       'child-task-completed-with-last-frame',
       'parent-segment-last-frame-writeback',
       'next-segment-first-frame-writeback',
+      'anonymous-recovery-returns-401',
+      'cross-member-recovery-fails-closed',
     ],
     uploadSource: recoveredChild.json.task.result.lastFrameExtraction?.uploadSource,
   }, null, 2));

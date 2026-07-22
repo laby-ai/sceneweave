@@ -3,6 +3,9 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+import type { ProductionAssemblyPlan } from '../src/lib/production-assembly-plan';
+import type { TaskResult } from '../src/lib/task-manager';
+
 const originalFetch = globalThis.fetch;
 let tempDir = '';
 
@@ -26,8 +29,10 @@ async function main() {
 
   const taskManager = await import('../src/lib/task-manager');
   const { recoverProductionSegmentTailFrame } = await import('../src/lib/production-segment-tail-recovery');
+  const owner = { tenantId: 'qa-tenant', memberId: 'qa-member' };
+  const foreignOwner = { tenantId: 'qa-tenant', memberId: 'foreign-member' };
 
-  const parentTaskId = taskManager.createTask('storyboard', { prompt: 'tail recovery QA parent' });
+  const parentTaskId = taskManager.createTask('storyboard', { prompt: 'tail recovery QA parent' }, owner);
   const childTaskId = taskManager.createTask('video', {
     workflow: 'production-assembly-segment',
     parentTaskId,
@@ -41,6 +46,7 @@ async function main() {
     ratio: '16:9',
   });
 
+  taskManager.startTask(parentTaskId);
   taskManager.completeTask(parentTaskId, {
     productionProject: {
       id: 'qa-project',
@@ -99,7 +105,7 @@ async function main() {
       queuedSegmentCount: 2,
       childTaskIds: [childTaskId, secondChildTaskId],
     },
-  } as any);
+  } as unknown as TaskResult);
 
   taskManager.updateTask(childTaskId, {
     status: 'failed',
@@ -111,11 +117,40 @@ async function main() {
     },
   });
 
-  const recovery = await recoverProductionSegmentTailFrame({ childTaskId });
+  await assert.rejects(
+    () => recoverProductionSegmentTailFrame({ childTaskId }, foreignOwner),
+    (error: unknown) => error instanceof Error && 'status' in error && error.status === 404,
+    'cross-member recovery must fail closed',
+  );
+  assert.equal(taskManager.getTaskFresh(childTaskId)?.status, 'failed', 'foreign recovery must not mutate the child');
+
+  const recovery = await recoverProductionSegmentTailFrame({ childTaskId }, owner, {
+    extractLastFrame: async () => ({
+      ok: true,
+      lastFrameUrl: 'data:image/jpeg;base64,qa-recovered-tail-frame',
+      source: 'base64-data-url',
+      diagnostics: {
+        version: 'yh-last-frame-extraction-v1',
+        downloaded: true,
+        downloadBytes: sampleVideo.length,
+        extracted: true,
+        extractedBytes: 128,
+        uploaded: true,
+        uploadSource: 'base64-data-url',
+        objectStorageReady: false,
+        publicFrameHandoffReady: false,
+        base64FrameHandoffReady: true,
+        blockers: [],
+      },
+    }),
+  });
   const recoveredChild = taskManager.getTaskFresh(childTaskId);
-  const recoveredChildResult = recoveredChild?.result as any;
+  const recoveredChildResult = recoveredChild?.result as (TaskResult & {
+    lastFrameUrl?: string;
+    lastFrameExtraction?: { uploaded?: boolean; uploadSource?: string | null };
+  }) | undefined;
   const recoveredParent = taskManager.getTaskFresh(parentTaskId);
-  const assemblyPlan = recoveredParent?.result?.assemblyPlan as any;
+  const assemblyPlan = recoveredParent?.result?.assemblyPlan as unknown as ProductionAssemblyPlan | undefined;
   const firstSegment = assemblyPlan?.segments?.[0];
   const secondSegment = assemblyPlan?.segments?.[1];
 
@@ -139,6 +174,7 @@ async function main() {
       'recovered-child-completed',
       'parent-segment-last-frame-writeback',
       'next-segment-first-frame-writeback',
+      'cross-member-recovery-fails-closed',
     ],
     uploadSource: recoveredChildResult?.lastFrameExtraction?.uploadSource,
   }, null, 2));

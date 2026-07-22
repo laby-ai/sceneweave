@@ -39,6 +39,7 @@
     "qa:segment-start-service": "tsx scripts/qa-production-segment-start-service.ts",
     "qa:segment-tail-recovery-service": "tsx scripts/qa-production-segment-tail-recovery-service.ts",
     "qa:segment-tail-recovery-route": "node scripts/qa-production-segment-tail-recovery-route.mjs",
+    "test:ffmpeg-runtime-resolution": "tsx scripts/test-ffmpeg-runtime-resolution.ts",
     "qa:segment-provider-recovery": "tsx scripts/qa-production-segment-provider-recovery.ts",
     "qa:segment-startup-recovery": "tsx scripts/qa-production-segment-startup-recovery.ts",
     "qa:node-editor-tail-recovery-ui": "node scripts/qa-node-editor-tail-recovery-ui.mjs",

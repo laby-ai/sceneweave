@@ -583,6 +583,47 @@ export function completeTask(taskId: string, result: TaskResult): boolean {
 }
 
 /**
+ * Completes a failed task after a no-cost recovery step rebuilt its missing
+ * delivery metadata. This is intentionally narrower than completeTask so a
+ * normal failed task cannot be revived without an explicit recovery path.
+ */
+export function completeFailedTaskRecovery(
+  taskId: string,
+  result: TaskResult,
+  owner?: TaskOwner,
+): boolean {
+  const store = getTaskStore();
+  const task = store.get(taskId);
+
+  if (!task || task.status !== 'failed' || (owner && !taskBelongsToOwner(task, owner))) {
+    return false;
+  }
+
+  const completedTask: BackgroundTask = {
+    ...task,
+    status: 'completed',
+    progress: 100,
+    stage: '已完成',
+    result,
+    error: undefined,
+    completedAt: Date.now(),
+    lastUpdatedAt: Date.now(),
+    eventSeq: nextTaskEventSeq(task),
+    abortController: undefined,
+  };
+  store.set(taskId, completedTask);
+  saveTasksToFile(store);
+  emitTaskStateEvent({
+    owner: completedTask.owner,
+    taskId,
+    taskType: task.type,
+    status: 'succeeded',
+    startedAt: task.startedAt,
+  });
+  return true;
+}
+
+/**
  * 标记任务失败
  */
 export function failTask(taskId: string, error: string): boolean {
