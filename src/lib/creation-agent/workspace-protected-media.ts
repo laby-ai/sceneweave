@@ -1,4 +1,4 @@
-import { clientApiDownloadBlob, ClientRequestError } from '@/lib/client-api';
+import { clientApiDownloadBlob, clientApiRequest, ClientRequestError } from '@/lib/client-api';
 
 const FINAL_VIDEO_PATH = /\/api\/final-videos\/[0-9a-f-]{36}$/;
 
@@ -15,6 +15,16 @@ export function canStreamWorkspaceProtectedMedia(
   requestHeaders: Record<string, string>,
 ) {
   return isWorkspaceProtectedMediaUrl(url) && Object.keys(requestHeaders).length === 0;
+}
+
+export async function prepareWorkspaceProtectedMediaStream(signal?: AbortSignal) {
+  const response = await clientApiRequest('/api/account/me', {
+    signal,
+    redirectOnUnauthorized: false,
+  });
+  if (!response.ok) {
+    throw new Error(`成片读取失败（${response.status}）`);
+  }
 }
 
 export async function fetchWorkspaceProtectedMedia(

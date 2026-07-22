@@ -7,6 +7,7 @@ import {
   canStreamWorkspaceProtectedMedia,
   fetchWorkspaceProtectedMedia,
   isWorkspaceProtectedMediaUrl,
+  prepareWorkspaceProtectedMediaStream,
 } from '@/lib/creation-agent/workspace-protected-media';
 
 export function VimaxProtectedVideo({
@@ -19,24 +20,37 @@ export function VimaxProtectedVideo({
   className?: string;
 }) {
   const protectedUrl = isWorkspaceProtectedMediaUrl(url);
-  const needsAuthenticatedFetch = protectedUrl && !canStreamWorkspaceProtectedMedia(url, requestHeaders);
+  const canStreamDirectly = canStreamWorkspaceProtectedMedia(url, requestHeaders);
+  const needsAuthenticatedFetch = protectedUrl && !canStreamDirectly;
   const [blobSource, setBlobSource] = useState('');
+  const [streamReady, setStreamReady] = useState(!protectedUrl);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!needsAuthenticatedFetch) {
+    if (!protectedUrl) {
       setBlobSource('');
+      setStreamReady(true);
       setError('');
       return;
     }
     const controller = new AbortController();
     let objectUrl = '';
     setBlobSource('');
+    setStreamReady(false);
     setError('');
+    if (canStreamDirectly) {
+      void prepareWorkspaceProtectedMediaStream(controller.signal)
+        .then(() => setStreamReady(true))
+        .catch(reason => {
+          if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '成片读取失败');
+        });
+      return () => controller.abort();
+    }
     void fetchWorkspaceProtectedMedia(url, requestHeaders, controller.signal)
       .then(blob => {
         objectUrl = URL.createObjectURL(blob);
         setBlobSource(objectUrl);
+        setStreamReady(true);
       })
       .catch(reason => {
         if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '成片读取失败');
@@ -45,9 +59,9 @@ export function VimaxProtectedVideo({
       controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [needsAuthenticatedFetch, requestHeaders, url]);
+  }, [canStreamDirectly, needsAuthenticatedFetch, protectedUrl, requestHeaders, url]);
 
-  const source = needsAuthenticatedFetch ? blobSource : url;
+  const source = streamReady ? (needsAuthenticatedFetch ? blobSource : url) : '';
   if (error) return <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-4 text-xs text-rose-600">{error}</div>;
   if (!source) return <div className={`flex items-center justify-center gap-2 bg-black text-xs text-white/70 ${className || ''}`}><Loader2 className="h-4 w-4 animate-spin" />正在恢复成片…</div>;
   return <video key={source} src={source} controls playsInline preload="metadata" className={className} />;
