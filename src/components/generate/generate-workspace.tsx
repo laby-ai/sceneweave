@@ -69,6 +69,12 @@ import {
   resolveVimaxResultIteration,
 } from '@/lib/skills/vimax-short-drama/vimax-result-delivery';
 import { recoverVimaxTaskProject } from '@/lib/skills/vimax-short-drama/vimax-task-project-recovery';
+import {
+  buildVimaxTaskUrl,
+  resolveVimaxTaskId,
+  shouldClearCachedVimaxProject,
+  shouldShowVimaxQuickOption,
+} from '@/lib/skills/vimax-short-drama/vimax-workspace-session';
 
 type CreationMode = 'agent' | 'image' | 'video' | 'music' | 'voice' | 'avatar' | 'motion';
 
@@ -157,6 +163,7 @@ export function GenerateWorkspace({
   const [restoredScope, setRestoredScope] = useState<string | null>(null);
   const restoredScopeRef = useRef<string | null>(null);
   const recoveredTaskRef = useRef<string | null>(null);
+  const [ignoreResumeTask, setIgnoreResumeTask] = useState(false);
   const [workspaceView, setWorkspaceView] = useState<VimaxWorkspaceView>('home');
   useEffect(() => {
     setSkillSelection({ scope: skillScope, id: loadVimaxSkillPreset(localStorage, skillScope).id });
@@ -173,9 +180,8 @@ export function GenerateWorkspace({
     || '未命名创作';
   const effectiveRequestHeaders = useMemo(() => ({ ...(requestHeaders || {}) }), [requestHeaders]);
   const recoverableTaskId = useMemo(() => (
-    resumeTaskId
-      || [...messages].reverse().find(message => message.vimaxAgent?.taskId)?.vimaxAgent?.taskId
-  ), [messages, resumeTaskId]);
+    resolveVimaxTaskId(messages, resumeTaskId, ignoreResumeTask)
+  ), [ignoreResumeTask, messages, resumeTaskId]);
 
   const setScopedWorkspaceView = useCallback((view: VimaxWorkspaceView) => {
     setWorkspaceView(view);
@@ -225,6 +231,12 @@ export function GenerateWorkspace({
   const runCoordinatorRef = useRef<ReturnType<typeof createVimaxRunCoordinator> | null>(null);
   if (!runCoordinatorRef.current) runCoordinatorRef.current = createVimaxRunCoordinator();
   const runCoordinator = runCoordinatorRef.current;
+  const handleTaskIdAvailable = useCallback((taskId: string) => {
+    const recoveryKey = `${storageScope || ''}:${taskId}`;
+    recoveredTaskRef.current = recoveryKey;
+    setIgnoreResumeTask(false);
+    window.history.replaceState(window.history.state, '', buildVimaxTaskUrl(window.location.href, taskId));
+  }, [storageScope]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (workspaceView !== 'project') return;
@@ -240,6 +252,7 @@ export function GenerateWorkspace({
     runCoordinator,
     requestHeaders: effectiveRequestHeaders,
     onAuthenticationRequired,
+    onTaskIdAvailable: handleTaskIdAvailable,
   });
 
   useEffect(() => {
@@ -268,37 +281,55 @@ export function GenerateWorkspace({
     if (!recoverableTaskId || restoredScope !== (storageScope || '')) return;
     const recoveryKey = `${storageScope || ''}:${recoverableTaskId}`;
     if (recoveredTaskRef.current === recoveryKey) return;
-    recoveredTaskRef.current = recoveryKey;
     const controller = new AbortController();
-    void clientApiFetch<{ task?: unknown }>(`/api/tasks/${encodeURIComponent(recoverableTaskId)}`, {
-      headers: effectiveRequestHeaders,
-      signal: controller.signal,
-      redirectOnUnauthorized: false,
-    }).then(payload => {
-      const recovered = recoverVimaxTaskProject(payload.task);
-      if (!recovered) return;
-      cancelCurrentRun();
-      setIsLoading(false);
-      setActiveProjectId(recovered.project.id);
-      saveActiveVimaxProjectId(sessionStorage, storageScope, recovered.project.id);
-      setMessages(recovered.messages);
-      restoreProjectSkillPreset(recovered.messages);
-      setHistory(previous => {
-        const next = [recovered.project, ...previous.filter(item => item.id !== recovered.project.id)].slice(0, 20);
-        saveChatHistory(next, storageScope);
-        return next;
-      });
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    const recover = async () => {
+      try {
+        const payload = await clientApiFetch<{ task?: unknown }>(`/api/tasks/${encodeURIComponent(recoverableTaskId)}`, {
+          headers: effectiveRequestHeaders,
+          signal: controller.signal,
+          redirectOnUnauthorized: false,
+        });
+        const recovered = recoverVimaxTaskProject(payload.task);
+        if (!recovered) {
+          if (!controller.signal.aborted) retryTimer = setTimeout(recover, 3_000);
+          return;
+        }
+        recoveredTaskRef.current = recoveryKey;
+        cancelCurrentRun();
+        setIsLoading(false);
+        setActiveProjectId(recovered.project.id);
+        saveActiveVimaxProjectId(sessionStorage, storageScope, recovered.project.id);
+        setMessages(recovered.messages);
+        restoreProjectSkillPreset(recovered.messages);
+        setHistory(previous => {
+          const next = [recovered.project, ...previous.filter(item => item.id !== recovered.project.id)].slice(0, 20);
+          saveChatHistory(next, storageScope);
+          return next;
+        });
+        setScopedWorkspaceView('project');
+      } catch {
+        // The task route is owner-scoped; unknown or foreign task ids fail closed.
+      }
+    };
+    if (shouldClearCachedVimaxProject(messages, resumeTaskId, recoverableTaskId)) {
+      setMessages([]);
+      setIsLoading(true);
       setScopedWorkspaceView('project');
-    }).catch(() => {
-      // The task route is owner-scoped; unknown or foreign task ids fail closed on the home view.
-    });
-    return () => controller.abort();
+    }
+    void recover();
+    return () => {
+      controller.abort();
+      if (retryTimer) clearTimeout(retryTimer);
+    };
   }, [
     cancelCurrentRun,
     effectiveRequestHeaders,
     restoreProjectSkillPreset,
     restoredScope,
     recoverableTaskId,
+    messages,
+    resumeTaskId,
     setScopedWorkspaceView,
     storageScope,
   ]);
@@ -315,6 +346,9 @@ export function GenerateWorkspace({
     });
     setMessages([]);
     setInput('');
+    setIgnoreResumeTask(true);
+    recoveredTaskRef.current = null;
+    window.history.replaceState(window.history.state, '', buildVimaxTaskUrl(window.location.href));
     setScopedWorkspaceView('project');
   }, [cancelCurrentRun, setScopedWorkspaceView, storageScope]);
 
@@ -791,6 +825,7 @@ function MessageBubble({ message, onQuickOption, onResultIteration, onProduction
   }
 
   const agent = message.vimaxAgent;
+  const quickOptions = message.quickOptions?.filter(option => shouldShowVimaxQuickOption(option, agent?.productionPlan));
   const delivery = agent ? buildVimaxResultDelivery(message) : null;
   const manifestName = `${(agent?.title || 'vimax-project').replace(/[^\p{L}\p{N}-]+/gu, '-').replace(/^-|-$/g, '') || 'vimax-project'}-manifest.json`;
   return (
@@ -960,9 +995,9 @@ function MessageBubble({ message, onQuickOption, onResultIteration, onProduction
           </div>
         ) : null}
 
-        {!hideQuickOptions && message.quickOptions && message.quickOptions.length > 0 && (
+        {!hideQuickOptions && quickOptions && quickOptions.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
-            {message.quickOptions.map(option => (
+            {quickOptions.map(option => (
               <button
                 key={option}
                 type="button"
