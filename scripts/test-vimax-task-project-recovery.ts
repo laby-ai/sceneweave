@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 import { recoverVimaxTaskProject } from '../src/lib/skills/vimax-short-drama/vimax-task-project-recovery';
 import { buildVimaxResultDelivery } from '../src/lib/skills/vimax-short-drama/vimax-result-delivery';
+import { findVimaxReferencePlanMessage } from '../src/lib/skills/vimax-short-drama/use-vimax-short-drama-skill';
 
 const productionPlan = {
   version: 'sceneweave-vimax-production-plan-v1',
@@ -113,6 +114,11 @@ assert.equal(recoveredPartialReferences.project.messages[1].generationStatus, 'f
 assert.match(recoveredPartialReferences.project.messages[1].content, /镜头 1、2、3 尚未完成/);
 assert.deepEqual(recoveredPartialReferences.project.messages[1].quickOptions, ['仅重试缺失参考图', '调整分镜', '取消']);
 assert.doesNotMatch(recoveredPartialReferences.project.messages[1].content, /4 张参考图，可继续确认并生成视频/);
+assert.equal(
+  findVimaxReferencePlanMessage(recoveredPartialReferences.messages)?.vimaxAgent?.taskId,
+  'task-reference-partial',
+  'a recovered partial-reference message must remain executable for missing-shot retry',
+);
 
 const recoveredLegacyReferences = recoverVimaxTaskProject({
   id: 'task-reference-legacy',

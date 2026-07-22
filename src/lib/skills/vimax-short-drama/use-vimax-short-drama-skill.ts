@@ -40,6 +40,13 @@ import { clientApiFetch, clientApiRequest, ClientRequestError } from '@/lib/clie
 
 export const VIMAX_REFERENCE_CONFIRM_REGEX = /确认分镜|生成参考图|仅重试缺失参考图|进入\s*(?:Seedream|千问图像)|参考素材生成/;
 
+export function findVimaxReferencePlanMessage(messages: ChatMessage[]) {
+  return [...messages].reverse().find(message => {
+    const phase = message.vimaxAgent?.phase;
+    return (phase === 'plan' || phase === 'reference_assets') && Boolean(message.vimaxAgent?.assets?.length);
+  });
+}
+
 /**
  * 视频确认意图。仅当对话里已存在带真实参考图 URL 的 ViMAX 消息时，
  * 面板才会用它把请求路由到真实 Seedance 视频阶段，避免和导演链路里的
@@ -458,7 +465,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
   }, [messagesRef, onAuthenticationRequired, requestHeaders, runCoordinator, setMessages, setIsLoading, setInputValue, setCurrentStep, updateRunMessages]);
 
   const handleReferenceAssetsStep = useCallback(async () => {
-    const planMessage = [...messagesRef.current].reverse().find(message => message.vimaxAgent?.phase === 'plan' && message.vimaxAgent.assets?.length);
+    const planMessage = findVimaxReferencePlanMessage(messagesRef.current);
     const plan = planMessage?.vimaxAgent;
     if (!plan) {
       setMessages(prev => [...prev, {
