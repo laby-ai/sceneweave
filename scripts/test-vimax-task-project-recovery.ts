@@ -81,6 +81,36 @@ assert.equal(recoveredReferences.project.messages[1].generatedImages?.length, 2)
 assert.equal(recoveredReferences.project.messages[1].vimaxAgent?.shots?.[0]?.referenceUrl, 'https://example.com/shot-1.png');
 assert.deepEqual(recoveredReferences.project.messages[1].quickOptions, ['确认参考图，继续生成视频', '调整分镜']);
 
+const recoveredLegacyReferences = recoverVimaxTaskProject({
+  id: 'task-reference-legacy',
+  status: 'completed',
+  createdAt: 201,
+  config: { prompt: '恢复旧版参考图。' },
+  result: {
+    productionPlan: { ...productionPlan, render: { status: 'not-started' } },
+    vimaxPlan: {
+      title: '旧版参考图',
+      summary: '两个镜头',
+      shots: [
+        { index: 1, title: '镜头一', duration: 5, camera: '推进', prompt: '镜头一' },
+        { index: 2, title: '镜头二', duration: 5, camera: '特写', prompt: '镜头二' },
+      ],
+    },
+    vimaxReferenceAssets: [
+      { kind: 'reference', label: '参考素材1', url: 'https://example.com/legacy-1.png' },
+      { kind: 'reference', label: '参考素材2', url: 'https://example.com/legacy-2.png' },
+      { kind: 'reference', label: '重复素材1', url: 'https://example.com/legacy-1.png' },
+      { kind: 'reference', label: '重复素材2', url: 'https://example.com/legacy-2.png' },
+    ],
+  },
+});
+
+assert.deepEqual(
+  recoveredLegacyReferences?.project.messages[1].vimaxAgent?.assets?.map(asset => [asset.kind, asset.shotIndex]),
+  [['shot', 1], ['shot', 2]],
+  'legacy generic references may be mapped only when unique URLs exactly match the shot count',
+);
+
 assert.equal(recoverVimaxTaskProject({
   id: 'task-2',
   status: 'completed',

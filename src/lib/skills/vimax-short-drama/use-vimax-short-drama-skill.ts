@@ -23,6 +23,7 @@ import {
 } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 import { waitForVimaxBackgroundVideoTask } from '@/lib/skills/vimax-short-drama/vimax-background-video-task';
 import { waitForPersistedVimaxPlan } from '@/lib/skills/vimax-short-drama/vimax-plan-stream-recovery';
+import { resolveVimaxVideoInputAssets } from '@/lib/skills/vimax-short-drama/vimax-video-input-assets';
 import { formatProviderError } from '@/lib/byok-client';
 import { clientApiFetch, clientApiRequest, ClientRequestError } from '@/lib/client-api';
 
@@ -632,10 +633,12 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       || reversed.find(message => (message.vimaxAgent?.assets || []).some(asset => asset.url));
     // 分镜与标题来源：最近一条带 shots 的 vimaxAgent 消息。
     const planAgent = reversed.find(message => (message.vimaxAgent?.shots || []).length)?.vimaxAgent;
-    const referenceUrls = [
-      ...((refMessage?.generatedImages || []).map(image => image.url).filter(Boolean)),
-      ...((refMessage?.vimaxAgent?.assets || []).map(asset => asset.url).filter((url): url is string => Boolean(url))),
-    ];
+    const referenceAssets = resolveVimaxVideoInputAssets({
+      generatedImages: refMessage?.generatedImages,
+      assets: refMessage?.vimaxAgent?.assets,
+      shots: planAgent?.shots,
+    });
+    const referenceUrls = referenceAssets.map(asset => asset.url).filter((url): url is string => Boolean(url));
     const referenceAssetsSkipped = skipsVimaxReferenceAssets(planAgent?.productionPlan);
     if (!planAgent || (!referenceUrls.length && !referenceAssetsSkipped)) {
       setMessages(prev => [...prev, {
@@ -716,12 +719,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
             })),
             nextAction: agent.nextAction,
           },
-          assets: referenceUrls.map((url, index) => ({
-            kind: 'reference' as const,
-            label: `参考素材${index + 1}`,
-            prompt: '',
-            url,
-          })),
+          assets: referenceAssets,
         }),
         signal: run.signal,
         redirectOnUnauthorized: false,
