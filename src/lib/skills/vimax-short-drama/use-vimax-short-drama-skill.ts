@@ -38,7 +38,7 @@ import { clientApiFetch, clientApiRequest, ClientRequestError } from '@/lib/clie
  * - 视频/语音阶段必须用户显式确认费用，这里不触发。
  */
 
-export const VIMAX_REFERENCE_CONFIRM_REGEX = /确认分镜|生成参考图|进入\s*(?:Seedream|千问图像)|参考素材生成/;
+export const VIMAX_REFERENCE_CONFIRM_REGEX = /确认分镜|生成参考图|仅重试缺失参考图|进入\s*(?:Seedream|千问图像)|参考素材生成/;
 
 /**
  * 视频确认意图。仅当对话里已存在带真实参考图 URL 的 ViMAX 消息时，

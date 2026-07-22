@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 
 import { callVimaxReferenceImages } from '../src/lib/skills/vimax-short-drama/vimax-reference-assets';
+import { VIMAX_REFERENCE_CONFIRM_REGEX } from '../src/lib/skills/vimax-short-drama/use-vimax-short-drama-skill';
 import { resolveVimaxSkillPresetForRuntime } from '../src/lib/skills/vimax-short-drama/vimax-skill-presets';
 import type { VimaxContinuityContract } from '../src/lib/skills/vimax-short-drama/vimax-continuity-contract';
 
@@ -73,6 +74,7 @@ const input = {
 };
 
 async function main() {
+  assert.match('仅重试缺失参考图', VIMAX_REFERENCE_CONFIRM_REGEX);
   try {
     const first = await callVimaxReferenceImages(input);
     assert.equal(first.complete, false);
