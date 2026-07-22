@@ -51,10 +51,19 @@ function readReferenceResult(result: UnknownRecord) {
     ? productionPlan.providerRoutes.filter(isRecord)
     : [];
   const imageRoute = routes.find(route => text(route.stage) === 'reference_assets');
+  const completedShotIndices = new Set(references.flatMap(item => {
+    const shotIndex = number(item.shotIndex, 0);
+    return text(item.kind) === 'shot' && shotIndex > 0 ? [shotIndex] : [];
+  }));
+  const missingShotIndices = planShots.flatMap((shot, index) => {
+    const shotIndex = number(shot.index, index + 1);
+    return completedShotIndices.has(shotIndex) ? [] : [shotIndex];
+  });
   return {
     productionPlan: productionPlan as unknown as VimaxProductionPlan,
     plan,
     references,
+    missingShotIndices,
     imageModel: text(imageRoute?.model) || '图像模型',
   };
 }
@@ -82,12 +91,16 @@ export function recoverVimaxTaskProject(task: unknown): RecoveredVimaxTaskProjec
       const shotIndex = number(item.shotIndex, 0);
       return shotIndex > 0 ? [[shotIndex, text(item.url)] as const] : [];
     }));
+    const referencesComplete = referenceResult.missingShotIndices.length === 0;
+    const recoveredShotCount = referenceByShot.size;
     const assistant: ChatMessage = {
       id: `${taskId}:references`,
       role: 'assistant',
-      content: `已恢复短剧「${title}」的 ${referenceResult.references.length} 张参考图，可继续确认并生成视频。`,
+      content: referencesComplete
+        ? `已恢复短剧「${title}」的 ${recoveredShotCount} 张分镜参考图，可继续确认并生成视频。`
+        : `已恢复短剧「${title}」并保留 ${recoveredShotCount} 张分镜参考图；镜头 ${referenceResult.missingShotIndices.join('、')} 尚未完成。重试只会生成缺失镜头。`,
       timestamp: number(task.lastUpdatedAt, createdAt),
-      generationStatus: 'completed',
+      generationStatus: referencesComplete ? 'completed' : 'failed',
       generationProgress: 100,
       generationType: 'image',
       generatedImages: referenceResult.references.map((item, index) => ({
@@ -96,14 +109,18 @@ export function recoverVimaxTaskProject(task: unknown): RecoveredVimaxTaskProjec
         label: text(item.label) || `参考素材${index + 1}`,
       })),
       assetType: '分镜',
-      quickOptions: ['确认参考图，继续生成视频', '调整分镜'],
+      quickOptions: referencesComplete
+        ? ['确认参考图，继续生成视频', '调整分镜']
+        : ['仅重试缺失参考图', '调整分镜', '取消'],
       vimaxAgent: {
         phase: 'reference_assets',
         title,
         summary: text(referenceResult.plan.summary) || prompt,
         model: referenceResult.imageModel,
         costState: 'incurred',
-        nextAction: '确认参考素材后进入视频生成。',
+        nextAction: referencesComplete
+          ? '确认参考素材后进入视频生成。'
+          : `仅重试缺失镜头 ${referenceResult.missingShotIndices.join('、')}。`,
         taskId,
         productionPlan: referenceResult.productionPlan,
         assets: referenceResult.references.map((item, index) => ({

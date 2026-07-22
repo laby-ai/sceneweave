@@ -81,6 +81,39 @@ assert.equal(recoveredReferences.project.messages[1].generatedImages?.length, 2)
 assert.equal(recoveredReferences.project.messages[1].vimaxAgent?.shots?.[0]?.referenceUrl, 'https://example.com/shot-1.png');
 assert.deepEqual(recoveredReferences.project.messages[1].quickOptions, ['确认参考图，继续生成视频', '调整分镜']);
 
+const recoveredPartialReferences = recoverVimaxTaskProject({
+  id: 'task-reference-partial',
+  status: 'completed',
+  createdAt: 200,
+  config: { prompt: '雨夜天台发现发光胶片。' },
+  result: {
+    productionPlan: { ...productionPlan, render: { status: 'not-started' } },
+    productionProject: { title: '雨夜天台' },
+    vimaxPlan: {
+      title: '雨夜天台',
+      summary: '四个连续镜头',
+      shots: [
+        { index: 1, title: '发现', duration: 5, camera: '全景', prompt: '角色发现胶片' },
+        { index: 2, title: '触碰', duration: 5, camera: '特写', prompt: '手指触碰胶片' },
+        { index: 3, title: '反应', duration: 5, camera: '中景', prompt: '胶片开始发光' },
+        { index: 4, title: '抉择', duration: 5, camera: '远景', prompt: '角色拿起胶片' },
+      ],
+    },
+    vimaxReferenceAssets: [
+      { kind: 'character', label: '主角正面', subjectView: 'front', url: 'https://example.com/front.png' },
+      { kind: 'character', label: '主角侧面', subjectView: 'side', url: 'https://example.com/side.png' },
+      { kind: 'character', label: '主角背面', subjectView: 'back', url: 'https://example.com/back.png' },
+      { kind: 'shot', label: 'Clip 4', shotIndex: 4, url: 'https://example.com/shot-4.png' },
+    ],
+  },
+});
+
+assert.ok(recoveredPartialReferences);
+assert.equal(recoveredPartialReferences.project.messages[1].generationStatus, 'failed');
+assert.match(recoveredPartialReferences.project.messages[1].content, /镜头 1、2、3 尚未完成/);
+assert.deepEqual(recoveredPartialReferences.project.messages[1].quickOptions, ['仅重试缺失参考图', '调整分镜', '取消']);
+assert.doesNotMatch(recoveredPartialReferences.project.messages[1].content, /4 张参考图，可继续确认并生成视频/);
+
 const recoveredLegacyReferences = recoverVimaxTaskProject({
   id: 'task-reference-legacy',
   status: 'completed',
