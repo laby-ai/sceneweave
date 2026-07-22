@@ -78,6 +78,8 @@ jobs:
           pnpm run test:vimax-task-project-recovery
           pnpm run test:vimax-video-input-assets
           pnpm run test:vimax-split-media-connection
+          pnpm run qa:segment-tail-recovery-service
+          pnpm run test:ffmpeg-runtime-resolution
           pnpm run qa:smart-vimax-agent-render
 
       - name: Check compose durability

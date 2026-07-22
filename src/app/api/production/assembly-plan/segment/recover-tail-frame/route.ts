@@ -5,6 +5,7 @@ import {
   recoverProductionSegmentTailFrame,
   type RecoverProductionSegmentTailFrameInput,
 } from '@/lib/production-segment-tail-recovery';
+import { resolvePaperHostCreationOwnerFromRequest } from '@/lib/task-access';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -19,6 +20,8 @@ function sanitizeRecoveryError(error: unknown) {
 }
 
 export async function POST(request: NextRequest) {
+  const access = await resolvePaperHostCreationOwnerFromRequest(request);
+  if (!access) return NextResponse.json({ error: 'not_authenticated' }, { status: 401 });
   try {
     const body = await request.json().catch(() => ({})) as RecoverProductionSegmentTailFrameInput;
 
@@ -31,7 +34,7 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    const result = await recoverProductionSegmentTailFrame(body);
+    const result = await recoverProductionSegmentTailFrame(body, access.owner);
     return NextResponse.json(result);
   } catch (error) {
     if (error instanceof ProductionSegmentTailRecoveryError) {
