@@ -380,11 +380,23 @@ export async function callVimaxReferenceImages(input: {
     throw new Error('当前计划没有可用于生成参考素材的提示词。');
   }
 
-  const settled = await Promise.allSettled(targets.map(target => generateReferenceTarget({
-    target,
-    config: input.config,
-    firstShotIndex: input.plan.shots[0]?.index,
-  })));
+  // Member BYOK image quotas can be single-concurrency. Keep shot generation
+  // ordered so one rate-limited request cannot discard the rest of the batch.
+  const settled: PromiseSettledResult<Awaited<ReturnType<typeof generateReferenceTarget>>>[] = [];
+  for (const target of targets) {
+    try {
+      settled.push({
+        status: 'fulfilled',
+        value: await generateReferenceTarget({
+          target,
+          config: input.config,
+          firstShotIndex: input.plan.shots[0]?.index,
+        }),
+      });
+    } catch (reason) {
+      settled.push({ status: 'rejected', reason });
+    }
+  }
   const generatedTargets = settled.flatMap(result => (
     result.status === 'fulfilled' ? [result.value] : []
   ));
