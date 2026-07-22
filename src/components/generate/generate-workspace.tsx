@@ -172,6 +172,10 @@ export function GenerateWorkspace({
     || messages.find(message => message.role === 'user')?.content.slice(0, 30)
     || '未命名创作';
   const effectiveRequestHeaders = useMemo(() => ({ ...(requestHeaders || {}) }), [requestHeaders]);
+  const recoverableTaskId = useMemo(() => (
+    resumeTaskId
+      || [...messages].reverse().find(message => message.vimaxAgent?.taskId)?.vimaxAgent?.taskId
+  ), [messages, resumeTaskId]);
 
   const setScopedWorkspaceView = useCallback((view: VimaxWorkspaceView) => {
     setWorkspaceView(view);
@@ -261,12 +265,12 @@ export function GenerateWorkspace({
   }, [cancelCurrentRun, restoreProjectSkillPreset, storageScope]);
 
   useEffect(() => {
-    if (!resumeTaskId || restoredScope !== (storageScope || '')) return;
-    const recoveryKey = `${storageScope || ''}:${resumeTaskId}`;
+    if (!recoverableTaskId || restoredScope !== (storageScope || '')) return;
+    const recoveryKey = `${storageScope || ''}:${recoverableTaskId}`;
     if (recoveredTaskRef.current === recoveryKey) return;
     recoveredTaskRef.current = recoveryKey;
     const controller = new AbortController();
-    void clientApiFetch<{ task?: unknown }>(`/api/tasks/${encodeURIComponent(resumeTaskId)}`, {
+    void clientApiFetch<{ task?: unknown }>(`/api/tasks/${encodeURIComponent(recoverableTaskId)}`, {
       headers: effectiveRequestHeaders,
       signal: controller.signal,
       redirectOnUnauthorized: false,
@@ -294,7 +298,7 @@ export function GenerateWorkspace({
     effectiveRequestHeaders,
     restoreProjectSkillPreset,
     restoredScope,
-    resumeTaskId,
+    recoverableTaskId,
     setScopedWorkspaceView,
     storageScope,
   ]);

@@ -24,6 +24,9 @@ export interface VimaxRunCoordinator {
   cancel(): VimaxRunToken | null;
 }
 
+export const VIMAX_REFERENCE_REQUEST_TIMEOUT_MS = 300_000;
+export const VIMAX_REFERENCE_RUN_TIMEOUT_MS = VIMAX_REFERENCE_REQUEST_TIMEOUT_MS + 15_000;
+
 export function buildVimaxProjectTaskCursorKey(input: {
   workspaceScope?: string;
   projectId: string;

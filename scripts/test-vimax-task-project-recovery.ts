@@ -49,6 +49,38 @@ assert.equal(recovered.project.messages[1].vimaxAgent?.taskId, 'task-1');
 assert.equal(recovered.project.messages[1].vimaxAgent?.shots?.length, 3);
 assert.equal(buildVimaxResultDelivery(recovered.project.messages[1]).downloads[0]?.url, '/sceneweave/api/final-videos/final-1');
 
+const recoveredReferences = recoverVimaxTaskProject({
+  id: 'task-reference-1',
+  status: 'completed',
+  createdAt: 200,
+  config: { prompt: '雨夜天台发现发光胶片。' },
+  result: {
+    productionPlan: {
+      ...productionPlan,
+      render: { status: 'not-started' },
+    },
+    productionProject: { title: '雨夜天台' },
+    vimaxPlan: {
+      title: '雨夜天台',
+      summary: '四个连续镜头',
+      shots: [
+        { index: 1, title: '发现', duration: 5, camera: '推进', prompt: '角色发现胶片' },
+        { index: 2, title: '触碰', duration: 5, camera: '特写', prompt: '手指触碰胶片' },
+      ],
+    },
+    vimaxReferenceAssets: [
+      { kind: 'shot', label: 'Clip 1', shotIndex: 1, url: 'https://example.com/shot-1.png' },
+      { kind: 'shot', label: 'Clip 2', shotIndex: 2, url: 'https://example.com/shot-2.png' },
+    ],
+  },
+});
+
+assert.ok(recoveredReferences, 'persisted reference assets must recover before video generation');
+assert.equal(recoveredReferences.project.messages[1].vimaxAgent?.phase, 'reference_assets');
+assert.equal(recoveredReferences.project.messages[1].generatedImages?.length, 2);
+assert.equal(recoveredReferences.project.messages[1].vimaxAgent?.shots?.[0]?.referenceUrl, 'https://example.com/shot-1.png');
+assert.deepEqual(recoveredReferences.project.messages[1].quickOptions, ['确认参考图，继续生成视频', '调整分镜']);
+
 assert.equal(recoverVimaxTaskProject({
   id: 'task-2',
   status: 'completed',
