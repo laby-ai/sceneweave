@@ -4,6 +4,7 @@ import { Download, Loader2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import {
+  canStreamWorkspaceProtectedMedia,
   fetchWorkspaceProtectedMedia,
   isWorkspaceProtectedMediaUrl,
 } from '@/lib/creation-agent/workspace-protected-media';
@@ -18,23 +19,24 @@ export function VimaxProtectedVideo({
   className?: string;
 }) {
   const protectedUrl = isWorkspaceProtectedMediaUrl(url);
-  const [source, setSource] = useState(protectedUrl ? '' : url);
+  const needsAuthenticatedFetch = protectedUrl && !canStreamWorkspaceProtectedMedia(url, requestHeaders);
+  const [blobSource, setBlobSource] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!protectedUrl) {
-      setSource(url);
+    if (!needsAuthenticatedFetch) {
+      setBlobSource('');
       setError('');
       return;
     }
     const controller = new AbortController();
     let objectUrl = '';
-    setSource('');
+    setBlobSource('');
     setError('');
     void fetchWorkspaceProtectedMedia(url, requestHeaders, controller.signal)
       .then(blob => {
         objectUrl = URL.createObjectURL(blob);
-        setSource(objectUrl);
+        setBlobSource(objectUrl);
       })
       .catch(reason => {
         if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '成片读取失败');
@@ -43,8 +45,9 @@ export function VimaxProtectedVideo({
       controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [protectedUrl, requestHeaders, url]);
+  }, [needsAuthenticatedFetch, requestHeaders, url]);
 
+  const source = needsAuthenticatedFetch ? blobSource : url;
   if (error) return <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-4 text-xs text-rose-600">{error}</div>;
   if (!source) return <div className={`flex items-center justify-center gap-2 bg-black text-xs text-white/70 ${className || ''}`}><Loader2 className="h-4 w-4 animate-spin" />正在恢复成片…</div>;
   return <video key={source} src={source} controls playsInline preload="metadata" className={className} />;

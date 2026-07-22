@@ -10,6 +10,13 @@ export function isWorkspaceProtectedMediaUrl(url: string) {
   }
 }
 
+export function canStreamWorkspaceProtectedMedia(
+  url: string,
+  requestHeaders: Record<string, string>,
+) {
+  return isWorkspaceProtectedMediaUrl(url) && Object.keys(requestHeaders).length === 0;
+}
+
 export async function fetchWorkspaceProtectedMedia(
   url: string,
   requestHeaders: Record<string, string>,

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 
 import {
+  canStreamWorkspaceProtectedMedia,
   fetchWorkspaceProtectedMedia,
   isWorkspaceProtectedMediaUrl,
 } from '../src/lib/creation-agent/workspace-protected-media';
@@ -10,6 +11,17 @@ const originalFetch = globalThis.fetch;
 async function main() {
   assert.equal(isWorkspaceProtectedMediaUrl('/sceneweave/api/final-videos/54ab7cb6-b1a4-494c-aa38-6c58b6165187'), true);
   assert.equal(isWorkspaceProtectedMediaUrl('https://cdn.example/video.mp4'), false);
+  assert.equal(
+    canStreamWorkspaceProtectedMedia('/sceneweave/api/final-videos/54ab7cb6-b1a4-494c-aa38-6c58b6165187', {}),
+    true,
+  );
+  assert.equal(
+    canStreamWorkspaceProtectedMedia('/sceneweave/api/final-videos/54ab7cb6-b1a4-494c-aa38-6c58b6165187', {
+      'x-paper-host-guest-workspace': 'guest-fixture',
+    }),
+    false,
+  );
+  assert.equal(canStreamWorkspaceProtectedMedia('https://cdn.example/video.mp4', {}), false);
 
   let receivedHeaders: Headers | undefined;
   globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
