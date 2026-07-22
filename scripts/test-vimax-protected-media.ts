@@ -4,6 +4,7 @@ import {
   canStreamWorkspaceProtectedMedia,
   fetchWorkspaceProtectedMedia,
   isWorkspaceProtectedMediaUrl,
+  prepareWorkspaceProtectedMediaStream,
 } from '../src/lib/creation-agent/workspace-protected-media';
 
 const originalFetch = globalThis.fetch;
@@ -24,7 +25,9 @@ async function main() {
   assert.equal(canStreamWorkspaceProtectedMedia('https://cdn.example/video.mp4', {}), false);
 
   let receivedHeaders: Headers | undefined;
-  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+  let receivedInput = '';
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    receivedInput = String(input);
     receivedHeaders = new Headers(init?.headers);
     return new Response(new Blob(['video'], { type: 'video/mp4' }), {
       status: 200,
@@ -42,6 +45,13 @@ async function main() {
   assert.equal(blob.type, 'video/mp4');
   assert.equal(receivedHeaders?.get('x-paper-host-embed'), 'creation-agent');
   assert.equal(receivedHeaders?.get('x-paper-host-guest-workspace'), 'guest-fixture');
+
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    receivedInput = String(input);
+    return Response.json({ member: { id: 'member-fixture' } });
+  }) as typeof fetch;
+  await prepareWorkspaceProtectedMediaStream();
+  assert.equal(receivedInput, '/api/account/me');
 
   globalThis.fetch = async () => new Response(JSON.stringify({ error: 'not_authenticated' }), { status: 401 });
   await assert.rejects(

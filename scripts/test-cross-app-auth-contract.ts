@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { NextRequest } from 'next/server';
+import { GET as accountMeGet } from '../src/app/api/account/me/route';
 import { POST as logoutPost } from '../src/app/api/account/logout/route';
 
 const fixtureToken = 'local_contract_token';
@@ -27,6 +28,15 @@ async function main() {
   };
 
   try {
+    const mirroredSession = await accountMeGet(new NextRequest('https://airai.world/huiying/api/account/me', {
+      headers: { authorization: `Bearer ${fixtureToken}` },
+    }));
+    assert.equal(mirroredSession.status, 200);
+    assert.match(mirroredSession.headers.get('set-cookie') || '', /huiying_account_token=/i);
+    assert.match(mirroredSession.headers.get('set-cookie') || '', /HttpOnly/i);
+    assert.match(mirroredSession.headers.get('set-cookie') || '', /Secure/i);
+    calls.length = 0;
+
     const missing = await logoutPost(new NextRequest('http://localhost/huiying/api/account/logout', { method: 'POST' }));
     assert.equal(missing.status, 401, 'missing cookie/bearer must fail closed');
     assert.equal(calls.length, 0);
