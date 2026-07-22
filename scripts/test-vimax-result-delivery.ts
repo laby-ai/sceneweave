@@ -96,12 +96,22 @@ assert.equal(videoDelivery.stages.find(stage => stage.id === 'video')?.state, 'c
 assert.deepEqual(videoDelivery.downloads.map(item => item.kind), ['video', 'video', 'video']);
 assert.equal(videoDelivery.downloads[0]?.filename, 'final-video.mp4');
 
+const huiyingProtectedDelivery = buildVimaxResultDelivery({
+  ...videoMessage,
+  generatedVideo: { url: '/huiying/api/final-videos/11111111-1111-4111-8111-111111111111', duration: 20 },
+});
+assert.equal(
+  huiyingProtectedDelivery.downloads[0]?.label,
+  '完整成片',
+  'the deployed base path must keep the protected final video downloadable',
+);
+
 const manifestUrl = createVimaxManifestDataUrl(videoMessage);
 assert.ok(manifestUrl.startsWith('data:application/json;charset=utf-8,'));
 const manifest = JSON.parse(decodeURIComponent(manifestUrl.split(',')[1] || ''));
 assert.equal(manifest.schema, 'sceneweave.vimax.delivery.v1');
 assert.equal(manifest.project.title, '品牌短片');
-assert.deepEqual(manifest.project.productionPlan, productionPlan);
+assert.deepEqual(manifest.project.productionPlan, JSON.parse(JSON.stringify(productionPlan)));
 assert.equal(manifest.storyboard.length, 2);
 assert.equal(manifest.results.finalVideoUrl, 'https://assets.example/final.mp4');
 
