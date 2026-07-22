@@ -11,6 +11,8 @@ import {
 } from '@/lib/skills/vimax-short-drama/vimax-generation-preferences';
 import {
   createVimaxRunCoordinator,
+  VIMAX_REFERENCE_REQUEST_TIMEOUT_MS,
+  VIMAX_REFERENCE_RUN_TIMEOUT_MS,
   type VimaxRunCoordinator,
   type VimaxRunToken,
 } from '@/lib/skills/vimax-short-drama/vimax-project-session';
@@ -494,7 +496,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       projectId: messagesRef.current[0]?.id || progressMsgId,
       phase: 'reference_assets',
       messageId: progressMsgId,
-      timeoutMs: 100_000,
+      timeoutMs: VIMAX_REFERENCE_RUN_TIMEOUT_MS,
     });
     setIsLoading(true);
     setMessages(prev => [...prev, {
@@ -541,6 +543,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
             nextAction: plan.nextAction,
           },
         }),
+        timeoutMs: VIMAX_REFERENCE_REQUEST_TIMEOUT_MS,
         signal: run.signal,
         redirectOnUnauthorized: false,
       });
