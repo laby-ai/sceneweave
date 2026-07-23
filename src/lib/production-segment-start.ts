@@ -153,6 +153,7 @@ function updateParentSegment(
 
 async function runSegmentProviderJob(params: {
   byokConnection: BYOKConnection;
+  imageConnection?: BYOKConnection;
   parentTaskId: string;
   childTaskId: string;
   segmentIndex: number;
@@ -165,6 +166,7 @@ async function runSegmentProviderJob(params: {
 }) {
   const {
     byokConnection,
+    imageConnection,
     parentTaskId,
     childTaskId,
     segmentIndex,
@@ -217,7 +219,7 @@ async function runSegmentProviderJob(params: {
             segment,
             artifactVersion,
             referenceAssets,
-            connection: byokConnection,
+            connection: imageConnection || byokConnection,
             continuityPrompt: providerContinuityPrompt,
           });
         } catch (error) {
@@ -434,6 +436,7 @@ async function runSegmentProviderJob(params: {
 export function startProductionAssemblySegment(
   input: StartProductionSegmentInput,
   byokConnection?: BYOKConnection,
+  imageConnection?: BYOKConnection,
 ): StartProductionSegmentResult {
   const { childTask, parentTaskId, segmentIndex } = getSegmentLocator(input);
 
@@ -585,6 +588,7 @@ export function startProductionAssemblySegment(
 
   void runSegmentProviderJob({
     byokConnection,
+    imageConnection,
     parentTaskId,
     childTaskId: resolvedChildTask.id,
     segmentIndex,
