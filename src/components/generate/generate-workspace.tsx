@@ -357,6 +357,9 @@ export function GenerateWorkspace({
     if (!entry) return;
     cancelCurrentRun();
     setIsLoading(false);
+    setIgnoreResumeTask(true);
+    recoveredTaskRef.current = null;
+    window.history.replaceState(window.history.state, '', buildVimaxTaskUrl(window.location.href));
     setActiveProjectId(projectId);
     saveActiveVimaxProjectId(sessionStorage, storageScope, projectId);
     const recoveredMessages = recoverVimaxProjectMessages(entry.messages || []);

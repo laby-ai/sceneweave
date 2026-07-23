@@ -29,6 +29,11 @@ const cachedMessages = [
 ] as Parameters<typeof resolveVimaxTaskId>[0];
 assert.equal(resolveVimaxTaskId(cachedMessages, 'deep-link-active'), 'deep-link-active');
 assert.equal(resolveVimaxTaskId(cachedMessages, 'deep-link-active', true), 'cached-complete');
+assert.equal(
+  resolveVimaxTaskId([], 'deep-link-active', true),
+  undefined,
+  'explicitly selecting a draft project must not restore the previous deep-link task',
+);
 assert.equal(shouldClearCachedVimaxProject(cachedMessages, 'deep-link-active', 'deep-link-active'), true);
 assert.equal(shouldClearCachedVimaxProject(cachedMessages, 'cached-complete', 'cached-complete'), false);
 assert.equal(isVimaxExecutionReady(pendingPlan), false);
