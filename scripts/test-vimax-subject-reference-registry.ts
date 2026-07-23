@@ -101,8 +101,16 @@ try {
   assert.equal(requests.length, 5, 'one character should create three portraits before two shot references');
   assert.deepEqual(requests[1].reference_images, ['https://fixture.invalid/image-1.png']);
   assert.deepEqual(requests[2].reference_images, ['https://fixture.invalid/image-1.png']);
-  assert.equal(requests[3].reference_images, undefined, 'white-background portraits must not drive shot composition');
-  assert.equal(requests[4].reference_images, undefined, 'subject portraits are selector evidence, not generation inputs');
+  assert.deepEqual(
+    requests[3].reference_images,
+    ['https://fixture.invalid/image-2.png'],
+    'shot generation must preserve the selected side-view identity anchor',
+  );
+  assert.deepEqual(
+    requests[4].reference_images,
+    ['https://fixture.invalid/image-3.png'],
+    'shot generation must preserve the selected back-view identity anchor',
+  );
 
   const firstShotPrompt = String(requests[3].prompt || '');
   const secondShotPrompt = String(requests[4].prompt || '');
