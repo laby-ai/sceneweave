@@ -110,10 +110,7 @@ async function generateReferenceTarget(input: {
   firstShotIndex?: number;
 }) {
   const selectorReferenceImages = input.target.selectedSubjectViews?.map(item => item.url) || [];
-  // Generated white-background turnarounds are identity evidence for selection.
-  // Passing them into shot generation makes image models copy the portrait framing
-  // and background instead of following the requested cinematic composition.
-  const generationReferenceImages = input.target.kind === 'shot' ? [] : selectorReferenceImages;
+  const generationReferenceImages = selectorReferenceImages;
   const selectorReady = isVimaxImageSelectorReady(input.config);
   const candidateCount = selectorReady
     && input.target.kind === 'shot'

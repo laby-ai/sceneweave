@@ -15,6 +15,7 @@ import type { VimaxAgentReferenceAsset } from '@/lib/skills/vimax-short-drama/vi
 import { buildVimaxContinuityPrompt } from '@/lib/skills/vimax-short-drama/vimax-continuity-contract';
 import {
   compileVimaxCanonicalFirstFrame,
+  evaluateVimaxCanonicalFirstFrameReadiness,
   type VimaxCanonicalFirstFrameState,
 } from '@/lib/skills/vimax-short-drama/vimax-canonical-first-frame';
 import { parseVimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
@@ -200,33 +201,45 @@ async function runSegmentProviderJob(params: {
     if (resolvedVideoModel
       && isHappyHorseI2VModel(resolvedVideoModel)
       && segment.generationRoute?.canonicalFirstFrameRequired === true) {
+      const currentState = segment.expectedInputs.canonicalFirstFrame;
+      const currentReadiness = evaluateVimaxCanonicalFirstFrameReadiness({
+        state: currentState,
+        artifactVersion,
+        requiresPreviousLastFrame: segment.generationRoute?.requiresPreviousLastFrame ?? segment.index > 0,
+        previousLastFrameUrl: segment.expectedInputs.previousLastFrameUrl,
+      });
       let canonicalFirstFrame: VimaxCanonicalFirstFrameState;
-      try {
-        canonicalFirstFrame = await compileVimaxCanonicalFirstFrame({
-          segment,
-          artifactVersion,
-          referenceAssets,
-          continuityPrompt: providerContinuityPrompt,
-        });
-      } catch (error) {
-        const failedState: VimaxCanonicalFirstFrameState = {
-          version: 'sceneweave-canonical-first-frame-v1',
-          status: 'failed',
-          artifactVersion,
-          imageUrl: null,
-          sourcePreviousLastFrameUrl: segment.expectedInputs.previousLastFrameUrl,
-          sourceReferenceUrls: [],
-          error: redactProductionSegmentStartError(error),
-        };
-        const currentTask = getTaskFresh(childTaskId);
-        updateTask(childTaskId, {
-          result: { ...(currentTask?.result || {}), canonicalFirstFrame: failedState },
-        });
-        updateParentSegment(parentTaskId, segmentIndex, {
-          status: 'running',
-          expectedInputs: { ...segment.expectedInputs, canonicalFirstFrame: failedState },
-        });
-        throw error;
+      if (currentReadiness.ok) {
+        canonicalFirstFrame = currentState as VimaxCanonicalFirstFrameState;
+      } else {
+        try {
+          canonicalFirstFrame = await compileVimaxCanonicalFirstFrame({
+            segment,
+            artifactVersion,
+            referenceAssets,
+            connection: byokConnection,
+            continuityPrompt: providerContinuityPrompt,
+          });
+        } catch (error) {
+          const failedState: VimaxCanonicalFirstFrameState = {
+            version: 'sceneweave-canonical-first-frame-v1',
+            status: 'failed',
+            artifactVersion,
+            imageUrl: null,
+            sourcePreviousLastFrameUrl: segment.expectedInputs.previousLastFrameUrl,
+            sourceReferenceUrls: [],
+            error: redactProductionSegmentStartError(error),
+          };
+          const currentTask = getTaskFresh(childTaskId);
+          updateTask(childTaskId, {
+            result: { ...(currentTask?.result || {}), canonicalFirstFrame: failedState },
+          });
+          updateParentSegment(parentTaskId, segmentIndex, {
+            status: 'running',
+            expectedInputs: { ...segment.expectedInputs, canonicalFirstFrame: failedState },
+          });
+          throw error;
+        }
       }
       runtimeSegment = {
         ...segment,
