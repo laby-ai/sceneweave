@@ -24,8 +24,8 @@ async function main() {
     readFile('src/lib/skills/vimax-short-drama/vimax-production-video-orchestrator.ts', 'utf8'),
     readFile('src/app/api/production/assembly-plan/segment/start/route.ts', 'utf8'),
   ]);
-  assert.doesNotMatch(routeSource, /imageConnection:\s*planConnection/);
-  assert.doesNotMatch(orchestratorSource, /imageConnection/);
+  assert.match(routeSource, /imageConnection:\s*planConnection/);
+  assert.match(orchestratorSource, /input\.connection,\s*input\.imageConnection/);
   assert.match(segmentRouteSource, /startProductionAssemblySegment\(body, byokConnection\)/);
 
   console.log(JSON.stringify({
