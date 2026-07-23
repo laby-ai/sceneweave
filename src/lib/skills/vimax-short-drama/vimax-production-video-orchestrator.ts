@@ -9,6 +9,7 @@ import {
   finalizeHappyHorseSegments,
   type HappyHorseVimaxSegment,
 } from './happyhorse-vimax-video';
+import { prepareVimaxProductionSegmentForStart } from './vimax-production-segment-readiness';
 
 const TERMINAL_TASK_STATUSES = new Set(['completed', 'failed', 'cancelled']);
 
@@ -54,7 +55,12 @@ export async function runVimaxProductionVideoOrchestrator(input: {
   });
   for (let index = 0; index < queue.childTaskIds.length; index += 1) {
     const childTaskId = queue.childTaskIds[index];
-    const child = getTaskForOwner(childTaskId, input.owner);
+    const child = prepareVimaxProductionSegmentForStart({
+      owner: input.owner,
+      parentTaskId: input.parentTaskId,
+      childTaskId,
+      segmentIndex: index,
+    });
     if (child?.status !== 'completed') {
       startProductionAssemblySegment({
         childTaskId,
