@@ -14,6 +14,7 @@ const workspace = read('src/components/smart/smart-assistant-chat-workspace.tsx'
 const generateWorkspace = read('src/components/generate/generate-workspace.tsx');
 const model = read('src/lib/smart-assistant-panel-model.ts');
 const route = read('src/app/api/smart/vimax-agent-step/route.ts');
+const referencePhase = read('src/lib/skills/vimax-short-drama/vimax-reference-phase.ts');
 const referenceAssets = read('src/lib/skills/vimax-short-drama/vimax-reference-assets.ts');
 const byokProvider = read('src/lib/byok-provider.ts');
 const planArtifacts = read('src/lib/skills/vimax-short-drama/vimax-plan-artifacts.ts');
@@ -82,7 +83,8 @@ check('workspace-renders-stage-card', /msg\.vimaxAgent/.test(workspace) && /çœŸå
 check('route-calls-real-ark-text-model', /chat\/completions/.test(route) && /ARK_API_KEY/.test(route) && /usedRealKey:\s*true/.test(route));
 check(
   'route-calls-real-configured-image-model',
-  /callVimaxReferenceImages/.test(route)
+  /runVimaxReferenceAssetsPhase/.test(route)
+    && /callVimaxReferenceImages/.test(referencePhase)
     && /imageWithBYOK/.test(referenceAssets)
     && /multimodal-generation\/generation/.test(byokProvider)
     && /qwen-image-2\.0-pro/.test(preferences),

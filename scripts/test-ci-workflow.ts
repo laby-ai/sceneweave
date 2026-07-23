@@ -25,6 +25,7 @@ const requiredSnippets = [
   "pnpm run test:film-mobile-workspace",
   "pnpm run test:film-mobile-viewport",
   "pnpm run qa:smart-vimax-agent-render",
+  "pnpm run test:vimax-reference-phase",
   "pnpm run test:film-compose-durability",
   "pnpm run test:film-compose-client",
   "pnpm run test:film-media-preview",

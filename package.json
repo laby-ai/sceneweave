@@ -90,6 +90,7 @@
     "test:vimax-persisted-render-recovery": "tsx scripts/test-vimax-persisted-render-recovery-route.ts",
     "test:vimax-reference-request-timeout": "tsx scripts/test-vimax-reference-request-timeout.ts",
     "test:vimax-reference-partial-recovery": "tsx scripts/test-vimax-reference-partial-recovery.ts",
+    "test:vimax-reference-phase": "tsx scripts/test-vimax-reference-phase.ts",
     "test:vimax-video-input-assets": "tsx scripts/test-vimax-video-input-assets.ts",
     "test:vimax-plan-stream-recovery": "tsx scripts/test-vimax-plan-stream-recovery.ts",
     "test:vimax-split-media-connection": "tsx scripts/test-vimax-split-media-connection.ts",
