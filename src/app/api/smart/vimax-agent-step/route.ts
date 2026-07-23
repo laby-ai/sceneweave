@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { mergeVideosWithLocalFfmpeg } from '@/lib/local-video-merge';
 import { extractLastFrameForHandoff } from '@/lib/video-frame-extraction';
 import { resolvePaperHostCreationOwnerFromRequest } from '@/lib/task-access';
-import { getTaskForOwner, updateTask, type TaskOwner } from '@/lib/task-manager';
+import { getTaskForOwner, type TaskOwner } from '@/lib/task-manager';
 import type { VimaxAgentPlan, VimaxAgentReferenceAsset, VimaxAgentStepBody } from '@/lib/skills/vimax-short-drama/vimax-agent-contract';
 import { VIMAX_PLAN_MODEL } from '@/lib/skills/vimax-short-drama/vimax-generation-preferences';
 import { buildProductionBackedVimaxPlan } from '@/lib/skills/vimax-short-drama/vimax-plan-artifacts';
@@ -31,7 +31,7 @@ import {
   type HappyHorseVimaxSegment,
 } from '@/lib/skills/vimax-short-drama/happyhorse-vimax-video';
 import { resolveAndPersistVimaxVideoReferenceAssets } from '@/lib/skills/vimax-short-drama/vimax-video-reference-assets';
-import { callVimaxReferenceImages, type VimaxSubjectReferenceRegistry } from '@/lib/skills/vimax-short-drama/vimax-reference-assets';
+import { runVimaxReferenceAssetsPhase } from '@/lib/skills/vimax-short-drama/vimax-reference-phase';
 import { callWithSanitizedVimaxPlanningFailure, createVimaxPlanningProviderError, reportVimaxPlanningFailure, resolveVimaxPlanningConnectionPhase, resolveVimaxPlanningReadinessFailure } from '@/lib/skills/vimax-short-drama/vimax-planning-readiness';
 import {
   buildVimaxContinuityContract,
@@ -700,39 +700,22 @@ export async function POST(request: NextRequest) {
       if (!task) throw new Error('创作项目不存在或无权访问，参考素材无法保存。');
       const config = getArkConfig();
       const planConnection = requestConnections.planning;
-      const productionPlan = assertVimaxProductionPlanForPhase(canonical.productionPlan, 'reference_assets', {
-        plan: planConnection?.model || config.textModel,
-        referenceAssets: planConnection?.imageModel || config.imageModel,
-        video: config.videoModel,
-      });
-      const preset = resolveVimaxSkillPresetForRuntime(productionPlan.workflow.presetId);
-      if (!productionPlan.continuity) {
-        throw new Error('制作计划缺少连续性契约，请返回计划阶段重新确认。');
-      }
-      const result = await callVimaxReferenceImages({
+      const result = await runVimaxReferenceAssetsPhase({
+        task,
         plan: canonical.plan,
-        preset,
-        continuity: productionPlan.continuity,
+        productionPlan: canonical.productionPlan,
+        planningConnection: planConnection,
         config: {
+          textModel: config.textModel,
+          imageModel: config.imageModel,
+          videoModel: config.videoModel,
           imageApiKey: planConnection?.apiKey || config.imageApiKey || '',
           imageApiBase: planConnection?.apiBase || config.imageApiBase,
-          imageModel: planConnection?.imageModel || config.imageModel,
           selectorApiKey: planConnection?.apiKey || config.apiKey || '',
           selectorApiBase: planConnection?.apiBase || config.apiBase,
-          selectorModel: planConnection?.model || config.selectorModel,
+          selectorModel: config.selectorModel,
         },
-        existingAssets: Array.isArray(task.result?.vimaxReferenceAssets)
-          ? task.result.vimaxReferenceAssets as VimaxAgentReferenceAsset[]
-          : [],
-        existingSubjectRegistry: task.result?.vimaxSubjectReferenceRegistry as VimaxSubjectReferenceRegistry | undefined,
       });
-      if (!updateTask(task.id, {
-        result: {
-          ...(task.result || {}),
-          vimaxReferenceAssets: result.assets,
-          vimaxSubjectReferenceRegistry: result.subjectRegistry,
-        },
-      })) throw new Error('角色定妆与参考素材保存失败。');
       return NextResponse.json({
         success: true,
         phase,
