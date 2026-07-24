@@ -297,16 +297,22 @@ function removeNarrationCarryover(value: string, segment: ProductionSegmentPlan)
     .trim();
 }
 
-function resolveFirstFrameInput(segment: ProductionSegmentPlan) {
+export function resolveFirstFrameInput(segment: ProductionSegmentPlan) {
   const firstFrameUrl = segment.expectedInputs.firstFrameUrl || null;
   const previousLastFrameUrl = segment.expectedInputs.previousLastFrameUrl || null;
   const bridgeFirstFrameUrl = segment.expectedInputs.bridgeFirstFrameUrl || null;
-  const usesBoundaryBridge = segment.expectedInputs.bridgeStrategy === 'transition-bridge'
+  const bridgeStrategy = segment.expectedInputs.bridgeStrategy || null;
+  const usesBoundaryBridge = bridgeStrategy === 'transition-bridge'
     && firstFrameUrl
     && bridgeFirstFrameUrl
     && firstFrameUrl === bridgeFirstFrameUrl
     && firstFrameUrl !== previousLastFrameUrl;
   const usesDirectPreviousTail = Boolean(firstFrameUrl && previousLastFrameUrl && firstFrameUrl === previousLastFrameUrl);
+  // 边界桥接未产出可用视频时会落到 direct-tail-frame-fallback；此时即便仍挂着
+  // 本段独立规划首帧，也必须用上一段尾帧当首帧，否则每段从互不相关的参考图起跳、
+  // 片段不再衔接（这正是线上跳变的根因）。
+  const usesTailFrameFallback = bridgeStrategy === 'direct-tail-frame-fallback'
+    && Boolean(previousLastFrameUrl);
 
   if (usesBoundaryBridge) {
     return {
@@ -319,6 +325,14 @@ function resolveFirstFrameInput(segment: ProductionSegmentPlan) {
   if (usesDirectPreviousTail) {
     return {
       firstFrameImage: firstFrameUrl,
+      previousLastFrameImage: previousLastFrameUrl,
+      firstFrameSource: 'direct-previous-tail' as const,
+    };
+  }
+
+  if (usesTailFrameFallback) {
+    return {
+      firstFrameImage: previousLastFrameUrl,
       previousLastFrameImage: previousLastFrameUrl,
       firstFrameSource: 'direct-previous-tail' as const,
     };

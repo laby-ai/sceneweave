@@ -76,7 +76,8 @@ jobs:
           pnpm run test:vimax-qwen37-planning-payload
           pnpm run test:vimax-reference-request-timeout
           pnpm run test:vimax-task-project-recovery
-          pnpm run test:vimax-reference-phase
+         pnpm run test:vimax-reference-phase
+          pnpm run test:segment-first-frame-fallback
           pnpm run test:vimax-video-input-assets
           pnpm run test:vimax-i2v-frame-handoff
           pnpm run test:vimax-split-media-connection
