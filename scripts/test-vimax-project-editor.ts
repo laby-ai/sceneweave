@@ -102,5 +102,10 @@ assert.match(cardSource, /clientApiFetch/);
 
 const workspaceSource = readFileSync(new URL('../src/components/generate/generate-workspace.tsx', import.meta.url), 'utf8');
 assert.match(workspaceSource, /VimaxProjectEditorCard taskId=\{agent\.taskId\}/);
+assert.match(
+  workspaceSource,
+  /agent\?\.taskId && message\.generationStatus === 'completed' && !message\.generatedVideo\?\.url/,
+  'delivered projects must not mount task-backed editor controls after the runtime task is cleaned up',
+);
 
-console.log(JSON.stringify({ ok: true, script: 'test-vimax-project-editor', checks: 17 }));
+console.log(JSON.stringify({ ok: true, script: 'test-vimax-project-editor', checks: 18 }));

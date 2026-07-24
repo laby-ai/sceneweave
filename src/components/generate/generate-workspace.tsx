@@ -895,7 +895,7 @@ function MessageBubble({ message, onQuickOption, onResultIteration, onProduction
           </div>
         ) : null}
 
-        {agent?.taskId && message.generationStatus === 'completed' ? (
+        {agent?.taskId && message.generationStatus === 'completed' && !message.generatedVideo?.url ? (
           <>
             <VimaxProjectEditorCard taskId={agent.taskId} requestHeaders={requestHeaders} />
             <VimaxSegmentedProductionCard taskId={agent.taskId} requestHeaders={requestHeaders} />
