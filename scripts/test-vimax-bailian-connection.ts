@@ -24,7 +24,7 @@ class MemoryStorage implements Storage {
 }
 
 assert.equal(DEFAULT_PLANNING_MODEL, 'qwen3.7-plus');
-assert.equal(DEFAULT_IMAGE_MODEL, 'qwen-image-2.0-pro');
+assert.equal(DEFAULT_IMAGE_MODEL, 'wan2.7-image-pro');
 assert.equal(DEFAULT_VIDEO_MODEL, 'happyhorse-1.1-i2v');
 assert.equal(BAILIAN_UNIVERSAL_API_HOST, 'https://dashscope.aliyuncs.com');
 assert.equal(BAILIAN_DEFAULT_API_HOST, BAILIAN_UNIVERSAL_API_HOST);
@@ -140,9 +140,10 @@ try {
       { image: 'https://media.example.com/reference.png' },
       { image: 'https://media.example.com/reference-2.png' },
       { image: 'https://media.example.com/reference-3.png' },
-      { text: 'fixture image' },
+      { image: 'https://media.example.com/reference-4-must-be-truncated.png' },
+      { text: '输入参考图按顺序编号为图1、图2、图3、图4，编号与请求中的图片数组严格一致。\nfixture image' },
     ]);
-    assert.deepEqual(body.parameters, { size: '1696*960', n: 1, watermark: false, prompt_extend: true });
+    assert.deepEqual(body.parameters, { size: '1696*960', n: 1, watermark: false });
     return Response.json({
       output: {
         choices: [{ message: { content: [{ image: 'https://media.example.com/result.png' }] } }],
@@ -172,7 +173,7 @@ try {
 
   globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body || '{}')) as { parameters?: Record<string, unknown> };
-    assert.equal('size' in (body.parameters || {}), false, 'Qwen Image must auto-select size when none is requested');
+    assert.equal('size' in (body.parameters || {}), false, 'Wan Image must auto-select size when none is requested');
     return Response.json({
       output: { choices: [{ message: { content: [{ image: 'https://media.example.com/auto-size.png' }] } }] },
     });

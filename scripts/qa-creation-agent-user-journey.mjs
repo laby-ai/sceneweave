@@ -32,12 +32,12 @@ function publicProfile() {
     region: 'cn-beijing',
     secret_mask: '****only',
     text_model: 'qwen3.7-plus',
-    image_model: 'qwen-image-2.0-pro',
+    image_model: 'wan2.7-image-pro',
     tts_model: 'qwen-audio-3.0-tts-plus',
   } : {
     configured: false,
     text_model: 'qwen3.7-plus',
-    image_model: 'qwen-image-2.0-pro',
+    image_model: 'wan2.7-image-pro',
     tts_model: 'qwen-audio-3.0-tts-plus',
   };
 }
@@ -177,15 +177,22 @@ try {
     const page = await context.newPage();
     const errors = [];
     const failedResponses = [];
+    let imageGenerateRequests = 0;
+    let videoPlanRequests = 0;
     page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
     page.on('pageerror', error => errors.push(error.message));
     page.on('response', response => { if (response.status() >= 400) failedResponses.push({ status: response.status(), url: response.url() }); });
+    page.on('request', request => {
+      const pathname = new URL(request.url()).pathname;
+      if (pathname.endsWith('/api/image/generate')) imageGenerateRequests += 1;
+      if (pathname.endsWith('/api/smart/vimax-agent-step')) videoPlanRequests += 1;
+    });
 
     await page.goto(`${appOrigin}/embed/creation-agent`, { waitUntil: 'commit' });
     assert.match(page.url(), /\/huiying\/embed\/creation-agent$/);
     await page.locator('[data-testid="vimax-project-home"]').waitFor({ state: 'visible' });
     await assertDarkAndContained(page, viewport.name);
-    assert.equal(await page.getByRole('button', { name: 'Agent 模式' }).count(), 0, 'agent-only mode must not open legacy choices');
+    assert.equal(await page.getByRole('button', { name: 'Agent 模式', exact: true }).count(), 1, 'creation mode control missing');
 
     const header = page.locator('header');
     await header.getByRole('img', { name: '绘影' }).waitFor({ state: 'visible' });
@@ -215,6 +222,59 @@ try {
     await page.getByText('所属团队：隔离测试团队', { exact: true }).waitFor({ state: 'visible' });
     await page.keyboard.press('Escape');
     await page.getByText('creator@example.test', { exact: true }).waitFor({ state: 'hidden' });
+
+    const composerInput = page.getByPlaceholder(/输入想法、剧本或上传参考/);
+    const imageDraft = '雨夜城市天台上的蓝衣女主角，电影级宽银幕构图';
+    await composerInput.fill(imageDraft);
+    await page.getByRole('button', { name: 'Agent 模式', exact: true }).click();
+    assert.equal(await page.getByRole('button', { name: '配音生成', exact: true }).count(), 0);
+    await page.getByRole('button', { name: '图片生成', exact: true }).click();
+    await page.getByTestId('creation-agent-image-workspace').waitFor({ state: 'visible' });
+    await page.getByRole('heading', { name: '图片生成', exact: true }).waitFor({ state: 'visible' });
+    assert.equal(
+      await page.getByPlaceholder('描述你想生成的图片，也可直接粘贴图片…', { exact: true }).inputValue(),
+      imageDraft,
+      `${viewport.name} image handoff lost the composer prompt`,
+    );
+    if (viewport.width < 1024) {
+      const mobileNav = page.locator('[aria-label="图片创作工作区"]');
+      await mobileNav.getByRole('button', { name: '结果', exact: true }).click();
+      await page.getByTestId('image-results-panel').waitFor({ state: 'visible' });
+      await mobileNav.getByRole('button', { name: '助手', exact: true }).click();
+      await page.getByTestId('image-assistant-panel').waitFor({ state: 'visible' });
+      await mobileNav.getByRole('button', { name: '参数', exact: true }).click();
+      await page.getByTestId('image-settings-panel').waitFor({ state: 'visible' });
+    } else {
+      await page.getByTestId('image-settings-panel').waitFor({ state: 'visible' });
+      await page.getByTestId('image-results-panel').waitFor({ state: 'visible' });
+      await page.getByTestId('image-assistant-panel').waitFor({ state: 'visible' });
+    }
+    const imageLayout = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+    }));
+    assert(
+      imageLayout.scrollWidth <= imageLayout.clientWidth + 1,
+      `${viewport.name} image workspace horizontal overflow`,
+    );
+    assert.equal(imageGenerateRequests, 0, `${viewport.name} opening image mode triggered a billable request`);
+    await page.screenshot({ path: path.join(outputRoot, `${viewport.name}-image.png`), fullPage: true });
+    await page.getByRole('button', { name: '返回创作智能体', exact: true }).click();
+    await page.locator('[data-testid="vimax-project-home"]').waitFor({ state: 'visible' });
+    assert.equal(await composerInput.inputValue(), imageDraft, `${viewport.name} image back navigation lost the draft`);
+
+    await page.getByRole('button', { name: 'Agent 模式', exact: true }).click();
+    await page.getByRole('button', { name: '视频生成', exact: true }).click();
+    await page.getByRole('button', { name: '视频生成', exact: true }).waitFor({ state: 'visible' });
+    assert.equal(await composerInput.inputValue(), imageDraft, `${viewport.name} video entry lost the draft`);
+    await page.getByTitle('使用技能').getByText('短剧一键成片', { exact: true }).waitFor({ state: 'visible' });
+    assert.equal(videoPlanRequests, 0, `${viewport.name} opening video mode triggered a planning request`);
+    assert.equal(
+      await page.getByRole('button', { name: '数字人', exact: true }).count(),
+      0,
+      `${viewport.name} exposed an unverified digital-human entry`,
+    );
+    await page.screenshot({ path: path.join(outputRoot, `${viewport.name}-video.png`), fullPage: true });
 
     await page.screenshot({ path: path.join(outputRoot, `${viewport.name}-home.png`), fullPage: true });
 
@@ -272,6 +332,13 @@ try {
       overflow: false,
       accountVisible: true,
       heroVisible: true,
+      imageEntry: true,
+      imageAutoGenerateRequests: imageGenerateRequests,
+      imageOverflow: false,
+      videoEntry: true,
+      videoAutoPlanRequests: videoPlanRequests,
+      voiceEntryVisible: false,
+      avatarEntryVisible: false,
       heroBounds: { y: Math.round(heroBox.y), height: Math.round(heroBox.height) },
       profileSaved: true,
       projectRecovered: true,

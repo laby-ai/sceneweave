@@ -308,9 +308,6 @@ export function resolveFirstFrameInput(segment: ProductionSegmentPlan) {
     && firstFrameUrl === bridgeFirstFrameUrl
     && firstFrameUrl !== previousLastFrameUrl;
   const usesDirectPreviousTail = Boolean(firstFrameUrl && previousLastFrameUrl && firstFrameUrl === previousLastFrameUrl);
-  // 边界桥接未产出可用视频时会落到 direct-tail-frame-fallback；此时即便仍挂着
-  // 本段独立规划首帧，也必须用上一段尾帧当首帧，否则每段从互不相关的参考图起跳、
-  // 片段不再衔接（这正是线上跳变的根因）。
   const usesTailFrameFallback = bridgeStrategy === 'direct-tail-frame-fallback'
     && Boolean(previousLastFrameUrl);
 

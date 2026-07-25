@@ -108,23 +108,35 @@ async function generateReferenceTarget(input: {
   target: ReferenceTarget;
   config: VimaxReferenceAssetConfig;
   firstShotIndex?: number;
+  initialReferenceAssets?: VimaxAgentReferenceAsset[];
 }) {
-  const selectorReferenceImages = input.target.selectedSubjectViews?.map(item => item.url) || [];
-  const generationReferenceImages = selectorReferenceImages;
+  const initialReferences = (input.initialReferenceAssets || [])
+    .filter(asset => typeof asset.url === 'string' && asset.url.length > 0);
+  const referenceImages = [...new Set([
+    ...initialReferences.map(asset => asset.url as string),
+    ...(input.target.selectedSubjectViews?.map(item => item.url) || []),
+  ])].slice(0, 9);
+  const referenceContext = initialReferences.map((asset, index) => {
+    const role = asset.kind === 'character' ? '角色' : asset.kind === 'scene' ? '场景' : asset.kind === 'prop' ? '道具' : '视觉参考';
+    return `图${index + 1}是${role}「${asset.label}」`;
+  }).join('；');
+  const target = referenceContext
+    ? { ...input.target, prompt: `${input.target.prompt}\n参考素材约束：${referenceContext}。必须保持对应身份、场景和道具，不得互换。` }
+    : input.target;
   const selectorReady = isVimaxImageSelectorReady(input.config);
   const candidateCount = selectorReady
-    && input.target.kind === 'shot'
-    && input.target.shotIndex === input.firstShotIndex ? 3 : 1;
+    && target.kind === 'shot'
+    && target.shotIndex === input.firstShotIndex ? 3 : 1;
   const candidates = await generateImageCandidates(
-    input.target,
+    target,
     input.config,
-    generationReferenceImages,
+    referenceImages,
     candidateCount,
   );
   const candidateUrls = candidates.map(candidate => candidate.url);
   const selection = await selectVimaxBestImageCandidate({
     targetDescription: input.target.prompt,
-    referenceImages: selectorReferenceImages,
+    referenceImages,
     candidateUrls,
     config: input.config,
   });
@@ -165,6 +177,7 @@ async function generateSubjectReferenceRegistry(input: {
   preset: VimaxSkillPreset;
   continuity: VimaxContinuityContract;
   config: VimaxReferenceAssetConfig;
+  initialReferenceAssets?: VimaxAgentReferenceAsset[];
 }): Promise<VimaxSubjectReferenceRegistry> {
   const allCharacterAssets = input.plan.assets.filter(asset => asset.kind === 'character');
   const placeholderLabels = new Set(['主角', '短剧主角', '角色', '核心角色']);
@@ -189,7 +202,10 @@ async function generateSubjectReferenceRegistry(input: {
       subjectId,
       subjectView: 'front',
     };
-    const front = await generateOneImage(frontTarget, input.config);
+    const initialReferenceUrls = (input.initialReferenceAssets || [])
+      .flatMap(asset => typeof asset.url === 'string' && asset.url ? [asset.url] : [])
+      .slice(0, 9);
+    const front = await generateOneImage(frontTarget, input.config, initialReferenceUrls);
     const views: VimaxSubjectReferenceView[] = [{
       id: `${subjectId}-front`,
       view: 'front',
@@ -210,7 +226,11 @@ async function generateSubjectReferenceRegistry(input: {
         subjectId,
         subjectView: view,
       };
-      const generated = await generateOneImage(target, input.config, [front.url]);
+      const generated = await generateOneImage(
+        target,
+        input.config,
+        [...new Set([front.url, ...initialReferenceUrls])].slice(0, 9),
+      );
       views.push({
         id: `${subjectId}-${view}`,
         view,
@@ -258,65 +278,6 @@ function appendPresetDirection(prompt: string, preset: VimaxSkillPreset) {
   ].join(' ').trim();
 }
 
-function stripShotProductionMetadata(value: string) {
-  return value
-    .replace(/【(?:短剧前提|制作要求|交付要求|全局要求)】/g, '')
-    .replace(/\d+\s*个?\s*\d+(?:\.\d+)?\s*秒\s*(?:分镜|镜头)/gi, '')
-    .replace(/\d+\s*个?\s*(?:分镜|镜头|clips?)/gi, '')
-    .replace(/(?:总时长|成片时长)\s*[:：]?\s*\d+(?:\.\d+)?\s*秒/gi, '')
-    .replace(/\d+(?:\.\d+)?\s*秒/g, '')
-    .replace(/[，,、；;]\s*[，,、；;]+/g, '，')
-    .replace(/^[\s，,、；;。]+|[\s，,、；;。]+$/g, '')
-    .trim();
-}
-
-function shotCompositionDirection(
-  shot: VimaxAgentPlan['shots'][number],
-  position: number,
-  totalShots: number,
-) {
-  const descriptor = `${shot.title} ${shot.camera} ${shot.prompt}`;
-  if (/(全景|远景|广角|航拍|建立)/.test(descriptor)) {
-    return '环境建立镜头：空间和环境占画面主体，人物保持全身或较小比例，不得变成人像证件照或大头特写。';
-  }
-  if (/(细节|微距|手部|道具|胶片|特写)/.test(descriptor)) {
-    return '细节镜头：只突出本镜指定的动作或道具细节，构图必须与人物正面定妆照明显不同。';
-  }
-  if (position === totalShots - 1) {
-    return '收束镜头：呈现故事结束时的单一决定性瞬间，不得把多个过程拼在同一画面。';
-  }
-  return position === 0
-    ? '开场镜头：先建立地点、人物位置和空间关系。'
-    : '叙事推进镜头：只表现本镜动作和构图，不重复前一镜的景别。';
-}
-
-function buildShotReferencePrompt(input: {
-  shot: VimaxAgentPlan['shots'][number];
-  position: number;
-  totalShots: number;
-  characterHint: string;
-  selectedSubjectViews: VimaxSelectedSubjectView[];
-  continuity: VimaxContinuityContract;
-  preset: VimaxSkillPreset;
-}) {
-  const visibleEvent = stripShotProductionMetadata(input.shot.prompt)
-    || `${input.shot.title}，${input.shot.camera}`;
-  const identityHint = input.selectedSubjectViews.length > 0
-    ? `角色身份锚点：${input.selectedSubjectViews.map(item => `${item.label}（${item.view === 'front' ? '正面' : item.view === 'side' ? '侧面' : '背面'}身份参考）`).join('；')}。只保持身份、发型和服装，不复制白底、正面站姿或定妆照构图。`
-    : '';
-  return appendPresetDirection([
-    '生成单张独立的16:9电影画面，只呈现一个时刻；不是分镜板、拼贴、四宫格或多面板。',
-    `镜头身份：Clip ${input.shot.index} · ${input.shot.title}。`,
-    shotCompositionDirection(input.shot, input.position, input.totalShots),
-    `构图与机位：${input.shot.camera}。`,
-    `本镜唯一可见事件：${visibleEvent}。`,
-    input.characterHint ? `全片设定锚点（只用于连续性，不改变本镜构图）：${input.characterHint}。` : '',
-    identityHint,
-    buildVimaxContinuityPrompt(input.continuity, input.position),
-    '禁止文字、字幕、水印、界面、镜头编号、接触表、重复人物和多个时间状态。',
-  ].filter(Boolean).join('\n'), input.preset);
-}
-
 export async function callVimaxReferenceImages(input: {
   plan: VimaxAgentPlan;
   preset: VimaxSkillPreset;
@@ -324,19 +285,19 @@ export async function callVimaxReferenceImages(input: {
   config: VimaxReferenceAssetConfig;
   existingAssets?: VimaxAgentReferenceAsset[];
   existingSubjectRegistry?: VimaxSubjectReferenceRegistry;
+  initialReferenceAssets?: VimaxAgentReferenceAsset[];
 }) {
   if (!input.config.imageApiKey) throw new Error('缺少图像模型 API Key，无法进入参考素材阶段。');
   const subjectRegistry = input.existingSubjectRegistry || await generateSubjectReferenceRegistry(input);
   const characterHint = input.plan.assets
     .filter(asset => ['character', 'scene', 'prop'].includes(asset.kind))
-    .map(asset => `${asset.label}: ${stripShotProductionMetadata(asset.prompt)}`)
+    .map(asset => `${asset.label}: ${asset.prompt}`)
     .join('；')
     .slice(0, 600);
   const targets: ReferenceTarget[] = [];
 
   if (input.plan.shots.length > 0) {
-    const shots = input.plan.shots.slice(0, 8);
-    for (const [position, shot] of shots.entries()) {
+    for (const shot of input.plan.shots.slice(0, 8)) {
       const existing = input.existingAssets?.find(asset => (
         asset.kind === 'shot'
         && asset.shotIndex === shot.index
@@ -344,6 +305,7 @@ export async function callVimaxReferenceImages(input: {
         && asset.url.length > 0
       ));
       if (existing) continue;
+      const base = shot.prompt || `${shot.title}, ${shot.camera}`;
       const selectedSubjectViews = selectSubjectViews(
         subjectRegistry,
         [shot.title, shot.camera, shot.prompt].filter(Boolean).join(' '),
@@ -353,15 +315,13 @@ export async function callVimaxReferenceImages(input: {
         label: `Clip ${shot.index} · ${shot.title}`,
         shotIndex: shot.index,
         selectedSubjectViews,
-        prompt: buildShotReferencePrompt({
-          shot,
-          position,
-          totalShots: shots.length,
-          characterHint,
-          selectedSubjectViews,
-          continuity: input.continuity,
-          preset: input.preset,
-        }),
+        prompt: appendPresetDirection([
+          characterHint ? `${base}。角色与场景设定参考：${characterHint}` : base,
+          selectedSubjectViews.length > 0
+            ? `本镜角色参考：${selectedSubjectViews.map(item => `${item.label}使用${item.view === 'front' ? '正面' : item.view === 'side' ? '侧面' : '背面'}定妆`).join('；')}。`
+            : '',
+          buildVimaxContinuityPrompt(input.continuity, Math.max(0, shot.index - 1)),
+        ].join('\n'), input.preset),
       });
     }
   } else {
@@ -377,23 +337,12 @@ export async function callVimaxReferenceImages(input: {
     throw new Error('当前计划没有可用于生成参考素材的提示词。');
   }
 
-  // Member BYOK image quotas can be single-concurrency. Keep shot generation
-  // ordered so one rate-limited request cannot discard the rest of the batch.
-  const settled: PromiseSettledResult<Awaited<ReturnType<typeof generateReferenceTarget>>>[] = [];
-  for (const target of targets) {
-    try {
-      settled.push({
-        status: 'fulfilled',
-        value: await generateReferenceTarget({
-          target,
-          config: input.config,
-          firstShotIndex: input.plan.shots[0]?.index,
-        }),
-      });
-    } catch (reason) {
-      settled.push({ status: 'rejected', reason });
-    }
-  }
+  const settled = await Promise.allSettled(targets.map(target => generateReferenceTarget({
+    target,
+    config: input.config,
+    firstShotIndex: input.plan.shots[0]?.index,
+    initialReferenceAssets: input.initialReferenceAssets,
+  })));
   const generatedTargets = settled.flatMap(result => (
     result.status === 'fulfilled' ? [result.value] : []
   ));

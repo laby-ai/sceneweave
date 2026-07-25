@@ -21,7 +21,14 @@ type PublicProfile = {
 
 type ProfileResponse = { profile: PublicProfile };
 
-export function BailianConnectionControl() {
+interface BailianConnectionControlProps {
+  storageScope?: string;
+  requestHeaders?: Record<string, string>;
+  onConnectionChange?: () => void;
+}
+
+export function BailianConnectionControl(_props: BailianConnectionControlProps) {
+  void _props;
   const [open, setOpen] = useState(false);
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [apiKey, setApiKey] = useState('');

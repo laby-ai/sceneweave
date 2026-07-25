@@ -3,12 +3,16 @@ import type { VimaxAgentPlan, VimaxAgentStepBody } from '@/lib/skills/vimax-shor
 import { buildProductionBackedVimaxPlan } from '@/lib/skills/vimax-short-drama/vimax-plan-artifacts';
 import { persistVimaxPlanTask } from '@/lib/skills/vimax-short-drama/vimax-plan-task';
 import { parseVimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
+import { applyVimaxShotGenerationRoutes } from '@/lib/skills/vimax-short-drama/vimax-shot-generation-route';
 import { resolveVimaxSkillPresetForRuntime } from '@/lib/skills/vimax-short-drama/vimax-skill-presets';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ASSET_KINDS = new Set<VimaxAgentPlan['assets'][number]['kind']>([
   'script', 'character', 'scene', 'prop', 'shot', 'reference',
 ]);
+const SPATIAL_RELATIONS = new Set(['same-scene', 'new-scene']);
+const TEMPORAL_RELATIONS = new Set(['continuous', 'elapsed', 'time-jump']);
+const ROUTE_CONFIDENCE = new Set(['high', 'medium', 'low']);
 
 function requiredText(value: unknown, label: string, maxLength = 8_000) {
   const text = typeof value === 'string' ? value.trim() : '';
@@ -34,6 +38,18 @@ export function parseVimaxRecoveryPlan(value: unknown): VimaxAgentPlan {
     duration: Math.max(1, Math.min(15, Math.floor(Number(shot?.duration) || 5))),
     camera: optionalText(shot?.camera, 1_000) || '连续镜头',
     prompt: requiredText(shot?.prompt, `第 ${index + 1} 镜描述`),
+    ...(SPATIAL_RELATIONS.has(String(shot?.spatialRelation))
+      ? { spatialRelation: shot?.spatialRelation as NonNullable<typeof shot.spatialRelation> }
+      : {}),
+    ...(TEMPORAL_RELATIONS.has(String(shot?.temporalRelation))
+      ? { temporalRelation: shot?.temporalRelation as NonNullable<typeof shot.temporalRelation> }
+      : {}),
+    ...(ROUTE_CONFIDENCE.has(String(shot?.routeConfidence))
+      ? { routeConfidence: shot?.routeConfidence as NonNullable<typeof shot.routeConfidence> }
+      : {}),
+    ...(Array.isArray(shot?.conflictFlags)
+      ? { conflictFlags: shot.conflictFlags.filter(flag => typeof flag === 'string').slice(0, 8) }
+      : {}),
     ...(typeof shot?.referenceUrl === 'string' ? { referenceUrl: shot.referenceUrl.slice(0, 4_000) } : {}),
   }));
   const assets = Array.isArray(raw.assets) ? raw.assets.slice(0, 12).map((asset, index) => {
@@ -93,12 +109,19 @@ export function restoreVimaxRecoveryTask(input: {
     skillId: preset.id,
   }, input.owner);
   const built = buildProductionBackedVimaxPlan(prompt, plan, trustedBody, taskId);
+  const configuredVideoModel = productionPlan.providerRoutes.find(route => route.stage === 'video')?.model || '';
+  const routed = applyVimaxShotGenerationRoutes({
+    plan: built.plan,
+    assemblyPlan: built.assemblyPlan,
+    provider: configuredVideoModel.startsWith('happyhorse-') ? 'happyhorse-dashscope' : 'configured-provider',
+    configuredModel: configuredVideoModel,
+  });
   persistVimaxPlanTask({
     taskId,
     prompt,
-    plan: built.plan,
+    plan: routed.plan,
     productionProject: built.productionProject,
-    assemblyPlan: built.assemblyPlan,
+    assemblyPlan: routed.assemblyPlan,
     productionPlan,
   });
   return {

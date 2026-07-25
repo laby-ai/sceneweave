@@ -302,7 +302,7 @@ export function parseVimaxContinuityContract(value: unknown): VimaxContinuityCon
       || (Array.isArray(shot.assetAnchors) && shot.assetAnchors.every(anchor => typeof anchor === 'string')))
     && (shot.generationRoute === undefined
       || (isRecord(shot.generationRoute)
-        && ['first-frame', 'multi-reference'].includes(String(shot.generationRoute.mode))
+        && ['first-frame', 'multi-reference', 'text-only'].includes(String(shot.generationRoute.mode))
         && ['planner', 'server-default'].includes(String(shot.generationRoute.requestedBy))
         && typeof shot.generationRoute.reason === 'string'
         && typeof shot.generationRoute.model === 'string'

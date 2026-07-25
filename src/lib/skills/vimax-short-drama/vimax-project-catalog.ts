@@ -20,6 +20,9 @@ export interface VimaxProjectSummary {
 
 const viewKey = (scope?: string) => `vimax-workspace-view:${scope || 'default'}`;
 const activeProjectKey = (scope?: string) => `vimax-active-project:${scope || 'default'}`;
+const projectReferenceKey = (scope: string | undefined, projectId: string) => (
+  `vimax-project-references:${scope || 'default'}:${encodeURIComponent(projectId)}`
+);
 
 export function loadActiveVimaxProjectId(
   storage: VimaxWorkspaceViewReader | null,
@@ -34,6 +37,45 @@ export function saveActiveVimaxProjectId(
   projectId: string,
 ) {
   storage?.setItem(activeProjectKey(scope), projectId);
+}
+
+export function loadVimaxProjectReferenceIds(
+  storage: VimaxWorkspaceViewReader | null,
+  scope: string | undefined,
+  projectId: string,
+): string[] {
+  if (!storage || !projectId) return [];
+  try {
+    const parsed = JSON.parse(storage.getItem(projectReferenceKey(scope, projectId)) || '[]');
+    if (!Array.isArray(parsed)) return [];
+    return [...new Set(parsed.filter(item => typeof item === 'string' && item.trim()).map(item => item.trim()))].slice(0, 8);
+  } catch {
+    return [];
+  }
+}
+
+export function saveVimaxProjectReferenceIds(
+  storage: VimaxWorkspaceViewWriter | null,
+  scope: string | undefined,
+  projectId: string,
+  referenceIds: string[],
+) {
+  if (!storage || !projectId) return;
+  const normalized = [...new Set(referenceIds.filter(id => typeof id === 'string' && id.trim()).map(id => id.trim()))].slice(0, 8);
+  storage.setItem(projectReferenceKey(scope, projectId), JSON.stringify(normalized));
+}
+
+export function moveVimaxProjectReference<T extends { id: string }>(
+  references: T[],
+  referenceId: string,
+  direction: -1 | 1,
+): T[] {
+  const index = references.findIndex(reference => reference.id === referenceId);
+  const target = index + direction;
+  if (index < 0 || target < 0 || target >= references.length) return references;
+  const next = [...references];
+  [next[index], next[target]] = [next[target], next[index]];
+  return next;
 }
 
 export function createVimaxProject(
@@ -73,6 +115,23 @@ export function deleteVimaxProject(
 ): ChatHistoryEntry[] {
   if (!history.some(entry => entry.id === projectId)) return history;
   return history.filter(entry => entry.id !== projectId);
+}
+
+export function hasCurrentVimaxRouteContract(messages: ChatMessage[]): boolean {
+  const planned = [...messages].reverse().find(message => (
+    message.vimaxAgent?.phase === 'plan'
+    && (message.vimaxAgent.shots || []).length > 0
+  ))?.vimaxAgent;
+  if (!planned) return true;
+  return (planned.shots || []).every(shot => (
+    Boolean(shot.spatialRelation)
+    && Boolean(shot.temporalRelation)
+    && Boolean(shot.routeConfidence)
+  ));
+}
+
+export function removeLegacyVimaxProjects(history: ChatHistoryEntry[]): ChatHistoryEntry[] {
+  return history.filter(entry => hasCurrentVimaxRouteContract(entry.messages || []));
 }
 
 export function upsertVimaxProjectMessages(

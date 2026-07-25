@@ -8,6 +8,11 @@ import { createHash } from 'node:crypto';
 import fs from 'fs';
 import path from 'path';
 import { emitOperationalSystemEvent, emitTaskStateEvent } from './operational-observability';
+import {
+  isCompletedTaskExpired,
+  migrateLegacyHuiyingTasksFile,
+  resolveHuiyingTasksFile,
+} from './task-store-path';
 
 export type TaskType = 'video' | 'image' | 'copywriting' | 'poster' | 'avatar' | 'storyboard';
 export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
@@ -180,8 +185,8 @@ function nextTaskEventSeq(task: BackgroundTask): number {
   return Math.max(0, Number.isSafeInteger(task.eventSeq) ? Number(task.eventSeq) : 0) + 1;
 }
 
-// 任务存储目录。HUIYING_TASKS_FILE 让 QA/本地探针可以隔离任务文件，避免污染真实任务中心。
-const TASKS_FILE = process.env.HUIYING_TASKS_FILE || path.join('/tmp', 'dreambox-tasks', 'tasks.json');
+// 生产默认落到 release 的 shared artifacts；QA 可用环境变量隔离。
+const TASKS_FILE = resolveHuiyingTasksFile();
 const TASKS_DIR = path.dirname(TASKS_FILE);
 
 // 内存缓存（用于提高性能，但会以文件为准）
@@ -235,6 +240,7 @@ function replaceTaskFileWithRetry(tempFile: string, targetFile: string) {
 function loadTasksFromFile(): Map<string, BackgroundTask> {
   try {
     ensureDirectory();
+    migrateLegacyHuiyingTasksFile(TASKS_FILE);
     
     if (!fs.existsSync(TASKS_FILE)) {
       return new Map();
@@ -584,8 +590,7 @@ export function completeTask(taskId: string, result: TaskResult): boolean {
 
 /**
  * Completes a failed task after a no-cost recovery step rebuilt its missing
- * delivery metadata. This is intentionally narrower than completeTask so a
- * normal failed task cannot be revived without an explicit recovery path.
+ * delivery metadata. A normal failed task cannot use this transition.
  */
 export function completeFailedTaskRecovery(
   taskId: string,
@@ -781,8 +786,7 @@ export function cleanupExpiredTasks(): number {
   const stalePending: string[] = [];
 
   store.forEach((task, taskId) => {
-    // 清理已完成/失败/取消超过24小时的任务
-    if (task.completedAt && (now - task.completedAt) > 24 * 60 * 60 * 1000) {
+    if (task.completedAt && isCompletedTaskExpired(task.completedAt, now)) {
       expiredTasks.push(taskId);
     }
     // 将运行中超过30分钟未更新的任务标记为僵尸任务（延长超时时间以支持60秒长视频）

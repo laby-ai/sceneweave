@@ -2,16 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { mergeVideosWithLocalFfmpeg } from '@/lib/local-video-merge';
 import { extractLastFrameForHandoff } from '@/lib/video-frame-extraction';
 import { resolvePaperHostCreationOwnerFromRequest } from '@/lib/task-access';
-import { getTaskForOwner, type TaskOwner } from '@/lib/task-manager';
+import { createTask, getTaskForOwner, type TaskOwner } from '@/lib/task-manager';
 import type { VimaxAgentPlan, VimaxAgentReferenceAsset, VimaxAgentStepBody } from '@/lib/skills/vimax-short-drama/vimax-agent-contract';
 import { VIMAX_PLAN_MODEL } from '@/lib/skills/vimax-short-drama/vimax-generation-preferences';
 import { buildProductionBackedVimaxPlan } from '@/lib/skills/vimax-short-drama/vimax-plan-artifacts';
-import { createVimaxPlanTask, failVimaxPlanTask, persistVimaxPlanTask } from '@/lib/skills/vimax-short-drama/vimax-plan-task';
+import { persistVimaxPlanTask } from '@/lib/skills/vimax-short-drama/vimax-plan-task';
 import { resolveCanonicalVimaxStageInput } from '@/lib/skills/vimax-short-drama/vimax-canonical-stage-input';
 import { resolveVimaxRecoveryCreatedAfter, restoreVimaxRecoveryTask } from '@/lib/skills/vimax-short-drama/vimax-recovery-session';
 import { createVimaxVideoTaskRuntime } from '@/lib/skills/vimax-short-drama/vimax-video-task-runtime';
 import { runVimaxProductionVideoOrchestrator } from '@/lib/skills/vimax-short-drama/vimax-production-video-orchestrator';
-import { assertVimaxProductionPlanForPhase, buildVimaxProductionPlan, requiresVimaxReferenceAssets } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
+import { assertVimaxProductionPlanForPhase, buildVimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 import { resolveVimaxSkillRuntimeBinding } from '@/lib/skills/vimax-short-drama/vimax-skill-runtime-binding';
 import {
   resolveVimaxSkillPresetForRuntime,
@@ -24,15 +24,26 @@ import {
   type BYOKConnection,
 } from '@/lib/byok-provider';
 import { MemberBailianProfileRequiredError } from '@/lib/account/member-bailian-profile';
-import { applyVimaxShotGenerationRoutes } from '@/lib/skills/vimax-short-drama/vimax-shot-generation-route';
+import { isHappyHorseR2VModel } from '@/lib/happyhorse-r2v-adapter';
+import {
+  applyVimaxShotGenerationRoutes,
+  collectVimaxShotRouteIssues,
+} from '@/lib/skills/vimax-short-drama/vimax-shot-generation-route';
 import { buildVimaxPlanMessages } from '@/lib/skills/vimax-short-drama/vimax-plan-prompt';
+import { normalizeVimaxAgentPlan } from '@/lib/skills/vimax-short-drama/vimax-plan-contract';
 import {
   recoverHappyHorseVimaxVideo,
   type HappyHorseVimaxSegment,
 } from '@/lib/skills/vimax-short-drama/happyhorse-vimax-video';
 import { resolveAndPersistVimaxVideoReferenceAssets } from '@/lib/skills/vimax-short-drama/vimax-video-reference-assets';
 import { runVimaxReferenceAssetsPhase } from '@/lib/skills/vimax-short-drama/vimax-reference-phase';
-import { callWithSanitizedVimaxPlanningFailure, createVimaxPlanningProviderError, reportVimaxPlanningFailure, resolveVimaxPlanningConnectionPhase, resolveVimaxPlanningReadinessFailure } from '@/lib/skills/vimax-short-drama/vimax-planning-readiness';
+import {
+  appendVimaxInitialReferenceContext,
+  materializeVimaxInitialReferenceAssets,
+  normalizeVimaxInitialReferenceIds,
+  resolveVimaxInitialReferenceRecords,
+} from '@/lib/skills/vimax-short-drama/vimax-initial-references';
+import { callWithSanitizedVimaxPlanningFailure, reportVimaxPlanningFailure, resolveVimaxPlanningConnectionPhase, resolveVimaxPlanningReadinessFailure } from '@/lib/skills/vimax-short-drama/vimax-planning-readiness';
 import {
   buildVimaxContinuityContract,
   buildVimaxFrameProviderPrompt,
@@ -70,17 +81,6 @@ function assertPrompt(prompt: unknown): string {
   return text;
 }
 type LooseRecord = Record<string, unknown>;
-function asNum(value: unknown, fallback: number): number {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : fallback;
-}
-function asStr(value: unknown, fallback = ''): string {
-  return typeof value === 'string' ? value : value == null ? fallback : String(value);
-}
-
-const ALLOWED_ASSET_KINDS = ['script', 'character', 'scene', 'prop', 'shot', 'reference'];
-const ALLOWED_HANDOFF_INTENTS = ['strict-frame', 'reference-flexible'] as const;
-const ALLOWED_CONTINUITY_PRIORITIES = ['action', 'screen-direction', 'subject', 'scene', 'prop'] as const;
 
 /**
  * 从数组字段里抽出「已完整闭合」的对象，忽略被截断的尾部对象。
@@ -123,46 +123,6 @@ function extractCompleteObjects(raw: string, key: string): LooseRecord[] {
   return objects;
 }
 
-function normalizePlan(parsed: LooseRecord): VimaxAgentPlan {
-  const title = asStr(parsed.title).trim();
-  const rawShots = Array.isArray(parsed.shots) ? (parsed.shots as LooseRecord[]) : [];
-  if (!title || rawShots.length === 0) {
-    throw new Error('真实模型返回缺少 title 或 shots。');
-  }
-  const rawAssets = Array.isArray(parsed.assets) ? (parsed.assets as LooseRecord[]) : [];
-  return {
-    title,
-    summary: asStr(parsed.summary),
-    assets: rawAssets.slice(0, 12).map(asset => {
-      const kind = asStr(asset.kind);
-      return {
-        kind: (ALLOWED_ASSET_KINDS.includes(kind) ? kind : 'reference') as VimaxAgentPlan['assets'][number]['kind'],
-        label: asStr(asset.label, '参考素材'),
-        prompt: asStr(asset.prompt),
-      };
-    }),
-    shots: rawShots.slice(0, 8).map((shot, index) => ({
-      index: asNum(shot.index, index + 1),
-      title: asStr(shot.title, `镜头 ${index + 1}`),
-      duration: asNum(shot.duration, 6),
-      camera: asStr(shot.camera, '固定镜头'),
-      prompt: asStr(shot.prompt),
-      handoffIntent: ALLOWED_HANDOFF_INTENTS.includes(asStr(shot.handoffIntent) as typeof ALLOWED_HANDOFF_INTENTS[number])
-        ? asStr(shot.handoffIntent) as typeof ALLOWED_HANDOFF_INTENTS[number]
-        : undefined,
-      handoffReason: asStr(shot.handoffReason).trim() || undefined,
-      continuityPriorities: Array.isArray(shot.continuityPriorities)
-        ? shot.continuityPriorities
-          .map(item => asStr(item))
-          .filter((item): item is typeof ALLOWED_CONTINUITY_PRIORITIES[number] => (
-            ALLOWED_CONTINUITY_PRIORITIES.includes(item as typeof ALLOWED_CONTINUITY_PRIORITIES[number])
-          ))
-        : undefined,
-    })),
-    nextAction: asStr(parsed.nextAction, '确认分镜后进入参考素材生成。'),
-  };
-}
-
 /**
  * 鲁棒解析真实模型输出：严格解析 → 轻量修复（去尾逗号 / 补对象间逗号）→ 字段级容错抽取。
  * 最后一级用括号配对扫描已闭合的镜头对象，即便尾部被截断也能稳定闭环 30s/多镜头分镜。
@@ -176,7 +136,7 @@ function extractJsonObject(text: string): VimaxAgentPlan {
 
   // 1) 严格解析
   try {
-    return normalizePlan(JSON.parse(candidate) as LooseRecord);
+    return normalizeVimaxAgentPlan(JSON.parse(candidate));
   } catch { /* 进入修复 */ }
 
   // 2) 轻量修复：去掉数组/对象结尾多余逗号，补上相邻对象之间漏写的逗号
@@ -185,7 +145,7 @@ function extractJsonObject(text: string): VimaxAgentPlan {
       .replace(/,\s*([}\]])/g, '$1')
       .replace(/}\s*{/g, '},{')
       .replace(/]\s*\[/g, '],[');
-    return normalizePlan(JSON.parse(repaired) as LooseRecord);
+    return normalizeVimaxAgentPlan(JSON.parse(repaired));
   } catch { /* 进入字段级抽取 */ }
 
   // 3) 字段级容错抽取：标题/梗概用正则，assets/shots 用括号配对扫描，丢弃被截断的尾部对象
@@ -198,7 +158,7 @@ function extractJsonObject(text: string): VimaxAgentPlan {
   if (!titleMatch || shots.length === 0) {
     throw new Error('真实模型未返回可解析的结构化创作计划（标题或分镜缺失）。');
   }
-  return normalizePlan({
+  return normalizeVimaxAgentPlan({
     title: decode(titleMatch[1]),
     summary: summaryMatch ? decode(summaryMatch[1]) : '',
     assets,
@@ -214,7 +174,7 @@ async function callArkText(prompt: string, preset: VimaxSkillPreset, modelOverri
     const result = await chatWithBYOK(connection, {
       model,
       temperature: 0.2,
-      maxTokens: 4000,
+      maxTokens: 6000,
       messages: buildVimaxPlanMessages(prompt, preset),
     });
     return { model: result.model, plan: extractJsonObject(result.content), rawText: result.content };
@@ -232,7 +192,7 @@ async function callArkText(prompt: string, preset: VimaxSkillPreset, modelOverri
     body: JSON.stringify({
       model,
       temperature: 0.2,
-      max_tokens: 4000,
+      max_tokens: 6000,
       messages: buildVimaxPlanMessages(prompt, preset),
     }),
   });
@@ -259,13 +219,14 @@ function buildVimaxPlanEnvelope(
   body: VimaxAgentStepBody,
   taskId: string,
   planConnection?: BYOKConnection,
+  imageConnection?: BYOKConnection,
   videoConnection?: BYOKConnection,
 ) {
   const built = buildProductionBackedVimaxPlan(prompt, basePlan, body, taskId);
   const config = getArkConfig();
   const workflow = resolveVimaxSkillRuntimeBinding({ skillId: body.skillId });
   const planModel = planConnection?.model || model;
-  const imageModel = planConnection?.imageModel || config.imageModel;
+  const imageModel = imageConnection?.imageModel || config.imageModel;
   const videoModel = videoConnection?.videoModel || config.videoModel;
   const { plan, assemblyPlan } = applyVimaxShotGenerationRoutes({
     plan: built.plan,
@@ -277,7 +238,7 @@ function buildVimaxPlanEnvelope(
   const continuity = buildVimaxContinuityContract({
     productionProject,
     assemblyPlan,
-    imageModel: config.imageModel,
+    imageModel,
     providerHandoff: resolveVimaxProviderHandoffMode({
       provider: videoConnection?.provider || 'ark-video-v3',
       model: videoModel,
@@ -292,10 +253,10 @@ function buildVimaxPlanEnvelope(
     videoModel,
     providerReadiness: {
       plan: Boolean(planConnection?.apiKey || config.apiKey),
-      referenceAssets: Boolean((planConnection?.apiKey && planConnection.imageModel) || config.imageApiKey),
+      referenceAssets: Boolean((imageConnection?.apiKey && imageConnection.imageModel) || config.imageApiKey),
       video: Boolean(videoConnection?.videoModel && videoConnection.apiKey) || Boolean(config.imageApiKey),
     },
-    referenceAssetsRequired: requiresVimaxReferenceAssets(videoConnection?.provider, videoModel),
+    referenceAssetsRequired: videoConnection?.provider !== 'happyhorse-dashscope' || isHappyHorseR2VModel(videoModel),
     assets: plan.assets,
     shots: plan.shots,
     workflow,
@@ -311,10 +272,20 @@ function createPersistedPlanEnvelope(
   basePlan: VimaxAgentPlan,
   body: VimaxAgentStepBody,
   planConnection?: BYOKConnection,
+  imageConnection?: BYOKConnection,
   videoConnection?: BYOKConnection,
-  existingTaskId?: string,
 ) {
-  const taskId = existingTaskId || createVimaxPlanTask(owner, prompt, body);
+  const taskId = createTask('storyboard', {
+    prompt,
+    duration: `${body.duration || 30}s`,
+    ratio: body.ratio || '16:9',
+    resolution: body.resolution || '720p',
+    style: body.style || '电影感短剧',
+    sceneType: body.sceneType || 'drama',
+    workflow: 'vimax-agent',
+    skillId: body.skillId,
+    referenceIds: normalizeVimaxInitialReferenceIds(body.referenceIds),
+  }, owner);
   const { plan, productionPlan, productionProject, assemblyPlan } = buildVimaxPlanEnvelope(
     prompt,
     model,
@@ -322,6 +293,7 @@ function createPersistedPlanEnvelope(
     body,
     taskId,
     planConnection,
+    imageConnection,
     videoConnection,
   );
   persistVimaxPlanTask({
@@ -353,15 +325,16 @@ async function callArkTextStream(prompt: string, preset: VimaxSkillPreset, model
       model,
       enable_thinking: false,
       response_format: { type: 'json_object' },
-      stream: true,
       max_tokens: 4000,
+      stream: true,
       messages: buildVimaxPlanMessages(prompt, preset),
     }),
   });
 
   if (!response.ok || !response.body) {
     const data = await response.json().catch(() => ({}));
-    throw createVimaxPlanningProviderError(response.status, data);
+    const message = typeof data?.error?.message === 'string' ? data.error.message : response.statusText;
+    throw new Error(`Ark 调用失败：${message}`);
   }
 
   const reader = response.body.getReader();
@@ -620,22 +593,28 @@ export async function POST(request: NextRequest) {
     const phase = body.phase || 'plan';
     const hasExplicitConnection = ['x-yh-provider', 'x-yh-api-base', 'x-yh-api-key', 'x-yh-model'].every(name => request.headers.get(name)?.trim());
     const requestConnections = phase === 'planning_connection_validate' && access.sessionMode !== 'member'
-      ? { planning: hasExplicitConnection ? extractBYOKConnection(request.headers) : undefined, video: undefined } : await resolveBYOKConnectionsForRequest(request, access.sessionMode === 'member' ? owner : undefined);
+      ? { planning: hasExplicitConnection ? extractBYOKConnection(request.headers) : undefined, image: undefined, video: undefined }
+      : await resolveBYOKConnectionsForRequest(request, access.sessionMode === 'member' ? owner : undefined);
     const planningConnection = requestConnections.planning;
     const connectionResponse = await resolveVimaxPlanningConnectionPhase(phase, planningConnection, getArkConfig().apiKey);
     if (connectionResponse) return NextResponse.json(connectionResponse.payload, { status: connectionResponse.status });
 
     if (phase === 'plan') {
       const prompt = assertPrompt(body.prompt);
+      const referenceIds = normalizeVimaxInitialReferenceIds(body.referenceIds);
+      const initialReferenceRecords = await resolveVimaxInitialReferenceRecords(owner, referenceIds);
+      const planningPrompt = appendVimaxInitialReferenceContext(prompt, initialReferenceRecords);
       const preset = resolveVimaxSkillPresetForRuntime(body.skillId);
       const trustedBody: VimaxAgentStepBody = {
         ...body,
+        referenceIds,
         skillId: preset.id,
         sceneType: preset.sceneType,
         style: preset.style,
       };
       const wantStream = body.stream === true;
       const planConnection = requestConnections.planning;
+      const imageConnection = requestConnections.image;
       const videoConnection = requestConnections.video;
       const readinessFailure = resolveVimaxPlanningReadinessFailure(planConnection, getArkConfig().apiKey);
       if (readinessFailure) {
@@ -643,15 +622,13 @@ export async function POST(request: NextRequest) {
       }
 
       if (wantStream) {
-        const planTaskId = createVimaxPlanTask(owner, prompt, trustedBody);
         const encoder = new TextEncoder();
         const stream = new ReadableStream({
           async start(controller) {
             const send = (event: string, data: unknown) => controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
             try {
               send('plan.start', { phase: 'plan' });
-              send('plan.accepted', { taskId: planTaskId });
-              const result = await callArkTextStream(prompt, preset, body.model, (delta) => {
+              const result = await callArkTextStream(planningPrompt, preset, body.model, (delta) => {
                 send('plan.delta', { delta });
               }, planConnection);
               const envelope = createPersistedPlanEnvelope(
@@ -661,20 +638,21 @@ export async function POST(request: NextRequest) {
                 result.plan,
                 trustedBody,
                 planConnection,
+                imageConnection,
                 videoConnection,
-                planTaskId,
               );
               send('plan.complete', { success: true, phase: 'plan', model: result.model, ...envelope });
             } catch (error) {
-              failVimaxPlanTask(planTaskId);
-              send('plan.error', { ...reportVimaxPlanningFailure(error), taskId: planTaskId });
-            } finally { controller.close(); }
+              send('plan.error', reportVimaxPlanningFailure(error));
+            } finally {
+              controller.close();
+            }
           },
         });
         return new Response(stream, { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' } });
       }
 
-      const result = await callWithSanitizedVimaxPlanningFailure(() => callArkText(prompt, preset, body.model, planConnection));
+      const result = await callWithSanitizedVimaxPlanningFailure(() => callArkText(planningPrompt, preset, body.model, planConnection));
       const envelope = createPersistedPlanEnvelope(
         owner,
         prompt,
@@ -682,6 +660,7 @@ export async function POST(request: NextRequest) {
         result.plan,
         trustedBody,
         planConnection,
+        imageConnection,
         videoConnection,
       );
       return NextResponse.json({
@@ -700,20 +679,25 @@ export async function POST(request: NextRequest) {
       if (!task) throw new Error('创作项目不存在或无权访问，参考素材无法保存。');
       const config = getArkConfig();
       const planConnection = requestConnections.planning;
+      const imageConnection = requestConnections.image;
+      const initialReferenceRecords = await resolveVimaxInitialReferenceRecords(owner, task.config.referenceIds);
+      const initialReferenceAssets = await materializeVimaxInitialReferenceAssets(owner, initialReferenceRecords);
       const result = await runVimaxReferenceAssetsPhase({
         task,
         plan: canonical.plan,
         productionPlan: canonical.productionPlan,
         planningConnection: planConnection,
+        imageConnection,
+        initialReferenceAssets,
         config: {
           textModel: config.textModel,
           imageModel: config.imageModel,
           videoModel: config.videoModel,
-          imageApiKey: planConnection?.apiKey || config.imageApiKey || '',
-          imageApiBase: planConnection?.apiBase || config.imageApiBase,
+          imageApiKey: imageConnection?.apiKey || config.imageApiKey || '',
+          imageApiBase: imageConnection?.apiBase || config.imageApiBase,
           selectorApiKey: planConnection?.apiKey || config.apiKey || '',
           selectorApiBase: planConnection?.apiBase || config.apiBase,
-          selectorModel: config.selectorModel,
+          selectorModel: planConnection?.model || config.selectorModel,
         },
       });
       return NextResponse.json({
@@ -752,6 +736,32 @@ export async function POST(request: NextRequest) {
         recoveryCreatedAfter = restored.createdAfter;
       }
       const canonical = resolveCanonicalVimaxStageInput({ taskId: canonicalTaskId, owner });
+      const routeIssues = collectVimaxShotRouteIssues(canonical.assemblyPlan);
+      const legacyRouteIssues = routeIssues.filter(issue => issue.code === 'legacy-plan-route-contract-missing');
+      if (legacyRouteIssues.length > 0) {
+        return NextResponse.json(
+          {
+            success: false,
+            phase,
+            code: 'legacy-plan-not-supported',
+            error: '旧项目缺少新版镜头衔接合同，已停止生成。请新建项目后重新规划。',
+            routeIssues: legacyRouteIssues,
+          },
+          { status: 410 },
+        );
+      }
+      if (routeIssues.length > 0 && body.confirmRouteDecisions !== true) {
+        return NextResponse.json(
+          {
+            success: false,
+            phase,
+            code: 'shot-route-confirmation-required',
+            error: '部分镜头的时空关系或衔接路线需要确认，尚未调用视频模型。',
+            routeIssues,
+          },
+          { status: 409 },
+        );
+      }
       const videoModel = videoConnection?.videoModel || config.videoModel;
       const productionPlan = assertVimaxProductionPlanForPhase(canonical.productionPlan, 'video', {
         plan: planConnection?.model || config.textModel,

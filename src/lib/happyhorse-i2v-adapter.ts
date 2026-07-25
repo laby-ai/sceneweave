@@ -4,6 +4,7 @@ import {
 } from '@/lib/happyhorse-video-provider';
 
 const HAPPYHORSE_I2V_MODEL = 'happyhorse-1.1-i2v';
+const SUPPORTED_IMAGE_INPUT = /^(https?:\/\/|data:image\/(?:jpeg|png|webp);base64,)/i;
 
 export interface HappyHorseI2VRequestOptions extends HappyHorseVideoRequestOptions {
   firstFrameImage: string;
@@ -38,8 +39,8 @@ export function buildHappyHorseI2VSubmitRequest(
     throw new Error('快乐马首帧视频适配器仅支持 happyhorse-1.1-i2v');
   }
   const firstFrameImage = String(options.firstFrameImage || '').trim();
-  if (!/^(https?:\/\/|data:image\/)/i.test(firstFrameImage)) {
-    throw new Error('快乐马首帧视频需要一个可访问的首帧图片');
+  if (!SUPPORTED_IMAGE_INPUT.test(firstFrameImage)) {
+    throw new Error('快乐马首帧视频只接受 JPEG、PNG 或 WEBP 的公网 URL/Base64 图片');
   }
   const base = buildHappyHorseVideoSubmitRequest(options);
   return {

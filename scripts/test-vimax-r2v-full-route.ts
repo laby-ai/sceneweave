@@ -10,7 +10,6 @@ import { promisify } from 'node:util';
 import ffmpegPath from 'ffmpeg-static';
 
 import type { ProductionAssemblyPlan } from '../src/lib/production-assembly-plan';
-import { buildBoundaryBridgeTimeline } from '../src/lib/local-video-merge';
 import type { VimaxAgentPlan } from '../src/lib/skills/vimax-short-drama/vimax-agent-contract';
 import {
   buildVimaxContinuityContract,
@@ -120,9 +119,27 @@ async function main() {
         { kind: 'prop', label: '红色录音笔', prompt: '红色录音笔始终握在右手' },
       ],
       shots: [
-        { index: 1, title: '收到留言', duration: 5, camera: '向右跟拍', prompt: '女记者向右走并按下录音笔' },
-        { index: 2, title: '穿过站台', duration: 5, camera: '同方向中景', prompt: '承接按键动作继续向右穿过站台' },
-        { index: 3, title: '发现真相', duration: 5, camera: '同方向推近', prompt: '承接行走停在灯下听见关键留言' },
+        {
+          index: 1, title: '收到留言', duration: 5, camera: '向右跟拍', prompt: '女记者向右走并按下录音笔',
+          sceneId: 'scene-platform', characterIds: ['character-reporter'], propIds: ['prop-recorder'],
+          actionStart: '女记者站在雨夜站台入口，右手握着录音笔。',
+          actionEnd: '女记者向右迈步并按下录音笔。',
+          spatialRelation: 'new-scene', temporalRelation: 'time-jump', routeConfidence: 'high',
+        },
+        {
+          index: 2, title: '穿过站台', duration: 5, camera: '同方向中景', prompt: '承接按键动作继续向右穿过站台',
+          sceneId: 'scene-platform', characterIds: ['character-reporter'], propIds: ['prop-recorder'],
+          actionStart: '女记者向右迈步并按下录音笔。',
+          actionEnd: '女记者握着录音笔穿过站台并走近灯下。',
+          spatialRelation: 'same-scene', temporalRelation: 'continuous', routeConfidence: 'high',
+        },
+        {
+          index: 3, title: '发现真相', duration: 5, camera: '同方向推近', prompt: '承接行走停在灯下听见关键留言',
+          sceneId: 'scene-signal-room', characterIds: ['character-reporter'], propIds: ['prop-recorder'],
+          actionStart: '女记者已经进入信号室，站在指示灯前。',
+          actionEnd: '女记者停在指示灯前听完关键留言。',
+          spatialRelation: 'new-scene', temporalRelation: 'elapsed', routeConfidence: 'high',
+        },
       ],
       nextAction: '生成连续短剧',
     };
@@ -131,9 +148,15 @@ async function main() {
       phase: 'plan', skillId: 'short-drama', duration: 15, segmentDuration: 5, segmentCount: 3,
       ratio: '16:9', resolution: '720p', sceneType: 'drama', style: '电影感短剧',
     }, taskId);
+    const routedBuilt = applyVimaxShotGenerationRoutes({
+      plan: built.plan,
+      assemblyPlan: built.assemblyPlan,
+      provider: 'happyhorse-dashscope',
+      configuredModel: 'happyhorse-1.1-r2v',
+    });
     const continuity = buildVimaxContinuityContract({
       productionProject: built.productionProject,
-      assemblyPlan: built.assemblyPlan,
+      assemblyPlan: routedBuilt.assemblyPlan,
       providerHandoff: resolveVimaxProviderHandoffMode({
         provider: 'happyhorse-dashscope',
         model: 'happyhorse-1.1-r2v',
@@ -163,7 +186,7 @@ async function main() {
       prompt: plan.summary,
       plan: built.plan,
       productionProject: built.productionProject,
-      assemblyPlan: built.assemblyPlan,
+      assemblyPlan: routedBuilt.assemblyPlan,
       productionPlan,
     });
     const requestAssets = [
@@ -181,6 +204,68 @@ async function main() {
       'x-yh-api-key': 'fixture-only-key',
       'x-yh-video-model': 'happyhorse-1.1-r2v',
     };
+    const providerCountBeforeGates = providerRequests.length;
+    const legacyTaskId = createTask('storyboard', { prompt: plan.summary, workflow: 'vimax-agent' }, owner);
+    persistVimaxPlanTask({
+      taskId: legacyTaskId,
+      prompt: plan.summary,
+      plan: built.plan,
+      productionProject: built.productionProject,
+      assemblyPlan: {
+        ...routedBuilt.assemblyPlan,
+        segments: routedBuilt.assemblyPlan.segments.map(segment => {
+          const { generationRoute: _generationRoute, ...legacySegment } = segment;
+          void _generationRoute;
+          return legacySegment;
+        }),
+      },
+      productionPlan,
+    });
+    const legacyResponse = await route.POST(new NextRequest('http://localhost/api/smart/vimax-agent-step', {
+      method: 'POST',
+      headers: requestHeaders,
+      body: JSON.stringify({ taskId: legacyTaskId, phase: 'video', confirm: true, assets: requestAssets }),
+    }));
+    assert.equal(legacyResponse.status, 410);
+    assert.equal((await legacyResponse.json() as { code?: string }).code, 'legacy-plan-not-supported');
+    assert.equal(providerRequests.length, providerCountBeforeGates, 'legacy project gate must not call a provider');
+
+    const lowConfidenceAssembly = {
+      ...routedBuilt.assemblyPlan,
+      segments: routedBuilt.assemblyPlan.segments.map((segment, index) => (
+        index === 1
+          ? {
+              ...segment,
+              generationRoute: {
+                ...segment.generationRoute!,
+                requiresConfirmation: true,
+                reason: '规划模型对镜头衔接判断为低置信度。',
+              },
+            }
+          : segment
+      )),
+    };
+    const lowConfidenceTaskId = createTask('storyboard', { prompt: plan.summary, workflow: 'vimax-agent' }, owner);
+    persistVimaxPlanTask({
+      taskId: lowConfidenceTaskId,
+      prompt: plan.summary,
+      plan: built.plan,
+      productionProject: built.productionProject,
+      assemblyPlan: lowConfidenceAssembly,
+      productionPlan,
+    });
+    const lowConfidenceResponse = await route.POST(new NextRequest('http://localhost/api/smart/vimax-agent-step', {
+      method: 'POST',
+      headers: requestHeaders,
+      body: JSON.stringify({ taskId: lowConfidenceTaskId, phase: 'video', confirm: true, assets: requestAssets }),
+    }));
+    assert.equal(lowConfidenceResponse.status, 409);
+    assert.equal(
+      (await lowConfidenceResponse.json() as { code?: string }).code,
+      'shot-route-confirmation-required',
+    );
+    assert.equal(providerRequests.length, providerCountBeforeGates, 'low-confidence gate must not call a provider');
+
     const response = await route.POST(new NextRequest('http://localhost/api/smart/vimax-agent-step', {
       method: 'POST',
       headers: requestHeaders,
@@ -195,16 +280,16 @@ async function main() {
     }
     const background = getTaskForOwner(accepted.backgroundTaskId!, owner);
     assert.equal(background?.status, 'completed', background?.error || background?.message);
-    assert.equal(providerRequests.length, 5, 'three shots and two required transition bridges must run serially');
+    assert.equal(providerRequests.length, 3, 'three semantically routed shots must run serially without legacy bridge tasks');
+    assert.deepEqual(
+      providerRequests[1]?.body.input?.media,
+      [{ type: 'first_frame', url: 'https://fixture.invalid/fixture-provider-1-last.jpg' }],
+      'continuous shot 2 must use exactly the previous real tail as its I2V first frame',
+    );
     assert.deepEqual(
       providerRequests[2]?.body.input?.media?.at(-1),
       { type: 'reference_image', url: 'https://fixture.invalid/fixture-provider-2-last.jpg' },
-      'shot 2 must reserve the generated boundary new-camera image in its R2V reference set',
-    );
-    assert.deepEqual(
-      providerRequests[4]?.body.input?.media?.at(-1),
-      { type: 'reference_image', url: 'https://fixture.invalid/fixture-provider-4-last.jpg' },
-      'shot 3 must reserve the latest generated boundary new-camera image in its R2V reference set',
+      'reset shot 3 must reserve the latest real tail in its ordered R2V reference set',
     );
     const parent = getTaskForOwner(taskId, owner);
     assert.deepEqual(parent?.result?.vimaxReferenceAssets, requestAssets);
@@ -212,25 +297,13 @@ async function main() {
     assert.deepEqual(assemblyPlan.segments.map(segment => segment.status), ['completed', 'completed', 'completed']);
     assert.deepEqual(
       assemblyPlan.boundaryBridgePlan?.boundaries.map(boundary => boundary.status),
-      ['generated', 'generated'],
+      ['ready', 'ready'],
     );
     assert.ok(assemblyPlan.boundaryBridgePlan?.boundaries.every(boundary => (
-      boundary.bridgeVideoUrl && boundary.newCameraImageUrl
+      !boundary.bridgeVideoUrl && !boundary.newCameraImageUrl
     )));
-    assert.equal(isReusableVimaxBoundaryBridge(assemblyPlan, 0), true);
-    assert.equal(isReusableVimaxBoundaryBridge(assemblyPlan, 1), true);
-    const readyBoundaryPlan: ProductionAssemblyPlan = {
-      ...assemblyPlan,
-      boundaryBridgePlan: assemblyPlan.boundaryBridgePlan
-        ? {
-          ...assemblyPlan.boundaryBridgePlan,
-          boundaries: assemblyPlan.boundaryBridgePlan.boundaries.map((boundary, index) => (
-            index === 0 ? { ...boundary, status: 'ready' as const } : boundary
-          )),
-        }
-        : assemblyPlan.boundaryBridgePlan,
-    };
-    assert.equal(isReusableVimaxBoundaryBridge(readyBoundaryPlan, 0), true);
+    assert.equal(isReusableVimaxBoundaryBridge(assemblyPlan, 0), false);
+    assert.equal(isReusableVimaxBoundaryBridge(assemblyPlan, 1), false);
     const lastSuccessfulResult = parseVimaxProductionPlan(parent?.result?.productionPlan)?.render.lastSuccessfulResult;
     assert.match(lastSuccessfulResult?.videoUrl || '', /^\/api\/final-videos\/[0-9a-f-]{36}$/);
     assert.equal(lastSuccessfulResult?.renderReport?.segmentCount, 3);
@@ -238,21 +311,10 @@ async function main() {
       'https://fixture.invalid/fixture-provider-1.mp4',
       'https://fixture.invalid/fixture-provider-2.mp4',
       'https://fixture.invalid/fixture-provider-3.mp4',
-      'https://fixture.invalid/fixture-provider-4.mp4',
-      'https://fixture.invalid/fixture-provider-5.mp4',
     ];
     assert.deepEqual([...mediaDownloads].sort(), [...expectedTimelineUrls].sort(),
-      'the final edit must consume all persisted shot and boundary media');
-    const editTimeline = buildBoundaryBridgeTimeline(
-      [expectedTimelineUrls[0], expectedTimelineUrls[2], expectedTimelineUrls[4]],
-      [expectedTimelineUrls[1], expectedTimelineUrls[3]],
-      [5, 5, 5],
-    );
-    assert.deepEqual(editTimeline.sources.map(source => source.url), expectedTimelineUrls,
-      'boundary media must be edited between its adjacent shots');
-    assert.equal(editTimeline.expectedDurationSeconds, 15,
-      'two-sided overlaps must keep the three-shot edit at 15 seconds');
-    assert.ok(providerRequests.slice(0, 4).every((request, index) => (
+      'the final edit must consume each persisted shot exactly once');
+    assert.ok(providerRequests.slice(0, -1).every((request, index) => (
       providerRequests[index + 1] && Number(request.taskId.split('-').pop()) < Number(providerRequests[index + 1].taskId.split('-').pop())
     )));
     const finalId = lastSuccessfulResult?.videoUrl.split('/').pop();
@@ -272,15 +334,7 @@ async function main() {
     const dualPlan: VimaxAgentPlan = {
       ...plan,
       title: '雨夜录音笔双路由',
-      shots: plan.shots.map((shot, index) => ({
-        ...shot,
-        handoffIntent: index === 1 ? 'strict-frame' as const : 'reference-flexible' as const,
-        handoffReason: index === 1
-          ? '同一动作、同一空间，必须承接上一镜尾帧。'
-          : index === 0
-            ? '第一镜建立角色与场景。'
-            : '主动换到站外广场，保留人物与道具参考。',
-      })),
+      shots: plan.shots,
     };
     const dualTaskId = createTask('storyboard', {
       prompt: dualPlan.summary,
@@ -295,7 +349,6 @@ async function main() {
       assemblyPlan: dualBuilt.assemblyPlan,
       provider: 'happyhorse-dashscope',
       configuredModel: 'happyhorse-1.1-r2v',
-      routingStrategy: 'legacy-dual-route',
     });
     const dualContinuity = buildVimaxContinuityContract({
       productionProject: dualBuilt.productionProject,
@@ -381,9 +434,9 @@ async function main() {
     console.log(JSON.stringify({
       ok: true,
       route: '/api/smart/vimax-agent-step',
-      execution: 'assembly-queue -> segment -> boundary -> segment -> boundary -> segment -> render-lock -> download',
+      execution: 'assembly-queue -> semantic-route -> segment -> segment -> segment -> render-lock -> download',
       segmentProviderTasks: 3,
-      boundaryProviderTasks: 2,
+      boundaryProviderTasks: 0,
       realProviderCalls: 0,
       fixtureProviderSubmits: providerRequests.length,
       dualRouteProviderTasks: dualRequests.length,

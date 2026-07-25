@@ -1,4 +1,13 @@
 import { clientApiPath } from '@/lib/client-api';
+import {
+  BAILIAN_WORKSPACE_API_HOST,
+  resolveBailianApiBases,
+} from '@/lib/bailian-routing';
+export {
+  BAILIAN_UNIVERSAL_API_HOST,
+  BAILIAN_WORKSPACE_API_HOST,
+  resolveBailianApiBases,
+} from '@/lib/bailian-routing';
 
 type StoredApiProvider = 'openai-compatible' | 'ark-plan' | 'happyhorse-dashscope';
 
@@ -21,29 +30,9 @@ const BYOK_STORAGE_KEY = 'dreambox-api-connection';
 const PLANNING_SESSION_STORAGE_KEY = 'dreambox-planning-connection';
 const HAPPYHORSE_SESSION_STORAGE_KEY = 'dreambox-happyhorse-connection';
 export const DEFAULT_PLANNING_MODEL = 'qwen3.7-plus';
-export const DEFAULT_IMAGE_MODEL = 'qwen-image-2.0-pro';
+export const DEFAULT_IMAGE_MODEL = 'wan2.7-image-pro';
 export const DEFAULT_VIDEO_MODEL = 'happyhorse-1.1-i2v';
-export const BAILIAN_UNIVERSAL_API_HOST = 'https://dashscope.aliyuncs.com';
-export const BAILIAN_DEFAULT_API_HOST = BAILIAN_UNIVERSAL_API_HOST;
-
-export interface BailianApiBases {
-  apiHost: string;
-  planningApiBase: string;
-  videoApiBase: string;
-}
-
-export function resolveBailianApiBases(value: string): BailianApiBases {
-  const parsed = new URL(value.trim());
-  if (parsed.protocol !== 'https:') throw new Error('百炼 API Host 必须使用 HTTPS。');
-  const suffixPattern = /\/(?:compatible-mode\/v1|api\/v1)\/?$/;
-  const pathname = parsed.pathname.replace(suffixPattern, '').replace(/\/$/, '');
-  const apiHost = `${parsed.origin}${pathname}`;
-  return {
-    apiHost,
-    planningApiBase: `${apiHost}/compatible-mode/v1`,
-    videoApiBase: `${apiHost}/api/v1`,
-  };
-}
+export const BAILIAN_DEFAULT_API_HOST = BAILIAN_WORKSPACE_API_HOST;
 
 function isStoredProvider(value: unknown): value is StoredApiProvider {
   return value === 'openai-compatible' || value === 'ark-plan' || value === 'happyhorse-dashscope';
@@ -148,22 +137,22 @@ export async function validateAndSaveBailianSessionConnections(
   },
   requestHeaders: Record<string, string> = {},
 ): Promise<{ ok: true; videoReady: boolean; warning?: string } | { ok: false; error: string; code?: string }> {
-  const defaultBases = resolveBailianApiBases(BAILIAN_DEFAULT_API_HOST);
-  const planning = await validateAndSavePlanningSessionConnection(storageScope, {
-    apiBase: defaultBases.planningApiBase,
+  const workspaceBases = resolveBailianApiBases(BAILIAN_WORKSPACE_API_HOST);
+  const workspacePlanning = await validateAndSavePlanningSessionConnection(storageScope, {
+    apiBase: workspaceBases.planningApiBase,
     apiKey: config.apiKey,
     model: config.model || DEFAULT_PLANNING_MODEL,
     imageModel: config.imageModel || DEFAULT_IMAGE_MODEL,
   }, requestHeaders);
-  if (planning.ok) {
+  if (workspacePlanning.ok) {
     saveHappyHorseSessionConnection(storageScope, {
-      apiBase: defaultBases.videoApiBase,
+      apiBase: workspaceBases.videoApiBase,
       apiKey: config.apiKey,
       videoModel: config.videoModel || DEFAULT_VIDEO_MODEL,
     });
     return { ok: true, videoReady: true };
   }
-  return planning;
+  return workspacePlanning;
 }
 
 export function clearBailianSessionConnections(storageScope: string): void {
@@ -229,10 +218,10 @@ export function getBYOKRequestHeaders(storageScope = ''): Record<string, string>
     const video = loadHappyHorseConnection(storageScope);
     const headers: Record<string, string> = {};
 
-    const defaultBases = resolveBailianApiBases(BAILIAN_DEFAULT_API_HOST);
+    const workspaceBases = resolveBailianApiBases(BAILIAN_WORKSPACE_API_HOST);
     if (primary?.provider && primary.apiKey) {
       headers['x-yh-provider'] = 'openai-compatible';
-      headers['x-yh-api-base'] = defaultBases.planningApiBase;
+      headers['x-yh-api-base'] = workspaceBases.planningApiBase;
       headers['x-yh-api-key'] = primary.apiKey;
       headers['x-yh-model'] = DEFAULT_PLANNING_MODEL;
       headers['x-yh-image-model'] = DEFAULT_IMAGE_MODEL;
@@ -240,7 +229,7 @@ export function getBYOKRequestHeaders(storageScope = ''): Record<string, string>
 
     if (video?.provider === 'happyhorse-dashscope' && video.apiKey) {
       headers['x-yh-video-provider'] = video.provider;
-      headers['x-yh-video-api-base'] = defaultBases.videoApiBase;
+      headers['x-yh-video-api-base'] = workspaceBases.videoApiBase;
       headers['x-yh-video-api-key'] = video.apiKey;
       headers['x-yh-video-model'] = DEFAULT_VIDEO_MODEL;
     }

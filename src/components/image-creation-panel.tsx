@@ -413,6 +413,7 @@ export function ImageCreationPanel({ onBack, initialPrompt, autoGenerate, initia
 
   // 中间输出状态
   const [outputTab, setOutputTab] = useState<'gallery' | 'history'>('gallery');
+  const [mobilePanel, setMobilePanel] = useState<'settings' | 'results' | 'assistant'>('settings');
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(0);
@@ -1097,6 +1098,7 @@ export function ImageCreationPanel({ onBack, initialPrompt, autoGenerate, initia
       <div className="flex-shrink-0 flex items-center px-5 py-2.5 border-b border-white/10 bg-[#080b12]">
         <button
           onClick={onBack}
+          aria-label="返回创作智能体"
           className="flex items-center justify-center w-7 h-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors mr-3"
         >
           <ArrowLeft className="w-4 h-4" />
@@ -1137,10 +1139,35 @@ export function ImageCreationPanel({ onBack, initialPrompt, autoGenerate, initia
         )}
       </div>
 
+      <div className="grid shrink-0 grid-cols-3 border-b border-white/10 bg-[#080b12] p-2 lg:hidden" aria-label="图片创作工作区">
+        {([
+          ['settings', '参数'],
+          ['results', '结果'],
+          ['assistant', '助手'],
+        ] as const).map(([panel, label]) => (
+          <button
+            key={panel}
+            type="button"
+            aria-pressed={mobilePanel === panel}
+            onClick={() => setMobilePanel(panel)}
+            className={`h-9 rounded-lg text-xs font-medium transition ${
+              mobilePanel === panel
+                ? 'bg-[#14254a] text-[#8eb1ff]'
+                : 'text-slate-400 hover:bg-white/5 hover:text-slate-100'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {/* 三栏主体 */}
       <div className="flex-1 min-h-0 flex">
         {/* ===== 左侧：参数配置面板 ===== */}
-        <div className="w-[280px] flex-shrink-0 border-r border-border flex flex-col min-h-0">
+        <div
+          data-testid="image-settings-panel"
+          className={`${mobilePanel === 'settings' ? 'flex' : 'hidden'} min-h-0 w-full flex-col border-r border-border lg:flex lg:w-[280px] lg:flex-shrink-0`}
+        >
           <div className="flex-1 overflow-y-auto min-h-0 px-3 py-2 space-y-2.5">
 
             {/* ===== 模型 ===== */}
@@ -1902,7 +1929,10 @@ export function ImageCreationPanel({ onBack, initialPrompt, autoGenerate, initia
         </div>
 
                 {/* ===== 中间：内容输出区 ===== */}
-        <div className="flex-1 min-w-0 flex flex-col">
+        <div
+          data-testid="image-results-panel"
+          className={`${mobilePanel === 'results' ? 'flex' : 'hidden'} min-w-0 flex-1 flex-col lg:flex`}
+        >
           {/* Tab 栏 */}
           <div className="flex-shrink-0 flex items-center gap-4 px-5 py-2.5 border-b border-border">
             <button
@@ -2152,7 +2182,10 @@ export function ImageCreationPanel({ onBack, initialPrompt, autoGenerate, initia
         </div>
 
         {/* ===== 右侧：对话式交互 - Lovart 风格 ===== */}
-        <div className="w-[320px] flex-shrink-0 border-l border-border flex flex-col bg-card">
+        <div
+          data-testid="image-assistant-panel"
+          className={`${mobilePanel === 'assistant' ? 'flex' : 'hidden'} w-full flex-col border-l border-border bg-card lg:flex lg:w-[320px] lg:flex-shrink-0`}
+        >
           {/* 对话标题 */}
           <div className="px-5 py-4 border-b border-border/50">
             <div className="flex items-center gap-2.5">

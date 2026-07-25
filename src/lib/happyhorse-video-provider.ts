@@ -62,7 +62,7 @@ function normalizeHappyHorseResolution(resolution?: string): '720P' | '1080P' {
   return String(resolution || '720P').toUpperCase() === '1080P' ? '1080P' : '720P';
 }
 
-export function normalizeHappyHorseDuration(duration?: number): number {
+function normalizeHappyHorseDuration(duration?: number): number {
   const seconds = Math.floor(Number(duration) || 5);
   return Math.max(3, Math.min(15, seconds));
 }

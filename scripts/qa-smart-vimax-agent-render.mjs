@@ -87,7 +87,7 @@ check(
     && /callVimaxReferenceImages/.test(referencePhase)
     && /imageWithBYOK/.test(referenceAssets)
     && /multimodal-generation\/generation/.test(byokProvider)
-    && /qwen-image-2\.0-pro/.test(preferences),
+    && /wan2\.7-image-pro/.test(preferences),
   'reference generation must follow the configured provider adapter instead of a hard-coded image endpoint',
 );
 check('route-does-not-return-free-fake-result', !/usedRealKey:\s*false|incurredCost:\s*false|dry-run|不产生费用/.test(route));
