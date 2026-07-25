@@ -1,5 +1,5 @@
 export const VIMAX_PLAN_MODEL = 'qwen3.7-plus';
-export const VIMAX_IMAGE_MODEL = 'qwen-image-2.0-pro';
+export const VIMAX_IMAGE_MODEL = 'wan2.7-image-pro';
 export const VIMAX_VIDEO_MODEL = 'happyhorse-1.1-i2v';
 
 const SUPPORTED_RATIOS = new Set(['16:9', '9:16', '1:1', '4:3', '3:4']);
@@ -42,6 +42,7 @@ interface VimaxPlanRequestInput {
   skillId?: string;
   sceneType?: string;
   settings: VimaxGenerationSettings;
+  referenceIds?: string[];
 }
 
 export function buildVimaxPlanRequest(input: VimaxPlanRequestInput) {
@@ -58,5 +59,6 @@ export function buildVimaxPlanRequest(input: VimaxPlanRequestInput) {
     ratio: input.settings.ratio,
     resolution: input.settings.resolution,
     stream: true,
+    ...(input.referenceIds?.length ? { referenceIds: input.referenceIds } : {}),
   };
 }

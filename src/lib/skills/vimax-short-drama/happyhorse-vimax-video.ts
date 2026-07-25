@@ -16,7 +16,6 @@ import {
   buildHappyHorsePublicTaskListUrl,
   buildHappyHorseVideoTaskListUrl,
   getHappyHorseProviderErrorMessage,
-  normalizeHappyHorseDuration,
   parseHappyHorseVideoTaskList,
 } from '@/lib/happyhorse-video-provider';
 import { isHappyHorseR2VModel } from '@/lib/happyhorse-r2v-adapter';
@@ -59,6 +58,10 @@ export function selectHappyHorseR2VReferenceImages(
     artifactRevision: 'selection-only',
     previousLastFrameUrl,
   }).entries.map(entry => entry.url);
+}
+
+function clampDuration(value: unknown): number {
+  return Math.max(1, Math.min(10, Math.floor(Number(value) || 5)));
 }
 
 function stableSeed(plan: VimaxAgentPlan, preset: VimaxSkillPreset): number {
@@ -120,7 +123,7 @@ export async function callHappyHorseVimaxVideo(
   const seed = stableSeed(plan, preset);
   for (let index = 0; index < shots.length; index += 1) {
     const shot = shots[index];
-    const duration = normalizeHappyHorseDuration(shot.duration);
+    const duration = clampDuration(shot.duration);
     const known = knownByShot.get(shot.index);
     if (known) {
       const completed = known.videoUrl
@@ -261,7 +264,7 @@ export async function recoverHappyHorseVimaxVideo(
     selected = listed.slice(-shots.length).map((item, index) => ({
       shotIndex: shots[index].index,
       shotTitle: shots[index].title || `Clip ${shots[index].index}`,
-      duration: normalizeHappyHorseDuration(shots[index].duration),
+      duration: clampDuration(shots[index].duration),
       taskId: item.taskId,
     }));
   }
@@ -281,7 +284,7 @@ export async function recoverHappyHorseVimaxVideo(
     const segment: HappyHorseVimaxSegment = {
       shotIndex: shots[index].index,
       shotTitle: shots[index].title || `Clip ${shots[index].index}`,
-      duration: normalizeHappyHorseDuration(shots[index].duration),
+      duration: clampDuration(shots[index].duration),
       taskId: item.taskId,
       status: 'succeeded',
       videoUrl: status.videoUrl,

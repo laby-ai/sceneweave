@@ -5,6 +5,10 @@ import {
 } from '@/lib/account/account-entitlement-client';
 import { getAccountApiBase } from '@/lib/account/account-auth-client';
 import { resolveAccountSessionFromRequest } from '@/lib/account/account-session';
+import {
+  resolveBailianApiBases,
+  resolveBailianWorkspaceApiHost,
+} from '@/lib/bailian-routing';
 
 export type { MemberProviderProfile };
 
@@ -14,7 +18,7 @@ export interface MemberBailianOwner {
 }
 
 export const BAILIAN_TEXT_MODEL = 'qwen3.7-plus';
-export const BAILIAN_IMAGE_MODEL = 'qwen-image-2.0-pro';
+export const BAILIAN_IMAGE_MODEL = 'wan2.7-image-pro';
 export const BAILIAN_TTS_MODEL = 'qwen-audio-3.0-tts-plus';
 export const BAILIAN_VIDEO_MODEL = 'happyhorse-1.1-i2v';
 
@@ -45,19 +49,27 @@ export function buildMemberBailianConnections(profile: MemberProviderProfile) {
   if (profile.provider_id !== 'aliyun-bailian' || profile.region !== 'cn-beijing') {
     throw new Error('unsupported_member_provider_profile');
   }
-  const apiHost = 'https://dashscope.aliyuncs.com';
+  const apiHost = resolveBailianWorkspaceApiHost(profile.workspace_id);
+  const apiBases = resolveBailianApiBases(apiHost);
   return {
     planning: {
       provider: 'openai-compatible' as const,
-      apiBase: `${apiHost}/compatible-mode/v1`,
+      apiBase: apiBases.planningApiBase,
       apiKey: profile.api_key,
       model: BAILIAN_TEXT_MODEL,
       imageModel: BAILIAN_IMAGE_MODEL,
     },
+    image: {
+      provider: 'openai-compatible' as const,
+      apiBase: apiHost,
+      apiKey: profile.api_key,
+      imageModel: BAILIAN_IMAGE_MODEL,
+    },
     video: {
       provider: 'happyhorse-dashscope' as const,
-      apiBase: `${apiHost}/api/v1`,
+      apiBase: apiBases.videoApiBase,
       apiKey: profile.api_key,
+      imageModel: BAILIAN_IMAGE_MODEL,
       videoModel: BAILIAN_VIDEO_MODEL,
     },
   };

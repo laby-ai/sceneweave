@@ -11,12 +11,12 @@ async function main() {
     workspace_id: '',
     region: 'cn-beijing',
     text_model: 'qwen3.7-plus',
-    image_model: 'qwen-image-2.0-pro',
+    image_model: 'wan2.7-image-pro',
     tts_model: 'qwen-audio-3.0-tts-plus',
     api_key: 'fixture-key',
   });
 
-  assert.equal(connections.planning.imageModel, 'qwen-image-2.0-pro');
+  assert.equal(connections.planning.imageModel, 'wan2.7-image-pro');
   assert.notEqual(connections.planning.apiBase, connections.video.apiBase);
 
   const [routeSource, orchestratorSource, segmentRouteSource] = await Promise.all([

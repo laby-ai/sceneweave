@@ -63,6 +63,7 @@ export interface VimaxPlanContext {
   segmentDuration?: number;
   segmentCount?: number;
   settings?: VimaxGenerationSettings;
+  referenceIds?: string[];
 }
 
 type VimaxAssetKind = NonNullable<NonNullable<ChatMessage['vimaxAgent']>['assets']>[number]['kind'];
@@ -145,7 +146,10 @@ interface VimaxShortDramaSkillDeps {
 export interface VimaxShortDramaSkill {
   handlePlanStep: (context: VimaxPlanContext) => Promise<void>;
   handleReferenceAssetsStep: () => Promise<void>;
-  handleVideoStep: (options?: { recover?: boolean }) => Promise<void>;
+  handleVideoStep: (options?: {
+    recover?: boolean;
+    confirmRouteDecisions?: boolean;
+  }) => Promise<void>;
   cancelCurrentRun: () => boolean;
 }
 
@@ -426,12 +430,26 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
             prompt: asset.prompt || '',
             status: 'planned',
           })),
-          shots: shots.map((shot: { index?: number; title?: string; duration?: number; camera?: string; prompt?: string }, index: number) => ({
+          shots: shots.map((shot: {
+            index?: number;
+            title?: string;
+            duration?: number;
+            camera?: string;
+            prompt?: string;
+            spatialRelation?: 'same-scene' | 'new-scene';
+            temporalRelation?: 'continuous' | 'elapsed' | 'time-jump';
+            routeConfidence?: 'high' | 'medium' | 'low';
+            conflictFlags?: string[];
+          }, index: number) => ({
             index: Number(shot.index) || index + 1,
             title: shot.title || `Clip ${index + 1}`,
             duration: Number(shot.duration) || 6,
             camera: shot.camera || '固定镜头',
             prompt: shot.prompt || '',
+            spatialRelation: shot.spatialRelation,
+            temporalRelation: shot.temporalRelation,
+            routeConfidence: shot.routeConfidence,
+            conflictFlags: shot.conflictFlags,
             status: 'planned' as const,
           })),
         },
@@ -646,7 +664,10 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
     }
   }, [messagesRef, onAuthenticationRequired, requestHeaders, runCoordinator, setMessages, setIsLoading, updateRunMessages]);
 
-  const handleVideoStep = useCallback(async (options: { recover?: boolean } = {}) => {
+  const handleVideoStep = useCallback(async (options: {
+    recover?: boolean;
+    confirmRouteDecisions?: boolean;
+  } = {}) => {
     const recoverCompleted = options.recover === true;
     const reversed = [...messagesRef.current].reverse();
     // 真实参考图 URL：优先用 generatedImages（恢复历史后最可靠），回退到 vimaxAgent.assets。
@@ -715,6 +736,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
           taskId: agent.taskId,
           phase: 'video',
           confirm: !recoverCompleted,
+          confirmRouteDecisions: options.confirmRouteDecisions === true,
           recover: recoverCompleted,
           background: true,
           recoverCreatedAfter: recoverCompleted ? recoveryOrigin?.timestamp : undefined,
@@ -730,6 +752,10 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
               duration: shot.duration,
               camera: shot.camera,
               prompt: shot.prompt,
+              spatialRelation: shot.spatialRelation,
+              temporalRelation: shot.temporalRelation,
+              routeConfidence: shot.routeConfidence,
+              conflictFlags: shot.conflictFlags,
               referenceUrl: shot.referenceUrl,
             })),
             assets: referenceUrls.map((url, index) => ({
@@ -746,6 +772,59 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         redirectOnUnauthorized: false,
       });
       let data = await response.json().catch(() => ({}));
+      if (response.status === 410 && data.code === 'legacy-plan-not-supported') {
+        updateRunMessages(run, prev => prev.map(message => message.id === progressMsgId ? {
+          ...message,
+          content: data.error || '旧项目已停止生成，请新建项目后重新规划。',
+          generationStatus: 'failed',
+          generationProgress: 100,
+          generationStepInfo: {
+            step: 'blocked',
+            progress: 100,
+            totalSteps: 4,
+            currentStepLabel: '旧项目已停止',
+          },
+          quickOptions: ['新建项目'],
+          vimaxAgent: {
+            ...agent,
+            phase: 'video',
+            costState: 'blocked',
+            nextAction: '新建项目并使用新版镜头衔接合同重新规划。',
+          },
+        } : message));
+        return;
+      }
+      if (response.status === 409 && data.code === 'shot-route-confirmation-required') {
+        const issues = Array.isArray(data.routeIssues)
+          ? data.routeIssues.map((issue: { shotIndex?: number; reason?: string }) => (
+            `Clip ${issue.shotIndex || '?'}：${issue.reason || '需要确认生成路线'}`
+          )).join('\n')
+          : '';
+        updateRunMessages(run, prev => prev.map(message => message.id === progressMsgId ? {
+          ...message,
+          content: [
+            '以下镜头的衔接判断存在冲突或置信度不足，尚未调用视频模型：',
+            issues,
+            '请检查后确认路线，或返回调整分镜。',
+          ].filter(Boolean).join('\n'),
+          generationStatus: 'failed',
+          generationProgress: 100,
+          generationStepInfo: {
+            step: 'blocked',
+            progress: 100,
+            totalSteps: 4,
+            currentStepLabel: '等待路线确认',
+          },
+          quickOptions: ['确认镜头路线，继续生成', '调整分镜', '取消'],
+          vimaxAgent: {
+            ...agent,
+            phase: 'video',
+            costState: 'blocked',
+            nextAction: '确认冲突镜头路线后再调用视频模型。',
+          },
+        } : message));
+        return;
+      }
       if (response.status === 202 && data.success && data.accepted) {
         if (typeof data.backgroundTaskId !== 'string' || !data.backgroundTaskId) {
           throw new Error('后台视频任务已受理，但没有返回可恢复的任务号。');

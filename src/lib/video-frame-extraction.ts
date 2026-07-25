@@ -1,11 +1,11 @@
 import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
 import ffmpegStaticPath from 'ffmpeg-static';
-import { resolveFfmpegBinaryPath } from './ffmpeg-binary';
 import { createHuiyingObjectStorage, getHuiyingObjectStorageEnv } from './huiying-object-storage';
 import {
   getPublicFrameHandoffReadiness,
@@ -89,10 +89,22 @@ function describeFetchError(error: unknown) {
 }
 
 function resolveFfmpegPath() {
-  return resolveFfmpegBinaryPath({
-    configuredPath: process.env.FFMPEG_BIN,
-    staticPath: ffmpegStaticPath,
-  });
+  const configuredPath = process.env.FFMPEG_BIN?.trim();
+  if (configuredPath) {
+    return configuredPath;
+  }
+
+  if (ffmpegStaticPath && existsSync(ffmpegStaticPath)) {
+    return ffmpegStaticPath;
+  }
+
+  const platformBinary = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
+  const cwdFallback = path.resolve(process.cwd(), 'node_modules', 'ffmpeg-static', platformBinary);
+  if (existsSync(cwdFallback)) {
+    return cwdFallback;
+  }
+
+  return platformBinary;
 }
 
 async function downloadVideo(videoUrl: string, targetPath: string) {

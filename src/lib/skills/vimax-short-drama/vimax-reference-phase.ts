@@ -27,13 +27,15 @@ export interface VimaxReferencePhaseInput {
   plan: VimaxAgentPlan;
   productionPlan: VimaxProductionPlan;
   planningConnection?: BYOKConnection;
+  imageConnection?: BYOKConnection;
+  initialReferenceAssets?: VimaxAgentReferenceAsset[];
   config: VimaxReferencePhaseConfig;
 }
 
 export async function runVimaxReferenceAssetsPhase(input: VimaxReferencePhaseInput) {
   const productionPlan = assertVimaxProductionPlanForPhase(input.productionPlan, 'reference_assets', {
     plan: input.planningConnection?.model || input.config.textModel,
-    referenceAssets: input.planningConnection?.imageModel || input.config.imageModel,
+    referenceAssets: input.imageConnection?.imageModel || input.planningConnection?.imageModel || input.config.imageModel,
     video: input.config.videoModel,
   });
   const preset = resolveVimaxSkillPresetForRuntime(productionPlan.workflow.presetId);
@@ -46,9 +48,9 @@ export async function runVimaxReferenceAssetsPhase(input: VimaxReferencePhaseInp
     preset,
     continuity: productionPlan.continuity,
     config: {
-      imageApiKey: input.config.imageApiKey,
-      imageApiBase: input.config.imageApiBase,
-      imageModel: input.planningConnection?.imageModel || input.config.imageModel,
+      imageApiKey: input.imageConnection?.apiKey || input.config.imageApiKey,
+      imageApiBase: input.imageConnection?.apiBase || input.config.imageApiBase,
+      imageModel: input.imageConnection?.imageModel || input.planningConnection?.imageModel || input.config.imageModel,
       selectorApiKey: input.config.selectorApiKey,
       selectorApiBase: input.config.selectorApiBase,
       selectorModel: input.planningConnection?.model || input.config.selectorModel,
@@ -57,6 +59,7 @@ export async function runVimaxReferenceAssetsPhase(input: VimaxReferencePhaseInp
       ? input.task.result.vimaxReferenceAssets as VimaxAgentReferenceAsset[]
       : [],
     existingSubjectRegistry: input.task.result?.vimaxSubjectReferenceRegistry as VimaxSubjectReferenceRegistry | undefined,
+    initialReferenceAssets: input.initialReferenceAssets,
   });
 
   if (!updateTask(input.task.id, {

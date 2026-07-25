@@ -29,6 +29,39 @@ export interface VimaxAgentReferenceAsset {
 export interface VimaxAgentPlan {
   title: string;
   summary: string;
+  story?: {
+    premise?: string;
+    protagonist?: string;
+    desire?: string;
+    obstacle?: string;
+    conflict?: string;
+    turningPoint?: string;
+    endingHook?: string;
+    emotionalArc?: {
+      start?: string;
+      shift?: string;
+      end?: string;
+    };
+  };
+  characters?: Array<{
+    id: string;
+    label: string;
+    description: string;
+    continuityAnchors?: string[];
+  }>;
+  scenes?: Array<{
+    id: string;
+    label: string;
+    description: string;
+    timeOfDay?: string;
+    continuityAnchors?: string[];
+  }>;
+  props?: Array<{
+    id: string;
+    label: string;
+    description: string;
+    state?: string;
+  }>;
   assets: Array<{
     kind: 'script' | 'character' | 'scene' | 'prop' | 'shot' | 'reference';
     label: string;
@@ -42,8 +75,23 @@ export interface VimaxAgentPlan {
     duration: number;
     camera: string;
     prompt: string;
+    sceneId?: string;
+    characterIds?: string[];
+    propIds?: string[];
+    actionStart?: string;
+    actionEnd?: string;
+    firstFrameDescription?: string;
+    lastFrameDescription?: string;
+    motionDescription?: string;
+    dialogue?: string;
+    narration?: string;
+    audioIntent?: string;
     handoffIntent?: VimaxShotHandoffIntent;
     handoffReason?: string;
+    spatialRelation?: 'same-scene' | 'new-scene';
+    temporalRelation?: 'continuous' | 'elapsed' | 'time-jump';
+    routeConfidence?: 'high' | 'medium' | 'low';
+    conflictFlags?: string[];
     continuityPriorities?: VimaxContinuityPriority[];
     referenceUrl?: string;
     videoUrl?: string;
@@ -70,6 +118,9 @@ export interface VimaxAgentStepBody {
   productionPlan?: VimaxProductionPlan;
   /** 视频阶段必须显式确认，避免误触发计费。 */
   confirm?: boolean;
+  /** 仅用于用户看过冲突列表后确认低置信镜头路线，不适用于旧计划。 */
+  confirmRouteDecisions?: boolean;
+  referenceIds?: string[];
   /** 长视频阶段由既有任务中心异步执行，避免请求被网关超时截断。 */
   background?: boolean;
   recover?: boolean;

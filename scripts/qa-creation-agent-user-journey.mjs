@@ -32,12 +32,12 @@ function publicProfile() {
     region: 'cn-beijing',
     secret_mask: '****only',
     text_model: 'qwen3.7-plus',
-    image_model: 'qwen-image-2.0-pro',
+    image_model: 'wan2.7-image-pro',
     tts_model: 'qwen-audio-3.0-tts-plus',
   } : {
     configured: false,
     text_model: 'qwen3.7-plus',
-    image_model: 'qwen-image-2.0-pro',
+    image_model: 'wan2.7-image-pro',
     tts_model: 'qwen-audio-3.0-tts-plus',
   };
 }

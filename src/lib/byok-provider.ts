@@ -115,6 +115,19 @@ function isQwenImageReferenceModel(model: string): boolean {
   return /^qwen-image-(?:2\.0(?:-pro)?(?:-\d{4}-\d{2}-\d{2})?|3\.0-pro)$/i.test(model.trim());
 }
 
+function compileWanReferencePrompt(prompt: string, referenceCount: number): string {
+  if (referenceCount === 0) return prompt;
+  const labels = Array.from({ length: referenceCount }, (_, index) => `图${index + 1}`)
+    .join('、');
+  return [
+    `输入参考图按顺序编号为${labels}，编号与请求中的图片数组严格一致。`,
+    prompt
+      .replace(/第一张参考(?:图|素材)?/g, '图1')
+      .replace(/第二张参考(?:图|素材)?/g, '图2')
+      .replace(/第三张参考(?:图|素材)?/g, '图3'),
+  ].join('\n');
+}
+
 function buildBailianMultimodalImageUrl(apiBase: string): string {
   const parsed = new URL(apiBase);
   const pathname = parsed.pathname
@@ -204,14 +217,48 @@ function extractExplicitBYOKVideoConnection(headers: Headers): BYOKConnection | 
   const provider = headers.get('x-yh-video-provider')?.trim();
   const apiBase = headers.get('x-yh-video-api-base')?.trim();
   const apiKey = headers.get('x-yh-video-api-key')?.trim();
+  const imageModel = headers.get('x-yh-image-model')?.trim() || undefined;
   const videoModel = headers.get('x-yh-video-model')?.trim() || undefined;
   if (
     provider && apiBase && apiKey
     && (provider === 'openai-compatible' || provider === 'ark-plan' || provider === 'happyhorse-dashscope')
   ) {
-    return { provider, apiBase: normalizeBYOKApiBase(apiBase), apiKey, videoModel };
+    return { provider, apiBase: normalizeBYOKApiBase(apiBase), apiKey, imageModel, videoModel };
   }
   return undefined;
+}
+
+function extractExplicitBYOKImageConnection(headers: Headers): BYOKConnection | undefined {
+  const provider = headers.get('x-yh-image-provider')?.trim();
+  const apiBase = headers.get('x-yh-image-api-base')?.trim();
+  const apiKey = headers.get('x-yh-image-api-key')?.trim();
+  const imageModel = headers.get('x-yh-image-model')?.trim();
+  if (
+    provider && apiBase && apiKey && imageModel
+    && (provider === 'openai-compatible' || provider === 'ark-plan')
+  ) {
+    return {
+      provider,
+      apiBase: normalizeBYOKApiBase(apiBase),
+      apiKey,
+      imageModel,
+    };
+  }
+  return undefined;
+}
+
+function canServeConfiguredImage(connection: BYOKConnection | undefined): connection is BYOKConnection {
+  if (!connection?.imageModel) return false;
+  if (!isBailianMultimodalImageModel(connection.imageModel)) return true;
+  try {
+    const hostname = new URL(connection.apiBase).hostname;
+    if (/^wan2\.7-image(?:-pro)?$/i.test(connection.imageModel.trim())) {
+      return hostname.endsWith('.maas.aliyuncs.com');
+    }
+    return hostname.endsWith('.aliyuncs.com');
+  } catch {
+    return false;
+  }
 }
 
 export function extractBYOKVideoConnection(headers: Headers): BYOKConnection | undefined {
@@ -220,6 +267,7 @@ export function extractBYOKVideoConnection(headers: Headers): BYOKConnection | u
 
 export async function resolveBYOKConnectionsForRequest(request: Request, trustedOwner?: TaskOwner): Promise<{
   planning?: BYOKConnection;
+  image?: BYOKConnection;
   video?: BYOKConnection;
 }> {
   if (trustedOwner) {
@@ -230,11 +278,16 @@ export async function resolveBYOKConnectionsForRequest(request: Request, trusted
   }
 
   const explicitPlanning = extractExplicitBYOKConnection(request.headers);
+  const explicitImage = extractExplicitBYOKImageConnection(request.headers);
   const explicitVideo = extractExplicitBYOKVideoConnection(request.headers);
-  if (explicitPlanning || explicitVideo) {
+  if (explicitPlanning || explicitImage || explicitVideo) {
+    const environment = extractEnvironmentBYOKConnection();
     return {
-      planning: explicitPlanning || extractEnvironmentBYOKConnection(),
-      video: explicitVideo || explicitPlanning || extractEnvironmentBYOKConnection(),
+      planning: explicitPlanning || environment,
+      image: (canServeConfiguredImage(explicitImage) ? explicitImage : undefined)
+        || (canServeConfiguredImage(explicitPlanning) ? explicitPlanning : undefined)
+        || (canServeConfiguredImage(environment) ? environment : undefined),
+      video: explicitVideo || explicitPlanning || environment,
     };
   }
 
@@ -242,7 +295,11 @@ export async function resolveBYOKConnectionsForRequest(request: Request, trusted
   if (profile) return buildMemberBailianConnections(profile);
 
   const fallback = extractEnvironmentBYOKConnection();
-  return { planning: fallback, video: fallback };
+  return {
+    planning: fallback,
+    image: canServeConfiguredImage(fallback) ? fallback : undefined,
+    video: fallback,
+  };
 }
 
 export async function chatWithBYOK(
@@ -299,6 +356,11 @@ export async function imageWithBYOK(
   }
 
   const bailianMultimodal = isBailianMultimodalImageModel(model);
+  const referenceImages = (params.referenceImages || [])
+    .slice(0, isQwenImageReferenceModel(model) ? 3 : 9);
+  const compiledPrompt = /^wan2\.7-image(?:-pro)?$/i.test(model.trim())
+    ? compileWanReferencePrompt(params.prompt, referenceImages.length)
+    : params.prompt;
   const url = bailianMultimodal
     ? buildBailianMultimodalImageUrl(connection.apiBase)
     : buildImageGenerationsUrl(connection.apiBase);
@@ -314,10 +376,8 @@ export async function imageWithBYOK(
         messages: [{
           role: 'user',
           content: [
-            ...(params.referenceImages || [])
-              .slice(0, isQwenImageReferenceModel(model) ? 3 : 9)
-              .map(image => ({ image })),
-            { text: params.prompt },
+            ...referenceImages.map(image => ({ image })),
+            { text: compiledPrompt },
           ],
         }],
       },

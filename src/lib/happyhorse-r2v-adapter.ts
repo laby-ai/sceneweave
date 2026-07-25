@@ -5,6 +5,8 @@ import {
 
 const HAPPYHORSE_R2V_MODEL = 'happyhorse-1.1-r2v';
 const MAX_REFERENCE_IMAGES = 9;
+const SUPPORTED_IMAGE_INPUT = /^(https?:\/\/|data:image\/(?:jpeg|png|webp);base64,)/i;
+const SUPPORTED_RATIOS = new Set(['16:9', '9:16', '3:4', '4:3', '4:5', '5:4', '1:1', '9:21', '21:9']);
 
 export interface HappyHorseR2VRequestOptions extends HappyHorseVideoRequestOptions {
   referenceImages: string[];
@@ -30,8 +32,22 @@ export function isHappyHorseR2VModel(model?: string): boolean {
 export function normalizeHappyHorseR2VReferenceImages(images: string[]): string[] {
   return [...new Set(images
     .map(image => String(image || '').trim())
-    .filter(image => /^https?:\/\//i.test(image)))]
+    .filter(image => SUPPORTED_IMAGE_INPUT.test(image)))]
     .slice(0, MAX_REFERENCE_IMAGES);
+}
+
+function assertReferencePrompt(prompt: string, referenceCount: number) {
+  for (let index = 1; index <= referenceCount; index += 1) {
+    if (!prompt.includes(`[Image ${index}]`)) {
+      throw new Error(`快乐马参考视频提示词缺少 [Image ${index}]，未提交付费任务`);
+    }
+  }
+  const outOfRange = [...prompt.matchAll(/\[Image\s+(\d+)]/g)]
+    .map(match => Number(match[1]))
+    .find(index => index < 1 || index > referenceCount);
+  if (outOfRange !== undefined) {
+    throw new Error(`快乐马参考视频提示词引用了不存在的 [Image ${outOfRange}]，未提交付费任务`);
+  }
 }
 
 export function buildHappyHorseR2VSubmitRequest(
@@ -43,6 +59,11 @@ export function buildHappyHorseR2VSubmitRequest(
   const referenceImages = normalizeHappyHorseR2VReferenceImages(options.referenceImages);
   if (referenceImages.length === 0) {
     throw new Error('快乐马参考视频至少需要 1 张可访问的参考图');
+  }
+  assertReferencePrompt(options.prompt, referenceImages.length);
+  const ratio = options.ratio || '16:9';
+  if (!SUPPORTED_RATIOS.has(ratio)) {
+    throw new Error(`快乐马参考视频不支持画幅 ${ratio}，未提交付费任务`);
   }
   const base = buildHappyHorseVideoSubmitRequest(options);
   return {

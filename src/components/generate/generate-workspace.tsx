@@ -6,6 +6,8 @@ import {
   AtSign,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   FileJson,
   Footprints,
   Image as ImageIcon,
@@ -53,9 +55,12 @@ import {
   createVimaxProject,
   deleteVimaxProject,
   loadActiveVimaxProjectId,
+  loadVimaxProjectReferenceIds,
+  moveVimaxProjectReference,
   renameVimaxProject,
   restoreVimaxWorkspaceView,
   saveActiveVimaxProjectId,
+  saveVimaxProjectReferenceIds,
   saveVimaxWorkspaceView,
   summarizeVimaxProjects,
   upsertVimaxProjectMessages,
@@ -126,7 +131,19 @@ interface GenerateWorkspaceProps {
   onAuthenticationRequired?: (reason: string) => void;
 }
 
-type SubjectItem = { id: string; name: string; type: 'character' | 'scene' | 'object'; imageUrl: string };
+type SubjectType = 'character' | 'scene' | 'object';
+type SubjectItem = { id: string; name: string; type: SubjectType; imageUrl: string };
+
+function readImageAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => typeof reader.result === 'string'
+      ? resolve(reader.result)
+      : reject(new Error('reference_read_failed'));
+    reader.onerror = () => reject(new Error('reference_read_failed'));
+    reader.readAsDataURL(file);
+  });
+}
 
 export function GenerateWorkspace({
   initialPrompt,
@@ -151,6 +168,10 @@ export function GenerateWorkspace({
   const [subjectsLoading, setSubjectsLoading] = useState(false);
   const [subjectError, setSubjectError] = useState<string | null>(null);
   const [subjectOpeningId, setSubjectOpeningId] = useState<string | null>(null);
+  const [selectedReferences, setSelectedReferences] = useState<SubjectItem[]>([]);
+  const [referenceType, setReferenceType] = useState<SubjectType>('character');
+  const [referenceUploading, setReferenceUploading] = useState(false);
+  const [referenceError, setReferenceError] = useState<string | null>(null);
   const [selectedRatio, setSelectedRatio] = useState('16:9');
   const [selectedQuality, setSelectedQuality] = useState('高清');
   const skillScope = storageScope || '';
@@ -171,6 +192,8 @@ export function GenerateWorkspace({
   }, [skillScope, storageScope]);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const referenceInputRef = useRef<HTMLInputElement | null>(null);
+  const restoredReferenceProjectRef = useRef<string | null>(null);
   const selectedSkill = resolveVimaxSkillPreset(skillSelection.scope === skillScope ? skillSelection.id : undefined);
   const visibleSkillPresets = searchVimaxSkillPresets(skillSearch);
   const projects = summarizeVimaxProjects(history);
@@ -278,6 +301,65 @@ export function GenerateWorkspace({
   }, [cancelCurrentRun, restoreProjectSkillPreset, storageScope]);
 
   useEffect(() => {
+    if (restoredScope !== (storageScope || '') || !activeProjectId) return;
+    const projectKey = `${storageScope || 'default'}:${activeProjectId}`;
+    if (restoredReferenceProjectRef.current === projectKey) return;
+    const savedIds = loadVimaxProjectReferenceIds(localStorage, storageScope, activeProjectId);
+    if (savedIds.length === 0) {
+      setSelectedReferences([]);
+      setReferenceError(null);
+      restoredReferenceProjectRef.current = projectKey;
+      return;
+    }
+    let cancelled = false;
+    setSubjectsLoading(true);
+    void clientApiFetch<{ subjects?: SubjectItem[] }>('/api/subjects', {
+      headers: effectiveRequestHeaders,
+      redirectOnUnauthorized: false,
+    }).then(payload => {
+      if (cancelled) return;
+      const visibleSubjects = payload.subjects || [];
+      const byId = new Map(visibleSubjects.map(subject => [subject.id, subject]));
+      const restored = savedIds
+        .map(id => byId.get(id))
+        .filter((subject): subject is SubjectItem => Boolean(subject));
+      setSubjects(visibleSubjects);
+      setSelectedReferences(restored);
+      saveVimaxProjectReferenceIds(
+        localStorage,
+        storageScope,
+        activeProjectId,
+        restored.map(subject => subject.id),
+      );
+      setReferenceError(
+        restored.length === savedIds.length
+          ? null
+          : '部分参考图已失效或不属于当前账号，已安全移除。',
+      );
+      restoredReferenceProjectRef.current = projectKey;
+    }).catch(error => {
+      if (cancelled) return;
+      setReferenceError(error instanceof Error ? error.message : '参考图恢复失败');
+      restoredReferenceProjectRef.current = projectKey;
+    }).finally(() => {
+      if (!cancelled) setSubjectsLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [activeProjectId, effectiveRequestHeaders, restoredScope, storageScope]);
+
+  useEffect(() => {
+    if (!activeProjectId) return;
+    const projectKey = `${storageScope || 'default'}:${activeProjectId}`;
+    if (restoredReferenceProjectRef.current !== projectKey) return;
+    saveVimaxProjectReferenceIds(
+      localStorage,
+      storageScope,
+      activeProjectId,
+      selectedReferences.map(reference => reference.id),
+    );
+  }, [activeProjectId, selectedReferences, storageScope]);
+
+  useEffect(() => {
     if (!recoverableTaskId || restoredScope !== (storageScope || '')) return;
     const recoveryKey = `${storageScope || ''}:${recoverableTaskId}`;
     if (recoveredTaskRef.current === recoveryKey) return;
@@ -346,6 +428,8 @@ export function GenerateWorkspace({
     });
     setMessages([]);
     setInput('');
+    setSelectedReferences([]);
+    setReferenceError(null);
     setIgnoreResumeTask(true);
     recoveredTaskRef.current = null;
     window.history.replaceState(window.history.state, '', buildVimaxTaskUrl(window.location.href));
@@ -378,6 +462,7 @@ export function GenerateWorkspace({
   }, [activeProjectId, storageScope]);
 
   const deleteProject = useCallback((projectId: string) => {
+    saveVimaxProjectReferenceIds(localStorage, storageScope, projectId, []);
     setHistory(previous => {
       const next = deleteVimaxProject(previous, projectId);
       saveChatHistory(next, storageScope);
@@ -415,7 +500,18 @@ export function GenerateWorkspace({
   }, [atMenuOpen, subjects.length, subjectsLoading]);
 
   const selectSubject = useCallback(async (subject: SubjectItem) => {
-    if (!onNavigate || subjectOpeningId) return;
+    if (subjectOpeningId) return;
+    if (mode === 'agent') {
+      setSelectedReferences(current => (
+        current.some(item => item.id === subject.id)
+          ? current
+          : [...current, subject].slice(0, 8)
+      ));
+      setAtMenuOpen(false);
+      setReferenceError(null);
+      return;
+    }
+    if (!onNavigate) return;
     setSubjectOpeningId(subject.id);
     try {
       const response = await clientApiRequest(`/api/subjects/${encodeURIComponent(subject.id)}`, { timeoutMs: 20_000 });
@@ -435,7 +531,54 @@ export function GenerateWorkspace({
     } finally {
       setSubjectOpeningId(null);
     }
-  }, [input, onNavigate, subjectOpeningId]);
+  }, [input, mode, onNavigate, subjectOpeningId]);
+
+  const uploadReference = useCallback(async (file: File) => {
+    if (referenceUploading) return;
+    if (selectedReferences.length >= 8) {
+      setReferenceError('最多添加 8 张参考图。');
+      return;
+    }
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)
+      || file.size <= 0
+      || file.size > 15 * 1024 * 1024) {
+      setReferenceError('仅支持 15MB 以内的 PNG、JPEG 或 WebP 图片。');
+      return;
+    }
+    setReferenceUploading(true);
+    setReferenceError(null);
+    try {
+      const referenceUrl = await readImageAsDataUrl(file);
+      const payload = await clientApiFetch<{ subject?: SubjectItem }>('/api/subjects', {
+        method: 'POST',
+        headers: effectiveRequestHeaders,
+        body: JSON.stringify({
+          name: file.name.replace(/\.[^.]+$/, '').slice(0, 80) || '未命名参考图',
+          type: referenceType,
+          source: 'uploaded',
+          context: 'creation-agent',
+          referenceUrl,
+        }),
+        timeoutMs: 30_000,
+      });
+      if (!payload.subject) throw new Error('reference_upload_failed');
+      setSubjects(current => [
+        payload.subject!,
+        ...current.filter(item => item.id !== payload.subject!.id),
+      ]);
+      setSelectedReferences(current => [...current, payload.subject!].slice(0, 8));
+    } catch {
+      setReferenceError('参考图上传失败，请检查图片后重试。');
+    } finally {
+      setReferenceUploading(false);
+      if (referenceInputRef.current) referenceInputRef.current.value = '';
+    }
+  }, [
+    effectiveRequestHeaders,
+    referenceType,
+    referenceUploading,
+    selectedReferences.length,
+  ]);
 
   const handleSend = useCallback(async (overrideText?: string, overrideSkillId?: string) => {
     const text = (overrideText ?? input).trim();
@@ -455,6 +598,12 @@ export function GenerateWorkspace({
         setMessages(prev => [...prev, { id: genId(), role: 'user', content: text, timestamp: Date.now() }]);
         setInput('');
         await handleVideoStep();
+        return;
+      }
+      if (/确认镜头路线/.test(text)) {
+        setMessages(prev => [...prev, { id: genId(), role: 'user', content: text, timestamp: Date.now() }]);
+        setInput('');
+        await handleVideoStep({ confirmRouteDecisions: true });
         return;
       }
       // 点击“确认参考图，继续生成视频” -> 进入视频费用确认，不重复生成参考图
@@ -500,6 +649,7 @@ export function GenerateWorkspace({
         skillId: requestSkill.id,
         sceneType: requestSkill.sceneType,
         settings: generationSettings,
+        referenceIds: selectedReferences.map(reference => reference.id),
       });
       return;
     }
@@ -516,7 +666,7 @@ export function GenerateWorkspace({
       timestamp: Date.now(),
     }]);
     setInput('');
-  }, [input, isLoading, mode, activeMode, onNavigate, handlePlanStep, handleReferenceAssetsStep, handleVideoStep, selectedRatio, selectedQuality, selectedSkill, setScopedWorkspaceView]);
+  }, [input, isLoading, mode, activeMode, onNavigate, handlePlanStep, handleReferenceAssetsStep, handleVideoStep, selectedRatio, selectedQuality, selectedReferences, selectedSkill, setScopedWorkspaceView]);
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
@@ -635,10 +785,85 @@ export function GenerateWorkspace({
         data-testid="creation-agent-composer"
         className="rounded-lg border border-white/[0.11] bg-[#101620] p-3 shadow-[0_18px_48px_rgba(0,0,0,0.24)] transition focus-within:border-[#557fdc]/70 focus-within:bg-[#111925] focus-within:shadow-[0_22px_54px_rgba(0,0,0,0.3)]"
       >
+        {selectedReferences.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-2" aria-label="已添加参考图">
+            {selectedReferences.map((reference, index) => (
+              <span
+                key={reference.id}
+                className="flex min-w-0 max-w-full items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.045] py-1 pl-1 pr-1.5 text-xs text-slate-300"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={reference.imageUrl} alt="" className="h-8 w-8 shrink-0 rounded-md object-cover" />
+                <span className="max-w-28 truncate">{reference.name}</span>
+                <span className="shrink-0 text-[10px] text-slate-500">
+                  {reference.type === 'character' ? '角色' : reference.type === 'scene' ? '场景' : '道具'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedReferences(current => moveVimaxProjectReference(current, reference.id, -1))}
+                  disabled={index === 0}
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-500 transition hover:bg-white/10 hover:text-slate-200 disabled:opacity-25"
+                  aria-label={`前移 ${reference.name}`}
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedReferences(current => moveVimaxProjectReference(current, reference.id, 1))}
+                  disabled={index === selectedReferences.length - 1}
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-500 transition hover:bg-white/10 hover:text-slate-200 disabled:opacity-25"
+                  aria-label={`后移 ${reference.name}`}
+                >
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedReferences(current => current.filter(item => item.id !== reference.id))}
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-500 transition hover:bg-white/10 hover:text-slate-200"
+                  aria-label={`移除 ${reference.name}`}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        {referenceError && <p className="mb-2 text-xs text-rose-400">{referenceError}</p>}
         <div className="flex items-start gap-2">
-          <button className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-400 transition hover:border-white/20 hover:bg-white/[0.07] hover:text-[#8eb1ff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5e8dff]/45" title="上传参考" type="button">
-            <Plus className="h-4 w-4" />
-          </button>
+          <div className="mt-1 flex shrink-0 items-center gap-1">
+            <input
+              ref={referenceInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="hidden"
+              onChange={event => {
+                const file = event.target.files?.[0];
+                if (file) void uploadReference(file);
+              }}
+            />
+            <button
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-400 transition hover:border-white/20 hover:bg-white/[0.07] hover:text-[#8eb1ff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5e8dff]/45 disabled:opacity-40"
+              title="上传参考图"
+              aria-label="上传参考图"
+              type="button"
+              disabled={referenceUploading || selectedReferences.length >= 8}
+              onClick={() => referenceInputRef.current?.click()}
+            >
+              {referenceUploading
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <Plus className="h-4 w-4" />}
+            </button>
+            <select
+              value={referenceType}
+              onChange={event => setReferenceType(event.target.value as SubjectType)}
+              className="h-9 rounded-lg border border-white/10 bg-[#151d2a] px-2 text-[11px] text-slate-300 outline-none transition hover:border-white/20 focus:border-[#557fdc]"
+              aria-label="参考图用途"
+            >
+              <option value="character">角色</option>
+              <option value="scene">场景</option>
+              <option value="object">道具</option>
+            </select>
+          </div>
           <textarea
             ref={textareaRef}
             value={input}
