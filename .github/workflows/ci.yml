@@ -80,6 +80,7 @@ jobs:
           pnpm run test:vimax-authenticated-transport
           pnpm run test:vimax-qwen37-planning-payload
           pnpm run test:vimax-reference-request-timeout
+          pnpm run test:vimax-story-bible-editor
           pnpm run test:vimax-task-project-recovery
           pnpm run test:vimax-reference-phase
           pnpm run test:segment-first-frame-fallback
@@ -113,3 +114,4 @@ jobs:
         run: |
           pnpm exec playwright install --with-deps chromium
           pnpm run qa:creation-agent-user-journey
+          pnpm run qa:vimax-story-bible-editor

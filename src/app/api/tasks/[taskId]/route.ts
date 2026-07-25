@@ -11,6 +11,7 @@ import {
 } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 import { approveVimaxProductionRender } from '@/lib/skills/vimax-short-drama/vimax-render-delivery-lock';
 import { updateVimaxProductionDirectionForTask } from '@/lib/skills/vimax-short-drama/vimax-production-direction';
+import { updateVimaxStoryBibleForTask } from '@/lib/skills/vimax-short-drama/vimax-story-bible-editor';
 
 function publicTask(task: NonNullable<ReturnType<typeof getTaskForOwner>>) {
   const { abortController: _abortController, owner: _owner, idempotencyHash: _idempotencyHash, ...taskInfo } = task;
@@ -134,6 +135,26 @@ export async function POST(
           usedRealKey: false,
           incurredCost: false,
           error: error instanceof Error ? error.message : '制作方向保存失败',
+        }, { status: 409 });
+      }
+    }
+
+    if (action === 'update-story-bible') {
+      try {
+        const result = updateVimaxStoryBibleForTask({ taskId, owner, patch: body });
+        return NextResponse.json({
+          success: true,
+          usedRealKey: false,
+          incurredCost: false,
+          ...result,
+          message: '故事与角色 Bible 已保存；旧参考图和成片已失效，需按当前版本重新确认生成。',
+        });
+      } catch (error) {
+        return NextResponse.json({
+          success: false,
+          usedRealKey: false,
+          incurredCost: false,
+          error: error instanceof Error ? error.message : '故事与角色 Bible 保存失败',
         }, { status: 409 });
       }
     }

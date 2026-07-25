@@ -90,7 +90,6 @@ export function recoverVimaxTaskProject(task: unknown): RecoveredVimaxTaskProjec
   if (!taskId || !result) return null;
   const locked = readLockedVideo(result);
   const referenceResult = locked ? null : readReferenceResult(result);
-  if (!locked && !referenceResult) return null;
 
   const config = isRecord(task.config) ? task.config : {};
   const productionProject = isRecord(result.productionProject) ? result.productionProject : {};
@@ -181,7 +180,68 @@ export function recoverVimaxTaskProject(task: unknown): RecoveredVimaxTaskProjec
     };
   }
 
-  if (!locked) return null;
+  if (!locked) {
+    const productionPlan = isRecord(result.productionPlan)
+      ? result.productionPlan as unknown as VimaxProductionPlan
+      : null;
+    const plan = isRecord(result.vimaxPlan) ? result.vimaxPlan : null;
+    if (!productionPlan || !plan) return null;
+    const planAssets = Array.isArray(plan.assets) ? plan.assets.filter(isRecord) : [];
+    const planShots = Array.isArray(plan.shots) ? plan.shots.filter(isRecord) : [];
+    const assistant: ChatMessage = {
+      id: `${taskId}:planned`,
+      role: 'assistant',
+      content: `已恢复短剧「${title}」的当前故事与分镜。旧参考图和视频不会复用，请确认当前版本后重新生成。`,
+      timestamp: number(task.lastUpdatedAt, createdAt),
+      generationStatus: 'completed',
+      generationProgress: 100,
+      generationType: 'storyboard',
+      quickOptions: ['确认计划', '调整分镜', '取消'],
+      vimaxAgent: {
+        phase: 'plan',
+        title,
+        summary: text(plan.summary) || prompt,
+        model: text(productionPlan.providerRoutes.find(route => route.stage === 'plan')?.model) || '规划模型',
+        costState: 'not-yet',
+        nextAction: '确认当前故事和分镜后重新生成参考图。',
+        taskId,
+        productionPlan,
+        assets: planAssets.map((item, index) => ({
+          kind: ['character', 'scene', 'prop', 'reference'].includes(text(item.kind))
+            ? text(item.kind) as 'character' | 'scene' | 'prop' | 'reference'
+            : 'reference',
+          label: text(item.label) || `素材 ${index + 1}`,
+          prompt: text(item.prompt) || undefined,
+          status: 'planned',
+        })),
+        shots: planShots.map((item, index) => ({
+          index: number(item.index, index + 1),
+          title: text(item.title) || `镜头 ${index + 1}`,
+          duration: number(item.duration, 5),
+          camera: text(item.camera) || '连续镜头',
+          prompt: text(item.prompt),
+          status: 'planned',
+        })),
+      },
+    };
+    const messages: ChatMessage[] = [{
+      id: `${taskId}:prompt`,
+      role: 'user',
+      content: prompt,
+      timestamp: createdAt,
+    }, assistant];
+    return {
+      project: {
+        id: `task:${taskId}`,
+        title,
+        time: number(task.lastUpdatedAt, createdAt),
+        messages,
+        params: { recoveredTaskId: taskId },
+      },
+      messages,
+    };
+  }
+
   const model = text(locked.video.model) || '视频模型';
   const segments = Array.isArray(locked.video.segments) ? locked.video.segments.filter(isRecord) : [];
   const references = Array.isArray(result.vimaxReferenceAssets) ? result.vimaxReferenceAssets.filter(isRecord) : [];

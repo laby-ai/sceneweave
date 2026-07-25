@@ -12,9 +12,7 @@ import {
   Footprints,
   Image as ImageIcon,
   Loader2,
-  Mic,
   Music,
-  PersonStanding,
   Plus,
   Search,
   Sparkles,
@@ -81,7 +79,7 @@ import {
   shouldShowVimaxQuickOption,
 } from '@/lib/skills/vimax-short-drama/vimax-workspace-session';
 
-type CreationMode = 'agent' | 'image' | 'video' | 'music' | 'voice' | 'avatar' | 'motion';
+type CreationMode = 'agent' | 'image' | 'video' | 'music' | 'motion';
 
 interface CreationModeDef {
   id: CreationMode;
@@ -91,14 +89,12 @@ interface CreationModeDef {
   section?: string;
 }
 
-// 有 section 的创作类型已接真实后端（点了直达）；音乐生成 / 动作模仿先占位，后续接入。
+// 图片进入独立工作区；视频复用下方已经验收的 ViMAX 短剧状态机。
 const CREATION_MODES: CreationModeDef[] = [
   { id: 'agent', label: 'Agent 模式', icon: <Sparkles className="h-4 w-4" /> },
   { id: 'image', label: '图片生成', icon: <ImageIcon className="h-4 w-4" />, section: 'image' },
-  { id: 'video', label: '视频生成', icon: <Video className="h-4 w-4" />, section: 'video' },
+  { id: 'video', label: '视频生成', icon: <Video className="h-4 w-4" /> },
   { id: 'music', label: '音乐生成', icon: <Music className="h-4 w-4" /> },
-  { id: 'voice', label: '配音生成', icon: <Mic className="h-4 w-4" />, section: 'voice' },
-  { id: 'avatar', label: '数字人', icon: <PersonStanding className="h-4 w-4" />, section: 'avatar' },
   { id: 'motion', label: '动作模仿', icon: <Footprints className="h-4 w-4" /> },
 ];
 
@@ -123,6 +119,7 @@ function parseVimaxDurationSpec(text: string) {
 interface GenerateWorkspaceProps {
   initialPrompt?: string;
   agentOnly?: boolean;
+  availableModes?: CreationMode[];
   showModelSettings?: boolean;
   onNavigate?: (section: string, prompt?: string, transfer?: { imageRefs?: string[] }) => void;
   requestHeaders?: Record<string, string>;
@@ -148,6 +145,7 @@ function readImageAsDataUrl(file: File): Promise<string> {
 export function GenerateWorkspace({
   initialPrompt,
   agentOnly = false,
+  availableModes,
   showModelSettings = true,
   onNavigate,
   requestHeaders,
@@ -218,6 +216,16 @@ export function GenerateWorkspace({
     setInput(preset.prompt);
     setSkillSearch('');
     setSkillMenuOpen(false);
+    setTimeout(() => textareaRef.current?.focus(), 0);
+  }, [skillScope]);
+
+  const activateVideoCreationMode = useCallback(() => {
+    const preset = saveVimaxSkillPreset(localStorage, skillScope, 'short-drama');
+    setSkillSelection({ scope: skillScope, id: preset.id });
+    setSkillSearch('');
+    setSkillMenuOpen(false);
+    setMode('video');
+    setInput(current => current.trim() ? current : preset.prompt);
     setTimeout(() => textareaRef.current?.focus(), 0);
   }, [skillScope]);
 
@@ -479,7 +487,12 @@ export function GenerateWorkspace({
     setScopedWorkspaceView('home');
   }, [activeProjectId, cancelCurrentRun, setScopedWorkspaceView, storageScope]);
 
-  const activeMode = CREATION_MODES.find(item => item.id === mode) || CREATION_MODES[0];
+  const visibleCreationModes = availableModes
+    ? CREATION_MODES.filter(item => availableModes.includes(item.id))
+    : CREATION_MODES;
+  const activeMode = visibleCreationModes.find(item => item.id === mode)
+    || visibleCreationModes[0]
+    || CREATION_MODES[0];
 
   const openSubjectMenu = useCallback(async () => {
     setModeMenuOpen(false);
@@ -584,9 +597,11 @@ export function GenerateWorkspace({
     const text = (overrideText ?? input).trim();
     if (!text || isLoading) return;
     setScopedWorkspaceView('project');
-    const requestSkill = resolveVimaxSkillPreset(overrideSkillId || selectedSkill.id);
+    const requestSkill = resolveVimaxSkillPreset(
+      overrideSkillId || (mode === 'video' ? 'short-drama' : selectedSkill.id),
+    );
 
-    if (mode === 'agent') {
+    if (mode === 'agent' || mode === 'video') {
       if (/找回已完成片段/.test(text)) {
         setMessages(prev => [...prev, { id: genId(), role: 'user', content: text, timestamp: Date.now() }]);
         setInput('');
@@ -662,7 +677,7 @@ export function GenerateWorkspace({
     setMessages(prev => [...prev, {
       id: genId(),
       role: 'assistant',
-      content: `「${activeMode.label}」即将接入，敬请期待。当前可使用 Agent 模式、图片 / 视频 / 配音 / 数字人。`,
+      content: `「${activeMode.label}」当前未开放。请使用 Agent、图片生成或视频生成。`,
       timestamp: Date.now(),
     }]);
     setInput('');
@@ -894,15 +909,23 @@ export function GenerateWorkspace({
             {!agentOnly && modeMenuOpen && (
               <div className="absolute left-0 top-full z-20 mt-2 w-44 overflow-hidden rounded-xl border border-[#e1e5eb] bg-white p-1 text-[#252931] shadow-[0_18px_38px_rgba(31,41,55,0.14)]">
                 <p className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#9299a4]">创作类型</p>
-                {CREATION_MODES.map(item => (
+                {visibleCreationModes.map(item => (
                   <button
                     key={item.id}
                     type="button"
                     onClick={() => {
                       setModeMenuOpen(false);
-                      // 有对应能力页（图片/视频/数字人）的创作类型：直接进入该能力，点了就能用。
+                      if (item.id === 'video') {
+                        activateVideoCreationMode();
+                        return;
+                      }
+                      // 独立能力页（当前仅图片）直接进入；视频留在同一短剧项目状态机。
                       if (item.id !== 'agent' && item.section && onNavigate) {
-                        onNavigate(item.section, input.trim() || undefined);
+                        onNavigate(
+                          item.section,
+                          input.trim() || undefined,
+                          { imageRefs: selectedReferences.map(reference => reference.imageUrl) },
+                        );
                         return;
                       }
                       setMode(item.id);

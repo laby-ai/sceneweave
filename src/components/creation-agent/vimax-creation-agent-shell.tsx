@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { ArrowLeft } from 'lucide-react';
 
 import { AccountStatusButton } from '@/components/home/account-status-button';
@@ -13,6 +14,18 @@ import {
 import { createPaperHostMessage, type PaperHostMessageType } from '@/lib/paper-host-bridge';
 
 const BASE_PATH = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
+
+const ImageCreationPanel = dynamic(
+  () => import('@/components/image-creation-panel').then(module => module.ImageCreationPanel),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-full items-center justify-center bg-[#090d15] text-sm text-slate-400">
+        图片创作加载中…
+      </div>
+    ),
+  },
+);
 
 const withBasePath = (url: string) => (
   BASE_PATH && url.startsWith('/') && !url.startsWith(`${BASE_PATH}/`) ? `${BASE_PATH}${url}` : url
@@ -31,6 +44,9 @@ const postToPaperHost = (type: PaperHostMessageType, reason?: string) => {
 
 export function VimaxCreationAgentShell() {
   const [context, setContext] = useState<PaperHostEmbedContext | null>(null);
+  const [activeWorkspace, setActiveWorkspace] = useState<'agent' | 'image'>('agent');
+  const [imagePrompt, setImagePrompt] = useState('');
+  const [imageReferences, setImageReferences] = useState<string[]>([]);
 
   useEffect(() => {
     setContext(resolvePaperHostEmbedContext(window.location.search));
@@ -43,6 +59,17 @@ export function VimaxCreationAgentShell() {
 
   const handleAuthenticationRequired = useCallback((reason: string) => {
     postToPaperHost('paper-host-login-required', reason);
+  }, []);
+
+  const handleNavigate = useCallback((
+    section: string,
+    prompt?: string,
+    transfer?: { imageRefs?: string[] },
+  ) => {
+    if (section !== 'image') return;
+    setImagePrompt(prompt || '');
+    setImageReferences(transfer?.imageRefs || []);
+    setActiveWorkspace('image');
   }, []);
 
   if (!context) {
@@ -97,14 +124,27 @@ export function VimaxCreationAgentShell() {
         </div>
       </header>
       <div className="min-h-0 flex-1">
-        <GenerateWorkspace
-          agentOnly
-          showModelSettings={false}
-          requestHeaders={context.requestHeaders}
-          storageScope={context.storageScope}
-          resumeTaskId={context.resumeTaskId}
-          onAuthenticationRequired={handleAuthenticationRequired}
-        />
+        <div className={activeWorkspace === 'agent' ? 'h-full' : 'hidden'}>
+          <GenerateWorkspace
+            availableModes={['agent', 'image', 'video']}
+            showModelSettings={false}
+            requestHeaders={context.requestHeaders}
+            storageScope={context.storageScope}
+            resumeTaskId={context.resumeTaskId}
+            onAuthenticationRequired={handleAuthenticationRequired}
+            onNavigate={handleNavigate}
+          />
+        </div>
+        {activeWorkspace === 'image' ? (
+          <div data-testid="creation-agent-image-workspace" className="h-full bg-[#090d15]">
+            <ImageCreationPanel
+              initialPrompt={imagePrompt}
+              initialImageRefs={imageReferences}
+              autoGenerate={false}
+              onBack={() => setActiveWorkspace('agent')}
+            />
+          </div>
+        ) : null}
       </div>
     </main>
   );
