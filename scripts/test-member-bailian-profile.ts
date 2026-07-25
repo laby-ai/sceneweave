@@ -90,7 +90,12 @@ assert.doesNotMatch(control, /sessionStorage|localStorage|validateAndSaveBailian
 const shell = await readFile(path.join(process.cwd(), 'src/components/creation-agent/vimax-creation-agent-shell.tsx'), 'utf8');
 assert.match(shell, /creation-agent-dark/);
 assert.match(shell, /data-creation-agent-theme="dark"/);
-assert.match(shell, /agentOnly/, 'the primary creation entry must not expose legacy mode placeholders');
+assert.match(
+  shell,
+  /availableModes=\{\['agent', 'image', 'video'\]\}/,
+  'the primary creation entry must expose only the three verified creation workflows',
+);
+assert.doesNotMatch(shell, /\bagentOnly\b/, 'the verified image and video workflows must remain reachable');
 
 const provider = await readFile(path.join(process.cwd(), 'src/lib/byok-provider.ts'), 'utf8');
 assert.match(provider, /trustedOwner\?: TaskOwner/);
