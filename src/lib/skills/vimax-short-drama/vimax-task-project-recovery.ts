@@ -15,6 +15,30 @@ const isRecord = (value: unknown): value is UnknownRecord => (
 const text = (value: unknown) => typeof value === 'string' ? value.trim() : '';
 const number = (value: unknown, fallback = 0) => Number.isFinite(value) ? Number(value) : fallback;
 
+export function needsPersistedVimaxRenderRecovery(task: unknown): boolean {
+  if (!isRecord(task) || text(task.status) !== 'completed') return false;
+  const result = isRecord(task.result) ? task.result : null;
+  if (!result || readLockedVideo(result)) return false;
+  const video = isRecord(result.vimaxVideoResult) ? result.vimaxVideoResult : null;
+  return Boolean(
+    isRecord(result.productionPlan)
+    && isRecord(result.productionProject)
+    && isRecord(result.assemblyPlan)
+    && text(video?.videoUrl),
+  );
+}
+
+export function applyRecoveredVimaxProductionPlan(task: unknown, productionPlan: unknown): unknown {
+  if (!isRecord(task) || !isRecord(task.result) || !isRecord(productionPlan)) return task;
+  return {
+    ...task,
+    result: {
+      ...task.result,
+      productionPlan,
+    },
+  };
+}
+
 export function normalizeRecoveredVimaxCompletedPlan(plan: VimaxProductionPlan): VimaxProductionPlan {
   if (plan.governance.status !== 'delivery-ready' || plan.render.status !== 'completed') return plan;
   return {
