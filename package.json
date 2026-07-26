@@ -46,6 +46,7 @@
     "qa:segment-ui": "tsx scripts/qa-production-segment-ui.ts",
     "qa:segment-retry": "node scripts/qa-production-segment-retry.mjs",
     "qa:segment-retry-service": "tsx scripts/qa-production-segment-retry-service.ts",
+    "qa:segment-retry-browser": "tsx scripts/qa-vimax-segment-retry-browser.ts",
     "qa:task-center-assembly": "node scripts/qa-task-center-assembly-visibility.mjs",
     "qa:task-center-segment-assets": "node scripts/qa-task-center-segment-assets.mjs",
     "qa:task-center-provider-recovery": "node scripts/qa-task-center-provider-recovery.mjs",
