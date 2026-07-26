@@ -71,7 +71,11 @@ import {
   resolveVimaxProjectPresetId,
   resolveVimaxResultIteration,
 } from '@/lib/skills/vimax-short-drama/vimax-result-delivery';
-import { recoverVimaxTaskProject } from '@/lib/skills/vimax-short-drama/vimax-task-project-recovery';
+import {
+  applyRecoveredVimaxProductionPlan,
+  needsPersistedVimaxRenderRecovery,
+  recoverVimaxTaskProject,
+} from '@/lib/skills/vimax-short-drama/vimax-task-project-recovery';
 import {
   buildVimaxTaskUrl,
   resolveVimaxTaskId,
@@ -182,6 +186,7 @@ export function GenerateWorkspace({
   const [restoredScope, setRestoredScope] = useState<string | null>(null);
   const restoredScopeRef = useRef<string | null>(null);
   const recoveredTaskRef = useRef<string | null>(null);
+  const repairedRenderTaskRef = useRef<string | null>(null);
   const [ignoreResumeTask, setIgnoreResumeTask] = useState(false);
   const [workspaceView, setWorkspaceView] = useState<VimaxWorkspaceView>('home');
   useEffect(() => {
@@ -380,7 +385,25 @@ export function GenerateWorkspace({
           signal: controller.signal,
           redirectOnUnauthorized: false,
         });
-        const recovered = recoverVimaxTaskProject(payload.task);
+        let recovered = recoverVimaxTaskProject(payload.task);
+        if (!recovered
+          && needsPersistedVimaxRenderRecovery(payload.task)
+          && repairedRenderTaskRef.current !== recoveryKey) {
+          repairedRenderTaskRef.current = recoveryKey;
+          const repair = await clientApiFetch<{ productionPlan?: unknown }>(
+            `/api/tasks/${encodeURIComponent(recoverableTaskId)}`,
+            {
+              method: 'POST',
+              headers: { 'content-type': 'application/json', ...effectiveRequestHeaders },
+              body: JSON.stringify({ action: 'recover-production-render' }),
+              signal: controller.signal,
+              redirectOnUnauthorized: false,
+            },
+          );
+          recovered = recoverVimaxTaskProject(
+            applyRecoveredVimaxProductionPlan(payload.task, repair.productionPlan),
+          );
+        }
         if (!recovered) {
           if (!controller.signal.aborted) retryTimer = setTimeout(recover, 3_000);
           return;

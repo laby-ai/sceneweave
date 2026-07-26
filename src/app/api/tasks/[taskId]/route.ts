@@ -9,7 +9,10 @@ import {
   prepareVimaxProductionDraft,
   resumeVimaxProduction,
 } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
-import { approveVimaxProductionRender } from '@/lib/skills/vimax-short-drama/vimax-render-delivery-lock';
+import {
+  approveVimaxProductionRender,
+  recoverVimaxPersistedSuccessfulRender,
+} from '@/lib/skills/vimax-short-drama/vimax-render-delivery-lock';
 import { updateVimaxProductionDirectionForTask } from '@/lib/skills/vimax-short-drama/vimax-production-direction';
 import { updateVimaxStoryBibleForTask } from '@/lib/skills/vimax-short-drama/vimax-story-bible-editor';
 
@@ -207,6 +210,39 @@ export async function POST(
           usedRealKey: false,
           incurredCost: false,
           error: error instanceof Error ? error.message : '成片合成确认失败',
+        }, { status: 409 });
+      }
+    }
+
+    if (action === 'recover-production-render') {
+      const task = getTaskForOwner(taskId, owner);
+      if (!task) {
+        return NextResponse.json(
+          { success: false, error: '任务不存在', task: null },
+          { status: 404 },
+        );
+      }
+      try {
+        const productionPlan = recoverVimaxPersistedSuccessfulRender(task.result?.productionPlan, {
+          productionProject: task.result?.productionProject,
+          assemblyPlan: task.result?.assemblyPlan,
+          videoResult: task.result?.vimaxVideoResult,
+          completedAt: new Date(task.completedAt || task.lastUpdatedAt || Date.now()).toISOString(),
+        });
+        updateTask(taskId, { result: { ...task.result, productionPlan } });
+        return NextResponse.json({
+          success: true,
+          usedRealKey: false,
+          incurredCost: false,
+          productionPlan,
+          message: '已从持久化成片和质量报告恢复交付状态。',
+        });
+      } catch (error) {
+        return NextResponse.json({
+          success: false,
+          usedRealKey: false,
+          incurredCost: false,
+          error: error instanceof Error ? error.message : '成片交付状态恢复失败',
         }, { status: 409 });
       }
     }

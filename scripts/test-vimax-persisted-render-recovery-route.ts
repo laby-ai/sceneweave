@@ -14,6 +14,11 @@ async function main() {
   const { buildProductionProject } = await import('../src/lib/production-project');
   const { generateShotsFromUserPrompt } = await import('../src/lib/storyboard-generator');
   const { createTask, getTaskFresh, updateTask } = await import('../src/lib/task-manager');
+  const {
+    applyRecoveredVimaxProductionPlan,
+    needsPersistedVimaxRenderRecovery,
+    recoverVimaxTaskProject,
+  } = await import('../src/lib/skills/vimax-short-drama/vimax-task-project-recovery');
   const productionPlanModule = await import('../src/lib/skills/vimax-short-drama/vimax-production-plan');
   const taskRoute = await import('../src/app/api/tasks/[taskId]/route');
 
@@ -106,6 +111,9 @@ async function main() {
       },
     },
   });
+  const persistedBeforeRepair = getTaskFresh(taskId);
+  assert.equal(recoverVimaxTaskProject(persistedBeforeRepair), null);
+  assert.equal(needsPersistedVimaxRenderRecovery(persistedBeforeRepair), true);
 
   const response = await taskRoute.POST(new NextRequest(`http://localhost/api/tasks/${taskId}`, {
     method: 'POST',
@@ -121,6 +129,10 @@ async function main() {
     getTaskFresh(taskId)?.result?.productionPlan && body.productionPlan.render.lastSuccessfulResult.videoUrl,
     '/huiying/api/final-videos/persisted-final',
   );
+  const recoveredProject = recoverVimaxTaskProject(
+    applyRecoveredVimaxProductionPlan(persistedBeforeRepair, body.productionPlan),
+  );
+  assert.equal(recoveredProject?.messages[1].generatedVideo?.url, '/huiying/api/final-videos/persisted-final');
 
   rmSync(taskFile, { force: true });
   console.log(JSON.stringify({ ok: true, script: 'test-vimax-persisted-render-recovery-route', providerCalls: 0 }));
