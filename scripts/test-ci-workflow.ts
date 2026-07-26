@@ -26,6 +26,7 @@ const requiredSnippets = [
   "pnpm run test:film-mobile-viewport",
   "pnpm run qa:smart-vimax-agent-render",
   "pnpm run test:vimax-story-bible-editor",
+  "pnpm run test:vimax-non-narrative-plan-semantics",
   "pnpm run test:vimax-reference-phase",
   "pnpm run test:segment-first-frame-fallback",
   "pnpm run test:film-compose-durability",

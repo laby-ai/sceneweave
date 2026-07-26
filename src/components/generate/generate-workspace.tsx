@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowUp,
-  AtSign,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -23,7 +22,7 @@ import {
 
 import { VimaxProjectBar } from '@/components/generate/vimax-project-bar';
 import { VimaxProjectHome } from '@/components/generate/vimax-project-home';
-import { clientApiFetch, clientApiRequest } from '@/lib/client-api';
+import { clientApiFetch } from '@/lib/client-api';
 import { genId, loadChatHistory, loadMessages, saveChatHistory, saveMessages, type ChatHistoryEntry, type ChatMessage } from '@/lib/smart-assistant-panel-model';
 import { VimaxProductionPlanCard } from '@/components/generate/vimax-production-plan-card';
 import { VimaxProjectEditorCard } from '@/components/generate/vimax-project-editor-card';
@@ -166,13 +165,7 @@ export function GenerateWorkspace({
   const [skillMenuOpen, setSkillMenuOpen] = useState(false);
   const [skillSearch, setSkillSearch] = useState('');
   const [mediaModelMenuOpen, setMediaModelMenuOpen] = useState(false);
-  const [atMenuOpen, setAtMenuOpen] = useState(false);
-  const [subjects, setSubjects] = useState<SubjectItem[]>([]);
-  const [subjectsLoading, setSubjectsLoading] = useState(false);
-  const [subjectError, setSubjectError] = useState<string | null>(null);
-  const [subjectOpeningId, setSubjectOpeningId] = useState<string | null>(null);
   const [selectedReferences, setSelectedReferences] = useState<SubjectItem[]>([]);
-  const [referenceType, setReferenceType] = useState<SubjectType>('character');
   const [referenceUploading, setReferenceUploading] = useState(false);
   const [referenceError, setReferenceError] = useState<string | null>(null);
   const [selectedRatio, setSelectedRatio] = useState('16:9');
@@ -326,7 +319,6 @@ export function GenerateWorkspace({
       return;
     }
     let cancelled = false;
-    setSubjectsLoading(true);
     void clientApiFetch<{ subjects?: SubjectItem[] }>('/api/subjects', {
       headers: effectiveRequestHeaders,
       redirectOnUnauthorized: false,
@@ -337,7 +329,6 @@ export function GenerateWorkspace({
       const restored = savedIds
         .map(id => byId.get(id))
         .filter((subject): subject is SubjectItem => Boolean(subject));
-      setSubjects(visibleSubjects);
       setSelectedReferences(restored);
       saveVimaxProjectReferenceIds(
         localStorage,
@@ -355,8 +346,6 @@ export function GenerateWorkspace({
       if (cancelled) return;
       setReferenceError(error instanceof Error ? error.message : '参考图恢复失败');
       restoredReferenceProjectRef.current = projectKey;
-    }).finally(() => {
-      if (!cancelled) setSubjectsLoading(false);
     });
     return () => { cancelled = true; };
   }, [activeProjectId, effectiveRequestHeaders, restoredScope, storageScope]);
@@ -522,58 +511,6 @@ export function GenerateWorkspace({
     || visibleCreationModes[0]
     || CREATION_MODES[0];
 
-  const openSubjectMenu = useCallback(async () => {
-    setModeMenuOpen(false);
-    setSkillMenuOpen(false);
-    setMediaModelMenuOpen(false);
-    setAtMenuOpen(open => !open);
-    if (atMenuOpen || subjects.length > 0 || subjectsLoading) return;
-    setSubjectsLoading(true);
-    try {
-      const payload = await clientApiFetch<{ subjects?: SubjectItem[] }>('/api/subjects');
-      setSubjects(payload.subjects || []);
-      setSubjectError(null);
-    } catch (error) {
-      setSubjectError(error instanceof Error ? error.message : '主体库加载失败');
-    } finally {
-      setSubjectsLoading(false);
-    }
-  }, [atMenuOpen, subjects.length, subjectsLoading]);
-
-  const selectSubject = useCallback(async (subject: SubjectItem) => {
-    if (subjectOpeningId) return;
-    if (mode === 'agent') {
-      setSelectedReferences(current => (
-        current.some(item => item.id === subject.id)
-          ? current
-          : [...current, subject].slice(0, 8)
-      ));
-      setAtMenuOpen(false);
-      setReferenceError(null);
-      return;
-    }
-    if (!onNavigate) return;
-    setSubjectOpeningId(subject.id);
-    try {
-      const response = await clientApiRequest(`/api/subjects/${encodeURIComponent(subject.id)}`, { timeoutMs: 20_000 });
-      if (!response.ok) throw new Error('主体参考图不可用');
-      const blob = await response.blob();
-      if (!blob.type.startsWith('image/') || blob.size === 0) throw new Error('主体参考图不可用');
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
-        reader.onerror = () => reject(new Error('主体参考图读取失败'));
-        reader.readAsDataURL(blob);
-      });
-      setAtMenuOpen(false);
-      onNavigate('image', input.trim() || `基于主体「${subject.name}」创作新画面`, { imageRefs: [dataUrl] });
-    } catch (error) {
-      setSubjectError(error instanceof Error ? error.message : '主体参考图不可用');
-    } finally {
-      setSubjectOpeningId(null);
-    }
-  }, [input, mode, onNavigate, subjectOpeningId]);
-
   const uploadReference = useCallback(async (file: File) => {
     if (referenceUploading) return;
     if (selectedReferences.length >= 8) {
@@ -595,7 +532,7 @@ export function GenerateWorkspace({
         headers: effectiveRequestHeaders,
         body: JSON.stringify({
           name: file.name.replace(/\.[^.]+$/, '').slice(0, 80) || '未命名参考图',
-          type: referenceType,
+          type: 'character',
           source: 'uploaded',
           context: 'creation-agent',
           referenceUrl,
@@ -603,10 +540,6 @@ export function GenerateWorkspace({
         timeoutMs: 30_000,
       });
       if (!payload.subject) throw new Error('reference_upload_failed');
-      setSubjects(current => [
-        payload.subject!,
-        ...current.filter(item => item.id !== payload.subject!.id),
-      ]);
       setSelectedReferences(current => [...current, payload.subject!].slice(0, 8));
     } catch {
       setReferenceError('参考图上传失败，请检查图片后重试。');
@@ -616,7 +549,6 @@ export function GenerateWorkspace({
     }
   }, [
     effectiveRequestHeaders,
-    referenceType,
     referenceUploading,
     selectedReferences.length,
   ]);
@@ -802,9 +734,9 @@ export function GenerateWorkspace({
                     <span className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-[#dfe5ed] bg-white text-[#2f6bff] shadow-[0_8px_24px_rgba(31,41,55,0.06)]">
                       <Sparkles className="h-5 w-5" />
                     </span>
-                    <h2 className="text-xl font-semibold tracking-[-0.025em] text-[#20232a]">从一句想法开始</h2>
+                    <h2 className="text-xl font-semibold tracking-[-0.025em] text-[#20232a]">把故事讲给绘影</h2>
                     <p className="mt-2 max-w-md text-sm leading-6 text-[#858c97]">
-                      创作智能体会沿用成熟的计划、分镜、参考素材和成片链路持续推进。
+                      写下一个故事、粘贴剧本，或直接上传参考素材。绘影会先和你确认，再开始制作。
                     </p>
                   </div>
                 )}
@@ -838,9 +770,6 @@ export function GenerateWorkspace({
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={reference.imageUrl} alt="" className="h-8 w-8 shrink-0 rounded-md object-cover" />
                 <span className="max-w-28 truncate">{reference.name}</span>
-                <span className="shrink-0 text-[10px] text-slate-500">
-                  {reference.type === 'character' ? '角色' : reference.type === 'scene' ? '场景' : '道具'}
-                </span>
                 <button
                   type="button"
                   onClick={() => setSelectedReferences(current => moveVimaxProjectReference(current, reference.id, -1))}
@@ -896,16 +825,6 @@ export function GenerateWorkspace({
                 ? <Loader2 className="h-4 w-4 animate-spin" />
                 : <Plus className="h-4 w-4" />}
             </button>
-            <select
-              value={referenceType}
-              onChange={event => setReferenceType(event.target.value as SubjectType)}
-              className="h-9 rounded-lg border border-white/10 bg-[#151d2a] px-2 text-[11px] text-slate-300 outline-none transition hover:border-white/20 focus:border-[#557fdc]"
-              aria-label="参考图用途"
-            >
-              <option value="character">角色</option>
-              <option value="scene">场景</option>
-              <option value="object">道具</option>
-            </select>
           </div>
           <textarea
             ref={textareaRef}
@@ -913,7 +832,7 @@ export function GenerateWorkspace({
             onChange={event => setInput(event.target.value)}
             onKeyDown={onKeyDown}
             rows={2}
-            placeholder="输入想法、剧本或上传参考，支持 “/” 使用技能，@ 添加主体，和 Agent 一起创作"
+            placeholder="写下故事、粘贴剧本，或上传参考素材"
             className="min-h-[58px] flex-1 resize-none bg-transparent py-1.5 text-sm leading-relaxed text-slate-100 outline-none placeholder:text-slate-500"
           />
         </div>
@@ -926,7 +845,7 @@ export function GenerateWorkspace({
             ) : (
               <button
                 type="button"
-                onClick={() => { setSkillMenuOpen(false); setMediaModelMenuOpen(false); setAtMenuOpen(false); setModeMenuOpen(open => !open); }}
+                onClick={() => { setSkillMenuOpen(false); setMediaModelMenuOpen(false); setModeMenuOpen(open => !open); }}
                 className="flex items-center gap-1.5 rounded-lg bg-[#edf3ff] px-2.5 py-1.5 text-xs font-medium text-[#2f6bff] ring-1 ring-[#c9d8ff] transition hover:bg-[#e3edff]"
               >
                 {activeMode.icon}
@@ -935,7 +854,7 @@ export function GenerateWorkspace({
               </button>
             )}
             {!agentOnly && modeMenuOpen && (
-              <div className="absolute left-0 top-full z-20 mt-2 w-44 overflow-hidden rounded-xl border border-[#e1e5eb] bg-white p-1 text-[#252931] shadow-[0_18px_38px_rgba(31,41,55,0.14)]">
+              <div className="absolute bottom-full left-0 z-20 mb-2 w-44 overflow-hidden rounded-xl border border-[#e1e5eb] bg-white p-1 text-[#252931] shadow-[0_18px_38px_rgba(31,41,55,0.14)]">
                 <p className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#9299a4]">创作类型</p>
                 {visibleCreationModes.map(item => (
                   <button
@@ -973,14 +892,14 @@ export function GenerateWorkspace({
           <div className="relative">
             <button
               type="button"
-              onClick={() => { setModeMenuOpen(false); setSkillMenuOpen(false); setAtMenuOpen(false); setMediaModelMenuOpen(open => !open); }}
+              onClick={() => { setModeMenuOpen(false); setSkillMenuOpen(false); setMediaModelMenuOpen(open => !open); }}
               className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.035] px-2.5 py-1.5 text-xs text-slate-400 transition hover:border-white/20 hover:bg-white/[0.07] hover:text-slate-100"
               title="画面比例与清晰度"
             >
               <ImageIcon className="h-3.5 w-3.5" /> 画面
             </button>
             {mediaModelMenuOpen && (
-              <div className="absolute left-0 top-full z-20 mt-2 w-56 overflow-hidden rounded-xl border border-[#e1e5eb] bg-white p-2 text-[#252931] shadow-[0_18px_38px_rgba(31,41,55,0.14)]">
+              <div className="absolute bottom-full left-0 z-20 mb-2 w-56 overflow-hidden rounded-xl border border-[#e1e5eb] bg-white p-2 text-[#252931] shadow-[0_18px_38px_rgba(31,41,55,0.14)]">
                 <p className="px-1 pb-1 text-[11px] font-semibold uppercase tracking-wider text-[#9299a4]">画面比例</p>
                 <div className="flex gap-1.5">
                   {["16:9", "9:16", "1:1", "4:3", "3:4"].map(r => (
@@ -1000,14 +919,14 @@ export function GenerateWorkspace({
           <div className="relative">
             <button
               type="button"
-              onClick={() => { setModeMenuOpen(false); setMediaModelMenuOpen(false); setAtMenuOpen(false); setSkillMenuOpen(open => !open); }}
+              onClick={() => { setModeMenuOpen(false); setMediaModelMenuOpen(false); setSkillMenuOpen(open => !open); }}
               className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.035] px-2.5 py-1.5 text-xs text-slate-400 transition hover:border-white/20 hover:bg-white/[0.07] hover:text-slate-100"
               title="使用技能"
             >
               <Wand2 className="h-3.5 w-3.5" /> {selectedSkill.name}
             </button>
             {skillMenuOpen && (
-              <div className="absolute left-0 top-full z-20 mt-2 w-80 overflow-hidden rounded-xl border border-[#e1e5eb] bg-white p-2 text-[#252931] shadow-[0_18px_38px_rgba(31,41,55,0.14)]">
+              <div className="absolute bottom-full left-0 z-20 mb-2 w-80 max-w-[calc(100vw-3rem)] overflow-hidden rounded-xl border border-[#e1e5eb] bg-white p-2 text-[#252931] shadow-[0_18px_38px_rgba(31,41,55,0.14)]">
                 <p className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-wider text-[#9299a4]">创作 Skill</p>
                 <label className="mb-2 flex items-center gap-2 rounded-lg border border-[#e1e5eb] bg-[#f8f9fb] px-2.5 py-2">
                   <Search className="h-3.5 w-3.5 text-[#9299a4]" />
@@ -1037,36 +956,6 @@ export function GenerateWorkspace({
                   <p className="px-2 py-5 text-center text-xs text-[#9299a4]">没有匹配的 Skill</p>
                 )}
                 </div>
-              </div>
-            )}
-          </div>
-
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => void openSubjectMenu()}
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-400 transition hover:border-white/20 hover:bg-white/[0.07] hover:text-slate-100"
-              title="添加主体"
-            >
-              <AtSign className="h-4 w-4" />
-            </button>
-            {atMenuOpen && (
-              <div className="absolute right-0 top-full z-20 mt-2 max-h-72 w-64 overflow-y-auto rounded-xl border border-[#e1e5eb] bg-white p-2 text-[#252931] shadow-[0_18px_38px_rgba(31,41,55,0.14)] sm:left-0 sm:right-auto">
-                <p className="pb-1 text-[11px] font-semibold uppercase tracking-wider text-[#9299a4]">引用主体</p>
-                {subjectsLoading ? (
-                  <p className="px-1 py-3 text-xs text-[#9299a4]">正在加载主体库…</p>
-                ) : subjectError ? (
-                  <p className="px-1 py-3 text-xs text-red-500">{subjectError}</p>
-                ) : subjects.length === 0 ? (
-                  <p className="px-1 py-2 text-xs text-[#9299a4]">暂无可引用主体。可在素材库的生成历史中保存真实图片。</p>
-                ) : subjects.map(subject => (
-                  <button key={subject.id} type="button" disabled={Boolean(subjectOpeningId)} onClick={() => void selectSubject(subject)} className="flex w-full items-center gap-2 rounded-lg p-2 text-left hover:bg-[#f5f7fa] disabled:opacity-50">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={subject.imageUrl} alt="" className="h-10 w-10 rounded-md object-cover" />
-                    <span className="min-w-0 flex-1"><span className="block truncate text-sm">{subject.name}</span><span className="text-[11px] text-[#9299a4]">{subject.type === 'character' ? '角色' : subject.type === 'scene' ? '场景' : '物件'}</span></span>
-                    {subjectOpeningId === subject.id && <span className="text-xs text-[#9299a4]">读取中</span>}
-                  </button>
-                ))}
               </div>
             )}
           </div>

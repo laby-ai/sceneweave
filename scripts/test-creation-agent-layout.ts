@@ -50,6 +50,13 @@ assert.doesNotMatch(workspace, /当前可使用 Agent 模式、图片 \/ 视频 
 assert.match(workspace, /imageRefs: selectedReferences\.map\(reference => reference\.imageUrl\)/);
 assert.match(workspace, /if \(workspaceView !== 'project'\) return;/);
 assert.match(workspace, /data-testid="creation-agent-composer"/);
+assert.doesNotMatch(workspace, /aria-label="参考图用途"/);
+assert.doesNotMatch(workspace, /title="添加主体"/);
+assert.doesNotMatch(workspace, /@ 添加主体/);
+assert.match(workspace, /placeholder="写下故事、粘贴剧本，或上传参考素材"/);
+assert.match(workspace, /bottom-full left-0 z-20 mb-2 w-80 max-w-\[calc\(100vw-3rem\)\]/);
+assert.match(home, /把故事讲给绘影/);
+assert.match(home, /绘影会先和你确认，再开始制作/);
 assert.match(imagePanel, /aria-label="返回创作智能体"/);
 assert.match(imagePanel, /aria-label="图片创作工作区"/);
 assert.match(imagePanel, /data-testid="image-settings-panel"/);

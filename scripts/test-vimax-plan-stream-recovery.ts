@@ -110,17 +110,18 @@ async function main() {
   assert.equal(failedTaskReads, 1, 'terminal failures must not be polled repeatedly');
 
   const routeSource = readFileSync('src/app/api/smart/vimax-agent-step/route.ts', 'utf8');
+  const planTaskSource = readFileSync('src/lib/skills/vimax-short-drama/vimax-plan-task.ts', 'utf8');
   const clientSource = readFileSync('src/lib/skills/vimax-short-drama/use-vimax-short-drama-skill.ts', 'utf8');
   const workspaceSource = readFileSync('src/components/generate/generate-workspace.tsx', 'utf8');
   assert.ok(
     /send\('plan\.accepted'[\s\S]{0,500}await callArkTextStream\(/.test(routeSource),
     'the recovery cursor must be sent before the provider call can outlive the browser stream',
   );
-  assert.match(routeSource, /getTaskForOwner\(taskId, owner\)\?\.status === 'cancelled'/);
+  assert.match(routeSource, /isVimaxPlanningTaskCancelled\(taskId, owner\)/);
   assert.match(routeSource, /callArkTextStream\([\s\S]{0,500}request\.signal/);
   assert.match(
-    routeSource,
-    /request\.signal\.aborted[\s\S]{0,200}cancelTask\(taskId\)/,
+    `${routeSource}\n${planTaskSource}`,
+    /requestAborted[\s\S]{0,500}cancelTask\(input\.taskId\)/,
     'a disconnected planning stream must persist cancellation instead of reporting provider failure',
   );
   assert.match(clientSource, /waitForPersistedVimaxPlan\(\{/);

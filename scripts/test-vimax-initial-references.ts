@@ -156,8 +156,12 @@ async function main() {
     assert.match(content[2]?.text || '', /图2是角色「林夏」/);
 
     const route = await readFile(path.join(process.cwd(), 'src/app/api/smart/vimax-agent-step/route.ts'), 'utf8');
+    const planEnvelope = await readFile(
+      path.join(process.cwd(), 'src/lib/skills/vimax-short-drama/vimax-plan-envelope.ts'),
+      'utf8',
+    );
     const workspace = await readFile(path.join(process.cwd(), 'src/components/generate/generate-workspace.tsx'), 'utf8');
-    assert.match(route, /referenceIds:\s*normalizeVimaxInitialReferenceIds\(body\.referenceIds\)/);
+    assert.match(planEnvelope, /referenceIds:\s*normalizeVimaxInitialReferenceIds\(input\.body\.referenceIds\)/);
     assert.match(route, /appendVimaxInitialReferenceContext\(prompt,\s*initialReferenceRecords\)/);
     assert.match(route, /initialReferenceAssets,/);
     assert.match(workspace, /referenceIds:\s*selectedReferences\.map/);

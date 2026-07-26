@@ -1,11 +1,17 @@
 import type { ProductionAssemblyPlan } from '@/lib/production-assembly-plan';
 import type { ProductionProject } from '@/lib/production-project';
 import {
+  cancelTask,
   completeTask,
+  createTask,
+  failTask,
   getTask,
+  getTaskForOwner,
   startTask,
+  type TaskOwner,
 } from '@/lib/task-manager';
-import type { VimaxAgentPlan } from '@/lib/skills/vimax-short-drama/vimax-agent-contract';
+import type { VimaxAgentPlan, VimaxAgentStepBody } from '@/lib/skills/vimax-short-drama/vimax-agent-contract';
+import { normalizeVimaxInitialReferenceIds } from '@/lib/skills/vimax-short-drama/vimax-initial-references';
 import type { VimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 
 interface PersistVimaxPlanTaskInput {
@@ -15,6 +21,45 @@ interface PersistVimaxPlanTaskInput {
   productionProject: ProductionProject;
   assemblyPlan: ProductionAssemblyPlan;
   productionPlan: VimaxProductionPlan | unknown;
+}
+
+export function createVimaxPlanningTask(owner: TaskOwner, prompt: string, body: VimaxAgentStepBody) {
+  return createTask('storyboard', {
+    prompt,
+    duration: `${body.duration || 30}s`,
+    ratio: body.ratio || '16:9',
+    resolution: body.resolution || '720p',
+    style: body.style || '电影感短剧',
+    sceneType: body.sceneType || 'drama',
+    workflow: 'vimax-agent',
+    phase: 'plan',
+    skillId: body.skillId,
+    referenceIds: normalizeVimaxInitialReferenceIds(body.referenceIds),
+    idempotencyKey: body.requestId,
+  }, owner);
+}
+
+export function startVimaxPlanningTask(taskId: string) {
+  if (!startTask(taskId)) throw new Error('创作任务无法进入规划状态。');
+}
+
+export function isVimaxPlanningTaskCancelled(taskId: string, owner: TaskOwner) {
+  return getTaskForOwner(taskId, owner)?.status === 'cancelled';
+}
+
+export function settleVimaxPlanningTaskError(input: {
+  taskId: string;
+  owner: TaskOwner;
+  requestAborted: boolean;
+  error: unknown;
+}) {
+  if (input.requestAborted || (input.error instanceof Error && input.error.name === 'AbortError')) {
+    cancelTask(input.taskId);
+    return 'cancelled' as const;
+  }
+  if (isVimaxPlanningTaskCancelled(input.taskId, input.owner)) return 'cancelled' as const;
+  failTask(input.taskId, 'planning_provider_failed');
+  return 'failed' as const;
 }
 
 export function persistVimaxPlanTask(input: PersistVimaxPlanTaskInput) {

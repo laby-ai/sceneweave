@@ -6,7 +6,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-import { chromium } from '@playwright/test';
+import { chromium, expect } from '@playwright/test';
 
 const appPort = 5398;
 const providerPort = 5397;
@@ -259,7 +259,7 @@ async function main() {
       /account-login/,
       `unexpected login redirect; requests=${requestedUrls.join(' | ')}`,
     );
-    const input = page.getByPlaceholder(/输入想法、剧本或上传参考/);
+    const input = page.getByPlaceholder(/写下故事、粘贴剧本，或上传参考素材/);
     await input.fill('10秒短剧：记者在雨夜天台拾起发光胶片，两个连续的5秒镜头。');
     await input.press('Enter');
     await page.getByText(/正在规划你的短剧分镜/).waitFor({ state: 'visible' });
@@ -293,8 +293,15 @@ async function main() {
     assert.equal(mediaStageRequests, 0, 'planning cancel/retry must not enter reference or video stages');
     assert.equal(firstProviderClosed, true, 'browser cancellation must close the in-flight planning provider stream');
 
-    const persistedTasks = JSON.parse(readFileSync(taskFile, 'utf8')) as Array<{ status?: string; config?: { phase?: string } }>;
-    const planningTasks = persistedTasks.filter(task => task.config?.phase === 'plan');
+    let planningTasks: Array<{ status?: string; config?: { phase?: string } }> = [];
+    await expect.poll(() => {
+      const persistedTasks = JSON.parse(readFileSync(taskFile, 'utf8')) as Array<{
+        status?: string;
+        config?: { phase?: string };
+      }>;
+      planningTasks = persistedTasks.filter(task => task.config?.phase === 'plan');
+      return planningTasks.filter(task => task.status === 'completed').length;
+    }).toBe(1);
     assert.equal(planningTasks.filter(task => task.status === 'cancelled').length, 1);
     assert.equal(planningTasks.filter(task => task.status === 'completed').length, 1);
     assert.equal(errors.length, 0, `browser errors: ${errors.join(' | ')}`);

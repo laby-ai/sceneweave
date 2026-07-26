@@ -72,8 +72,10 @@ async function main() {
   assert.match(library, /保存为主体/);
   assert.match(library, /\/api\/subjects/);
   assert.doesNotMatch(library, /会自动沉淀为可复用主体/);
-  assert.match(workspace, /clientApiRequest\(`\/api\/subjects\/\$\{encodeURIComponent\(subject.id\)\}`/);
-  assert.match(workspace, /imageRefs: \[dataUrl\]/);
+  assert.match(workspace, /clientApiFetch<\{ subject\?: SubjectItem \}>\('\/api\/subjects'/);
+  assert.match(workspace, /saveVimaxProjectReferenceIds/);
+  assert.doesNotMatch(workspace, /@主体|删除主体/);
+  assert.match(workspace, /imageRefs:\s*selectedReferences\.map\(reference => reference\.imageUrl\)/);
   assert.match(main, /setPendingImageRefs\(transfer\?\.imageRefs \|\| \[\]\)/);
   assert.match(
     main,

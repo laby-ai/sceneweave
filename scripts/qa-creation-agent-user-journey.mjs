@@ -223,7 +223,7 @@ try {
     await page.keyboard.press('Escape');
     await page.getByText('creator@example.test', { exact: true }).waitFor({ state: 'hidden' });
 
-    const composerInput = page.getByPlaceholder(/输入想法、剧本或上传参考/);
+    const composerInput = page.getByPlaceholder('写下故事、粘贴剧本，或上传参考素材');
     const imageDraft = '雨夜城市天台上的蓝衣女主角，电影级宽银幕构图';
     await composerInput.fill(imageDraft);
     await page.getByRole('button', { name: 'Agent 模式', exact: true }).click();
@@ -279,9 +279,17 @@ try {
     await page.screenshot({ path: path.join(outputRoot, `${viewport.name}-home.png`), fullPage: true });
 
     await page.getByTitle('使用技能').click();
-    await page.getByPlaceholder('搜索短剧、电商、分镜…').fill('电商');
+    const skillSearch = page.getByPlaceholder('搜索短剧、电商、分镜…');
+    const skillMenuBox = await skillSearch.locator('..').locator('..').boundingBox();
+    assert(
+      skillMenuBox
+      && skillMenuBox.y >= 0
+      && skillMenuBox.y + skillMenuBox.height <= viewport.height,
+      `${viewport.name} skill menu is clipped by the viewport`,
+    );
+    await skillSearch.fill('电商');
     await page.getByRole('button', { name: '电商商品片 商品卖点、使用场景与转化镜头', exact: true }).click();
-    assert.match(await page.getByPlaceholder(/输入想法、剧本或上传参考/).inputValue(), /商品/);
+    assert.match(await composerInput.inputValue(), /商品/);
     await page.getByTitle('画面比例与清晰度').click();
     await page.getByRole('button', { name: '9:16', exact: true }).click();
     await page.getByRole('button', { name: '超清', exact: true }).click();

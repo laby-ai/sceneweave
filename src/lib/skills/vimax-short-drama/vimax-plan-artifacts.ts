@@ -1,7 +1,7 @@
 import { buildProductionAssemblyPlan } from '@/lib/production-assembly-plan';
 import type { ProductionAssemblyPlan, ProductionSegmentPlan } from '@/lib/production-assembly-plan';
 import { buildProductionProject } from '@/lib/production-project';
-import type { ProductionProject } from '@/lib/production-project';
+import type { ProductionAsset, ProductionAssetKind, ProductionProject } from '@/lib/production-project';
 import { generateShotsFromUserPrompt } from '@/lib/storyboard-generator';
 import type { PromptBasedShot } from '@/lib/storyboard-generator';
 import type { VimaxAgentPlan, VimaxAgentStepBody } from '@/lib/skills/vimax-short-drama/vimax-agent-contract';
@@ -56,24 +56,86 @@ function applyPlannerNarrativeContext(
   plan: VimaxAgentPlan,
 ): ProductionProject {
   const story = plan.story;
+  const explicitCharacter = Boolean(
+    plan.characters?.length
+    || plan.assets.some(asset => asset.kind === 'character')
+    || plan.shots.some(shot => shot.characterIds?.length),
+  );
+  const plannerAssets = plan.assets
+    .filter(asset => ['character', 'scene', 'prop'].includes(asset.kind))
+    .map((asset, index): ProductionAsset => ({
+      id: `planner-${asset.kind}-${index + 1}`,
+      kind: asset.kind as ProductionAssetKind,
+      name: asset.label,
+      status: 'planned',
+      summary: asset.prompt || asset.label,
+      source: 'prompt',
+      relatedShotIds: project.storyboard.shots.map(shot => shot.id),
+    }));
+  const plannerKinds = new Set(plannerAssets.map(asset => asset.kind));
+  const assets = [
+    ...project.assets.filter(asset => {
+      if (!explicitCharacter && asset.kind === 'character') return false;
+      return !plannerKinds.has(asset.kind);
+    }),
+    ...plannerAssets,
+  ].map(asset => (
+    asset.kind === 'script'
+      ? { ...asset, summary: plan.summary?.trim() || asset.summary }
+      : asset
+  ));
+  const visualSubject = story?.protagonist
+    || plannerAssets.find(asset => asset.kind === 'prop')?.name
+    || plan.summary
+    || project.storyBible.protagonist;
+  const visualScene = plannerAssets.find(asset => asset.kind === 'scene')?.name;
+  const storyBible = story ? {
+    ...project.storyBible,
+    premise: story.premise || project.storyBible.premise,
+    protagonist: story.protagonist || visualSubject,
+    desire: story.desire || project.storyBible.desire,
+    obstacle: story.obstacle || project.storyBible.obstacle,
+    conflict: story.conflict || project.storyBible.conflict,
+    turningPoint: story.turningPoint || project.storyBible.turningPoint,
+    endingHook: story.endingHook || project.storyBible.endingHook,
+    relationship: !explicitCharacter && visualScene
+      ? `${visualSubject}在${visualScene}中的视觉演变`
+      : project.storyBible.relationship,
+    emotionalArc: {
+      start: story.emotionalArc?.start || project.storyBible.emotionalArc.start,
+      shift: story.emotionalArc?.shift || project.storyBible.emotionalArc.shift,
+      end: story.emotionalArc?.end || project.storyBible.emotionalArc.end,
+    },
+    ...(!explicitCharacter ? {
+      continuityRules: [
+        visualScene ? `保持${visualScene}的空间结构、光色和尺度连续` : '保持主要空间、光色和尺度连续',
+        `保持${visualSubject}的形态、运动方向和演化状态连续`,
+        '后一镜先承接前一镜尾帧，再推进新的视觉变化',
+        '镜头变化服务信息演进，不引入无关人物、场景或道具',
+      ],
+    } : {}),
+  } : {
+    ...project.storyBible,
+    ...(!explicitCharacter ? {
+      protagonist: visualSubject,
+      relationship: visualScene
+        ? `${visualSubject}在${visualScene}中的视觉演变`
+        : project.storyBible.relationship,
+      desire: plan.summary || project.storyBible.desire,
+      conflict: plan.summary || project.storyBible.conflict,
+      continuityRules: [
+        visualScene ? `保持${visualScene}的空间结构、光色和尺度连续` : '保持主要空间、光色和尺度连续',
+        `保持${visualSubject}的形态、运动方向和演化状态连续`,
+        '后一镜先承接前一镜尾帧，再推进新的视觉变化',
+        '镜头变化服务信息演进，不引入无关人物、场景或道具',
+      ],
+    } : {}),
+  };
   return {
     ...project,
+    assets,
     narrativeSummary: plan.summary?.trim() || project.narrativeSummary,
-    storyBible: story ? {
-      ...project.storyBible,
-      premise: story.premise || project.storyBible.premise,
-      protagonist: story.protagonist || project.storyBible.protagonist,
-      desire: story.desire || project.storyBible.desire,
-      obstacle: story.obstacle || project.storyBible.obstacle,
-      conflict: story.conflict || project.storyBible.conflict,
-      turningPoint: story.turningPoint || project.storyBible.turningPoint,
-      endingHook: story.endingHook || project.storyBible.endingHook,
-      emotionalArc: {
-        start: story.emotionalArc?.start || project.storyBible.emotionalArc.start,
-        shift: story.emotionalArc?.shift || project.storyBible.emotionalArc.shift,
-        end: story.emotionalArc?.end || project.storyBible.emotionalArc.end,
-      },
-    } : project.storyBible,
+    storyBible,
     storyboard: {
       ...project.storyboard,
       shots: project.storyboard.shots.map((shot, index) => {
@@ -81,8 +143,12 @@ function applyPlannerNarrativeContext(
         return planned ? {
           ...shot,
           prompt: planned.prompt || shot.prompt,
-          subtitleText: planned.dialogue || shot.subtitleText,
-          narrationText: planned.narration || shot.narrationText,
+          ...(!explicitCharacter ? {
+            dramaticPurpose: planned.title || planned.prompt || shot.dramaticPurpose,
+            emotionShift: planned.audioIntent || story?.emotionalArc?.shift || shot.emotionShift,
+          } : {}),
+          subtitleText: planned.dialogue || (explicitCharacter ? shot.subtitleText : undefined),
+          narrationText: planned.narration || (explicitCharacter ? shot.narrationText : undefined),
         } : shot;
       }),
     },

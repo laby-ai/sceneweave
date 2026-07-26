@@ -18,6 +18,7 @@ const referencePhase = read('src/lib/skills/vimax-short-drama/vimax-reference-ph
 const referenceAssets = read('src/lib/skills/vimax-short-drama/vimax-reference-assets.ts');
 const byokProvider = read('src/lib/byok-provider.ts');
 const planArtifacts = read('src/lib/skills/vimax-short-drama/vimax-plan-artifacts.ts');
+const planEnvelope = read('src/lib/skills/vimax-short-drama/vimax-plan-envelope.ts');
 const agentContract = read('src/lib/skills/vimax-short-drama/vimax-agent-contract.ts');
 // ViMAX 已抽成 Agent 驱动的 skill；编排逻辑应在 skill 内，面板只负责唤起。
 const skill = read('src/lib/skills/vimax-short-drama/use-vimax-short-drama-skill.ts');
@@ -94,7 +95,8 @@ check('route-does-not-return-free-fake-result', !/usedRealKey:\s*false|incurredC
 check('route-fails-explicitly-before-video-cost', /视频生成阶段需要用户在界面显式确认费用/.test(route));
 check(
   'route-uses-embedded-vimax-production-pipeline',
-  /buildProductionBackedVimaxPlan/.test(route)
+  /createPersistedVimaxPlanEnvelope/.test(route)
+    && /buildProductionBackedVimaxPlan/.test(planEnvelope)
     && /buildProductionProject/.test(planArtifacts)
     && /buildProductionAssemblyPlan/.test(planArtifacts)
     && /generateShotsFromUserPrompt/.test(planArtifacts)
