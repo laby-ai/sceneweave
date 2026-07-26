@@ -269,6 +269,7 @@ async function main() {
     const errors: string[] = [];
     const failedResponses: Array<{ status: number; url: string }> = [];
     let retryRequests = 0;
+    let cancelRequests = 0;
     let providerRequests = 0;
     page.on('console', message => {
       if (message.type() === 'error') errors.push(message.text());
@@ -280,6 +281,7 @@ async function main() {
     page.on('request', request => {
       const pathname = new URL(request.url()).pathname;
       if (pathname.endsWith('/api/production/assembly-plan/segment/retry')) retryRequests += 1;
+      if (request.method() === 'DELETE' && pathname.endsWith(`/api/tasks/${failedChildTaskId}`)) cancelRequests += 1;
       if (/\/api\/(?:image\/generate|video\/generate|smart\/vimax-agent-step|production\/assembly-plan\/segment\/start)$/.test(pathname)) {
         providerRequests += 1;
       }
@@ -321,6 +323,49 @@ async function main() {
     assert.equal(retryRequests, 1, 'refresh must not submit another retry request');
     assert.equal(providerRequests, 0, 'refresh must not call a provider');
 
+    const cancelButton = card.getByRole('button', { name: '取消此片段', exact: true });
+    await cancelButton.click();
+    await card.getByText('已取消', { exact: true }).first().waitFor({ state: 'visible' });
+    assert.equal(cancelRequests, 1, 'one click must submit exactly one cancel request');
+    assert.equal(providerRequests, 0, 'cancel action must not call a provider');
+    assert.equal(getTaskFresh(failedChildTaskId)?.status, 'cancelled');
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await card.waitFor({ state: 'visible', timeout: 15_000 });
+    await card.getByText('片段 1', { exact: true }).waitFor({ state: 'visible' });
+    await card.getByText('已完成', { exact: true }).waitFor({ state: 'visible' });
+    await card.getByText('片段 2', { exact: true }).waitFor({ state: 'visible' });
+    await card.getByText('已取消', { exact: true }).first().waitFor({ state: 'visible' });
+    assert.equal(cancelRequests, 1, 'refresh must not submit another cancel request');
+
+    await card.getByRole('button', { name: '仅重试此片段', exact: true }).click();
+    await card.getByText('等待制作', { exact: true }).waitFor({ state: 'visible' });
+    assert.equal(retryRequests, 2, 'cancelled segment recovery must submit one additional retry request');
+    assert.equal(providerRequests, 0, 'cancelled segment recovery must not call a provider');
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await card.waitFor({ state: 'visible', timeout: 15_000 });
+    await card.getByText('片段 1', { exact: true }).waitFor({ state: 'visible' });
+    await card.getByText('已完成', { exact: true }).waitFor({ state: 'visible' });
+    await card.getByText('片段 2', { exact: true }).waitFor({ state: 'visible' });
+    await card.getByText('等待制作', { exact: true }).waitFor({ state: 'visible' });
+    assert.equal(await card.getByRole('button', { name: '仅重试此片段', exact: true }).count(), 0);
+
+    const cancelledAfterRecovery = getTaskFresh(failedChildTaskId);
+    const completedAfterCancelRecovery = getTaskFresh(completedChildTaskId);
+    const parentAfterCancelRecovery = getTaskFresh(parentTaskId);
+    const recoveredSegments = parentAfterCancelRecovery?.result?.assemblyPlan?.segments || [];
+    assert.equal(cancelledAfterRecovery?.status, 'pending');
+    assert.equal(cancelledAfterRecovery?.config.retryCount, 2);
+    assert.equal(completedAfterCancelRecovery?.status, 'completed');
+    assert.equal(recoveredSegments[0]?.status, 'completed');
+    assert.equal(recoveredSegments[0]?.expectedOutputs?.videoUrl, '/huiying/api/final-videos/completed-fixture');
+    assert.equal(recoveredSegments[1]?.status, 'queued');
+    assert.equal(recoveredSegments[1]?.expectedOutputs?.taskId, failedChildTaskId);
+    assert.equal(cancelRequests, 1, 'cancelled segment recovery must not repeat cancellation');
+    assert.equal(retryRequests, 2, 'refresh after cancelled segment recovery must not repeat retry');
+    assert.equal(providerRequests, 0, 'refresh after cancelled segment recovery must not call a provider');
+
     const dimensions = await page.evaluate(() => ({
       scrollWidth: document.documentElement.scrollWidth,
       clientWidth: document.documentElement.clientWidth,
@@ -331,13 +376,16 @@ async function main() {
 
     console.log(JSON.stringify({
       ok: true,
-      path: 'failed segment -> retry once -> preserve completed segment -> refresh same task',
+      path: 'failed segment retry -> cancel queued segment -> refresh -> recover cancelled segment',
       taskId: parentTaskId,
       childTaskId: failedChildTaskId,
       retryRequests,
+      cancelRequests,
       providerCalls: providerRequests,
-      retryCount: failedAfterRetry?.config.retryCount,
+      retryCount: cancelledAfterRecovery?.config.retryCount,
       completedSegmentPreserved: true,
+      cancelledSegmentRefreshed: true,
+      cancelledSegmentRecovered: true,
       refreshedSameTask: true,
       usedRealKey: false,
       incurredCost: false,
