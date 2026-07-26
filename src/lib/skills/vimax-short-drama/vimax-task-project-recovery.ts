@@ -15,6 +15,12 @@ const isRecord = (value: unknown): value is UnknownRecord => (
 const text = (value: unknown) => typeof value === 'string' ? value.trim() : '';
 const number = (value: unknown, fallback = 0) => Number.isFinite(value) ? Number(value) : fallback;
 
+export function shouldMountVimaxTaskBackedControls(
+  message: Pick<ChatMessage, 'generatedVideo' | 'generationStatus'>,
+): boolean {
+  return message.generationStatus === 'completed' && !text(message.generatedVideo?.url);
+}
+
 export function needsPersistedVimaxRenderRecovery(task: unknown): boolean {
   if (!isRecord(task) || text(task.status) !== 'completed') return false;
   const result = isRecord(task.result) ? task.result : null;

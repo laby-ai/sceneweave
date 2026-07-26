@@ -75,6 +75,7 @@ import {
   applyRecoveredVimaxProductionPlan,
   needsPersistedVimaxRenderRecovery,
   recoverVimaxTaskProject,
+  shouldMountVimaxTaskBackedControls,
 } from '@/lib/skills/vimax-short-drama/vimax-task-project-recovery';
 import {
   buildVimaxTaskUrl,
@@ -1166,7 +1167,7 @@ function MessageBubble({ message, onQuickOption, onResultIteration, onProduction
           </div>
         ) : null}
 
-        {agent?.taskId && message.generationStatus === 'completed' ? (
+        {agent?.taskId && shouldMountVimaxTaskBackedControls(message) ? (
           <>
             <VimaxProjectEditorCard taskId={agent.taskId} requestHeaders={requestHeaders} />
             <VimaxSegmentedProductionCard taskId={agent.taskId} requestHeaders={requestHeaders} />
