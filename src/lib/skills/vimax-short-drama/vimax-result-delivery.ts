@@ -1,4 +1,5 @@
 import type { ChatMessage } from '@/lib/smart-assistant-panel-model';
+import { isWorkspaceProtectedMediaUrl } from '@/lib/creation-agent/workspace-protected-media';
 import { resolveVimaxSkillPresetForRuntime } from '@/lib/skills/vimax-short-drama/vimax-skill-presets';
 
 export type VimaxDeliveryStageId = 'plan' | 'storyboard' | 'reference' | 'video';
@@ -79,7 +80,7 @@ export function buildVimaxContinueEditPrompt(context: VimaxResultIterationContex
 
 function isSafeResultUrl(value: string | undefined): value is string {
   if (!value) return false;
-  if (/^\/sceneweave\/api\/final-videos\/[a-z0-9-]+$/i.test(value)) return true;
+  if (isWorkspaceProtectedMediaUrl(value)) return true;
   try {
     const url = new URL(value);
     return url.protocol === 'https:' || url.protocol === 'http:';
