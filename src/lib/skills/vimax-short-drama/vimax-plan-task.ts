@@ -2,6 +2,7 @@ import type { ProductionAssemblyPlan } from '@/lib/production-assembly-plan';
 import type { ProductionProject } from '@/lib/production-project';
 import {
   completeTask,
+  getTask,
   startTask,
 } from '@/lib/task-manager';
 import type { VimaxAgentPlan } from '@/lib/skills/vimax-short-drama/vimax-agent-contract';
@@ -17,8 +18,12 @@ interface PersistVimaxPlanTaskInput {
 }
 
 export function persistVimaxPlanTask(input: PersistVimaxPlanTaskInput) {
-  if (!startTask(input.taskId)) {
+  const task = getTask(input.taskId);
+  if (!task || (task.status === 'pending' && !startTask(input.taskId))) {
     throw new Error('创作任务无法进入运行状态。');
+  }
+  if (task.status !== 'pending' && task.status !== 'running') {
+    throw new Error('创作任务已结束，不能覆盖当前状态。');
   }
 
   const completed = completeTask(input.taskId, {

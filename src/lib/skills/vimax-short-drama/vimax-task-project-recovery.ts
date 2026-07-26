@@ -114,14 +114,68 @@ function readReferenceResult(result: UnknownRecord) {
 }
 
 export function recoverVimaxTaskProject(task: unknown): RecoveredVimaxTaskProject | null {
-  if (!isRecord(task) || text(task.status) !== 'completed') return null;
+  if (!isRecord(task)) return null;
+  const status = text(task.status);
   const taskId = text(task.id);
+  const config = isRecord(task.config) ? task.config : {};
+  if (!taskId) return null;
+  if (
+    (status === 'cancelled' || status === 'failed')
+    && text(config.workflow) === 'vimax-agent'
+    && text(config.phase) === 'plan'
+  ) {
+    const prompt = text(config.prompt) || '继续短剧规划';
+    const createdAt = number(task.createdAt, Date.now());
+    const cancelled = status === 'cancelled';
+    const messages: ChatMessage[] = [{
+      id: `${taskId}:prompt`,
+      role: 'user',
+      content: prompt,
+      timestamp: createdAt,
+    }, {
+      id: `${taskId}:planning-${status}`,
+      role: 'assistant',
+      content: cancelled
+        ? '本次规划已取消。原输入、参考素材和项目均已保留，可重新生成。'
+        : '本次规划未完成。原输入、参考素材和项目均已保留，可重新生成。',
+      timestamp: number(task.lastUpdatedAt, createdAt),
+      generationStatus: 'failed',
+      generationProgress: 100,
+      generationType: 'storyboard',
+      generationStepInfo: {
+        step: 'vimax-agent-plan',
+        progress: 100,
+        totalSteps: 4,
+        currentStepLabel: cancelled ? '规划已取消' : '规划失败',
+      },
+      quickOptions: ['重新生成'],
+      vimaxAgent: {
+        phase: 'plan',
+        title: '短剧制作计划',
+        summary: prompt,
+        model: text(config.model) || '规划模型',
+        costState: 'blocked',
+        nextAction: '重新生成只会启动一次新的规划，不会进入参考图或视频阶段。',
+        taskId,
+      },
+    }];
+    return {
+      project: {
+        id: `task:${taskId}`,
+        title: prompt.slice(0, 30) || '短剧规划',
+        time: number(task.lastUpdatedAt, createdAt),
+        messages,
+        params: { recoveredTaskId: taskId },
+      },
+      messages,
+    };
+  }
+  if (status !== 'completed') return null;
   const result = isRecord(task.result) ? task.result : null;
-  if (!taskId || !result) return null;
+  if (!result) return null;
   const locked = readLockedVideo(result);
   const referenceResult = locked ? null : readReferenceResult(result);
 
-  const config = isRecord(task.config) ? task.config : {};
   const productionProject = isRecord(result.productionProject) ? result.productionProject : {};
   const prompt = text(config.prompt) || text(result.creationPrompt) || '恢复已完成的短剧项目';
   const title = text(productionProject.title) || prompt.slice(0, 30) || '已恢复短剧';

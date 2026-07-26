@@ -101,6 +101,7 @@ export interface VimaxAgentPlan {
 
 export interface VimaxAgentStepBody {
   taskId?: string;
+  requestId?: string;
   phase?: VimaxAgentPhase;
   prompt?: string;
   plan?: VimaxAgentPlan;

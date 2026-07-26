@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { mergeVideosWithLocalFfmpeg } from '@/lib/local-video-merge';
 import { extractLastFrameForHandoff } from '@/lib/video-frame-extraction';
 import { resolvePaperHostCreationOwnerFromRequest } from '@/lib/task-access';
-import { createTask, getTaskForOwner, type TaskOwner } from '@/lib/task-manager';
+import { cancelTask, createTask, failTask, getTaskForOwner, startTask, type TaskOwner } from '@/lib/task-manager';
 import type { VimaxAgentPlan, VimaxAgentReferenceAsset, VimaxAgentStepBody } from '@/lib/skills/vimax-short-drama/vimax-agent-contract';
 import { VIMAX_PLAN_MODEL } from '@/lib/skills/vimax-short-drama/vimax-generation-preferences';
 import { buildProductionBackedVimaxPlan } from '@/lib/skills/vimax-short-drama/vimax-plan-artifacts';
@@ -274,8 +274,9 @@ function createPersistedPlanEnvelope(
   planConnection?: BYOKConnection,
   imageConnection?: BYOKConnection,
   videoConnection?: BYOKConnection,
+  existingTaskId?: string,
 ) {
-  const taskId = createTask('storyboard', {
+  const taskId = existingTaskId || createTask('storyboard', {
     prompt,
     duration: `${body.duration || 30}s`,
     ratio: body.ratio || '16:9',
@@ -307,8 +308,24 @@ function createPersistedPlanEnvelope(
   return { taskId, plan, productionPlan };
 }
 
+function createVimaxPlanningTask(owner: TaskOwner, prompt: string, body: VimaxAgentStepBody) {
+  return createTask('storyboard', {
+    prompt,
+    duration: `${body.duration || 30}s`,
+    ratio: body.ratio || '16:9',
+    resolution: body.resolution || '720p',
+    style: body.style || '电影感短剧',
+    sceneType: body.sceneType || 'drama',
+    workflow: 'vimax-agent',
+    phase: 'plan',
+    skillId: body.skillId,
+    referenceIds: normalizeVimaxInitialReferenceIds(body.referenceIds),
+    idempotencyKey: body.requestId,
+  }, owner);
+}
+
 // 流式 plan：原生 fetch + SSE，逐 token 把 delta 透传给前端
-async function callArkTextStream(prompt: string, preset: VimaxSkillPreset, modelOverride: string | undefined, writer: (delta: string) => void, connection?: BYOKConnection): Promise<{ model: string; plan: VimaxAgentPlan; rawText: string }> {
+async function callArkTextStream(prompt: string, preset: VimaxSkillPreset, modelOverride: string | undefined, writer: (delta: string) => void, connection?: BYOKConnection, signal?: AbortSignal): Promise<{ model: string; plan: VimaxAgentPlan; rawText: string }> {
   const { apiKey, apiBase, textModel } = getArkConfig();
   const model = connection?.model || (modelOverride && modelOverride.trim()) || textModel;
   const resolvedApiKey = connection?.apiKey || apiKey;
@@ -329,6 +346,7 @@ async function callArkTextStream(prompt: string, preset: VimaxSkillPreset, model
       stream: true,
       messages: buildVimaxPlanMessages(prompt, preset),
     }),
+    signal,
   });
 
   if (!response.ok || !response.body) {
@@ -626,11 +644,15 @@ export async function POST(request: NextRequest) {
         const stream = new ReadableStream({
           async start(controller) {
             const send = (event: string, data: unknown) => controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+            const taskId = createVimaxPlanningTask(owner, prompt, trustedBody);
             try {
               send('plan.start', { phase: 'plan' });
+              if (!startTask(taskId)) throw new Error('创作任务无法进入规划状态。');
+              send('plan.accepted', { phase: 'plan', taskId });
               const result = await callArkTextStream(planningPrompt, preset, body.model, (delta) => {
                 send('plan.delta', { delta });
-              }, planConnection);
+              }, planConnection, request.signal);
+              if (getTaskForOwner(taskId, owner)?.status === 'cancelled') return;
               const envelope = createPersistedPlanEnvelope(
                 owner,
                 prompt,
@@ -640,12 +662,23 @@ export async function POST(request: NextRequest) {
                 planConnection,
                 imageConnection,
                 videoConnection,
+                taskId,
               );
               send('plan.complete', { success: true, phase: 'plan', model: result.model, ...envelope });
             } catch (error) {
-              send('plan.error', reportVimaxPlanningFailure(error));
+              const task = getTaskForOwner(taskId, owner);
+              if (request.signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
+                cancelTask(taskId);
+              } else if (task?.status !== 'cancelled') {
+                failTask(taskId, 'planning_provider_failed');
+                send('plan.error', { ...reportVimaxPlanningFailure(error), taskId });
+              }
             } finally {
-              controller.close();
+              try {
+                controller.close();
+              } catch {
+                // The browser may have already cancelled the stream.
+              }
             }
           },
         });

@@ -167,6 +167,8 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
   } = deps;
   const fallbackRunCoordinatorRef = useRef<VimaxRunCoordinator | null>(null);
   const planningReadinessPendingRef = useRef(false);
+  const activePlanningTaskIdRef = useRef<string | null>(null);
+  const pendingPlanningCancelRef = useRef(false);
   if (!fallbackRunCoordinatorRef.current) fallbackRunCoordinatorRef.current = createVimaxRunCoordinator();
   const runCoordinator = providedRunCoordinator || fallbackRunCoordinatorRef.current;
 
@@ -236,6 +238,8 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       messageId: progressMsgId,
       timeoutMs: 60_000,
     });
+    activePlanningTaskIdRef.current = null;
+    pendingPlanningCancelRef.current = false;
     setIsLoading(true);
     setInputValue('');
     setMessages(prev => [
@@ -266,7 +270,11 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       const response = await clientApiRequest('/api/smart/vimax-agent-step', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...requestHeaders },
-        body: JSON.stringify(buildVimaxPlanRequest({ ...context, settings: generationSettings })),
+        body: JSON.stringify(buildVimaxPlanRequest({
+          ...context,
+          settings: generationSettings,
+          requestId: run.requestId,
+        })),
         signal: run.signal,
         redirectOnUnauthorized: false,
       });
@@ -350,7 +358,30 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
                 } : m));
               } else if (event === 'plan.accepted') {
                 persistedTaskId = typeof data.taskId === 'string' ? data.taskId : '';
-                if (persistedTaskId) onTaskIdAvailable?.(persistedTaskId);
+                if (persistedTaskId) {
+                  activePlanningTaskIdRef.current = persistedTaskId;
+                  onTaskIdAvailable?.(persistedTaskId);
+                  updateRunMessages(run, current => current.map(message => message.id === progressMsgId ? {
+                    ...message,
+                    vimaxAgent: {
+                      phase: 'plan',
+                      title: '短剧制作计划',
+                      summary: prompt,
+                      model: generationSettings.planModel,
+                      taskId: persistedTaskId,
+                      generationSettings,
+                      costState: 'incurred',
+                      nextAction: '正在生成故事与分镜。',
+                    },
+                  } : message));
+                  if (pendingPlanningCancelRef.current) {
+                    void clientApiRequest(`/api/tasks/${encodeURIComponent(persistedTaskId)}`, {
+                      method: 'DELETE',
+                      headers: requestHeaders,
+                      redirectOnUnauthorized: false,
+                    }).catch(() => undefined);
+                  }
+                }
               } else if (event === 'plan.complete') {
                 plan = data.plan || {};
                 assets = Array.isArray(plan.assets) ? plan.assets : [];
@@ -482,7 +513,11 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         },
       } : message));
     } finally {
-      if (runCoordinator.finish(run)) setIsLoading(false);
+      if (runCoordinator.finish(run)) {
+        activePlanningTaskIdRef.current = null;
+        pendingPlanningCancelRef.current = false;
+        setIsLoading(false);
+      }
     }
   }, [messagesRef, onAuthenticationRequired, onTaskIdAvailable, requestHeaders, runCoordinator, setMessages, setIsLoading, setInputValue, setCurrentStep, updateRunMessages]);
 
@@ -913,15 +948,26 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
   const cancelCurrentRun = useCallback(() => {
     const cancelled = runCoordinator.cancel();
     if (!cancelled) return false;
+    if (cancelled.phase === 'plan') {
+      pendingPlanningCancelRef.current = true;
+      const taskId = activePlanningTaskIdRef.current;
+      if (taskId) {
+        void clientApiRequest(`/api/tasks/${encodeURIComponent(taskId)}`, {
+          method: 'DELETE',
+          headers: requestHeaders,
+          redirectOnUnauthorized: false,
+        }).catch(() => undefined);
+      }
+    }
     setMessages(current => current.map(message => message.id === cancelled.messageId ? {
       ...message,
-      content: `${message.content}\n已停止本次生成；当前项目和阶段进度已保留。`,
+      content: `${message.content}\n已取消本次规划；原输入、参考素材和项目已保留，可重新生成。`,
       generationStatus: 'failed',
       quickOptions: ['重新生成'],
     } : message));
     setIsLoading(false);
     return true;
-  }, [runCoordinator, setIsLoading, setMessages]);
+  }, [requestHeaders, runCoordinator, setIsLoading, setMessages]);
 
   return { handlePlanStep, handleReferenceAssetsStep, handleVideoStep, cancelCurrentRun };
 }

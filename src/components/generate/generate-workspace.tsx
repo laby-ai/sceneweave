@@ -271,7 +271,7 @@ export function GenerateWorkspace({
   const handleTaskIdAvailable = useCallback((taskId: string) => {
     const recoveryKey = `${storageScope || ''}:${taskId}`;
     recoveredTaskRef.current = recoveryKey;
-    setIgnoreResumeTask(false);
+    setIgnoreResumeTask(true);
     window.history.replaceState(window.history.state, '', buildVimaxTaskUrl(window.location.href, taskId));
   }, [storageScope]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -386,6 +386,8 @@ export function GenerateWorkspace({
           signal: controller.signal,
           redirectOnUnauthorized: false,
         });
+        if (controller.signal.aborted
+          || (recoveredTaskRef.current && recoveredTaskRef.current !== recoveryKey)) return;
         let recovered = recoverVimaxTaskProject(payload.task);
         if (!recovered
           && needsPersistedVimaxRenderRecovery(payload.task)
@@ -405,6 +407,8 @@ export function GenerateWorkspace({
             applyRecoveredVimaxProductionPlan(payload.task, repair.productionPlan),
           );
         }
+        if (controller.signal.aborted
+          || (recoveredTaskRef.current && recoveredTaskRef.current !== recoveryKey)) return;
         if (!recovered) {
           if (!controller.signal.aborted) retryTimer = setTimeout(recover, 3_000);
           return;

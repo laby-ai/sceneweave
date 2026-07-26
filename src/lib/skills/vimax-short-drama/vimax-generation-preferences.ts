@@ -34,6 +34,7 @@ export function resolveVimaxGenerationSettings(input: VimaxGenerationSettingsInp
 }
 
 interface VimaxPlanRequestInput {
+  requestId?: string;
   prompt: string;
   duration: number;
   segmentDuration?: number;
@@ -48,6 +49,7 @@ interface VimaxPlanRequestInput {
 export function buildVimaxPlanRequest(input: VimaxPlanRequestInput) {
   return {
     phase: 'plan' as const,
+    ...(input.requestId ? { requestId: input.requestId } : {}),
     prompt: input.prompt,
     duration: input.duration,
     ...(input.segmentDuration ? { segmentDuration: input.segmentDuration } : {}),

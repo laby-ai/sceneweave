@@ -6,6 +6,7 @@ import {
   waitForPersistedVimaxPlan,
 } from '../src/lib/skills/vimax-short-drama/vimax-plan-stream-recovery';
 import { buildVimaxProductionPlan } from '../src/lib/skills/vimax-short-drama/vimax-production-plan';
+import { recoverVimaxTaskProject } from '../src/lib/skills/vimax-short-drama/vimax-task-project-recovery';
 
 const shots = Array.from({ length: 4 }, (_, index) => ({
   index: index + 1,
@@ -63,6 +64,25 @@ assert.equal(
   'recovery requires the persisted production plan contract',
 );
 
+const cancelledProject = recoverVimaxTaskProject({
+  id: 'task-plan-cancelled',
+  status: 'cancelled',
+  createdAt: 100,
+  lastUpdatedAt: 200,
+  config: {
+    workflow: 'vimax-agent',
+    phase: 'plan',
+    prompt: '雨夜天台上的记者发现一枚发光胶片',
+    model: 'qwen3.7-plus',
+    referenceIds: ['member-reference-1'],
+  },
+});
+assert.equal(cancelledProject?.project.id, 'task:task-plan-cancelled');
+assert.equal(cancelledProject?.messages[0]?.content, '雨夜天台上的记者发现一枚发光胶片');
+assert.match(cancelledProject?.messages[1]?.content || '', /规划已取消/);
+assert.deepEqual(cancelledProject?.messages[1]?.quickOptions, ['重新生成']);
+assert.equal(cancelledProject?.messages[1]?.vimaxAgent?.taskId, 'task-plan-cancelled');
+
 async function main() {
   let loadAttempts = 0;
   const recoveredAfterPersistence = await waitForPersistedVimaxPlan({
@@ -91,11 +111,31 @@ async function main() {
 
   const routeSource = readFileSync('src/app/api/smart/vimax-agent-step/route.ts', 'utf8');
   const clientSource = readFileSync('src/lib/skills/vimax-short-drama/use-vimax-short-drama-skill.ts', 'utf8');
+  const workspaceSource = readFileSync('src/components/generate/generate-workspace.tsx', 'utf8');
   assert.ok(
     /send\('plan\.accepted'[\s\S]{0,500}await callArkTextStream\(/.test(routeSource),
     'the recovery cursor must be sent before the provider call can outlive the browser stream',
   );
+  assert.match(routeSource, /getTaskForOwner\(taskId, owner\)\?\.status === 'cancelled'/);
+  assert.match(routeSource, /callArkTextStream\([\s\S]{0,500}request\.signal/);
+  assert.match(
+    routeSource,
+    /request\.signal\.aborted[\s\S]{0,200}cancelTask\(taskId\)/,
+    'a disconnected planning stream must persist cancellation instead of reporting provider failure',
+  );
   assert.match(clientSource, /waitForPersistedVimaxPlan\(\{/);
+  assert.match(clientSource, /method: 'DELETE'/);
+  assert.match(clientSource, /pendingPlanningCancelRef/);
+  assert.match(
+    workspaceSource,
+    /handleTaskIdAvailable[\s\S]{0,300}setIgnoreResumeTask\(true\)/,
+    'a new planning task must detach the workspace from the stale deep-link recovery target',
+  );
+  assert.match(
+    workspaceSource,
+    /await clientApiFetch<\{ task\?: unknown \}>[\s\S]*?recoveredTaskRef\.current !== recoveryKey[\s\S]*?let recovered = recoverVimaxTaskProject/,
+    'an aborted stale-task recovery must not cancel a newly accepted planning run',
+  );
 
   console.log(JSON.stringify({ ok: true, recoveredShots: recovered?.plan.shots.length, loadAttempts }));
 }

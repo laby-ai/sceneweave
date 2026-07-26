@@ -116,3 +116,4 @@ jobs:
           pnpm run qa:creation-agent-user-journey
           pnpm run qa:vimax-story-bible-editor
           pnpm run qa:segment-retry-browser
+          pnpm run qa:vimax-planning-cancel-browser

@@ -99,6 +99,7 @@
     "test:segment-first-frame-fallback": "tsx scripts/test-segment-first-frame-fallback.ts",
     "test:vimax-video-input-assets": "tsx scripts/test-vimax-video-input-assets.ts",
     "test:vimax-plan-stream-recovery": "tsx scripts/test-vimax-plan-stream-recovery.ts",
+    "qa:vimax-planning-cancel-browser": "tsx scripts/qa-vimax-planning-cancel-browser.ts",
     "test:vimax-split-media-connection": "tsx scripts/test-vimax-split-media-connection.ts",
     "test:vimax-resume-queue": "tsx scripts/test-vimax-resume-queue.ts",
     "test:vimax-segment-just-in-time-retry": "tsx scripts/test-vimax-segment-just-in-time-retry.ts",
