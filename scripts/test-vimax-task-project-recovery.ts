@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
-import { recoverVimaxTaskProject } from '../src/lib/skills/vimax-short-drama/vimax-task-project-recovery';
+import {
+  recoverVimaxTaskProject,
+  shouldMountVimaxTaskBackedControls,
+} from '../src/lib/skills/vimax-short-drama/vimax-task-project-recovery';
 import { buildVimaxResultDelivery } from '../src/lib/skills/vimax-short-drama/vimax-result-delivery';
 import { findVimaxReferencePlanMessage } from '../src/lib/skills/vimax-short-drama/use-vimax-short-drama-skill';
 
@@ -178,5 +182,21 @@ assert.equal(recoverVimaxTaskProject({
 }), null, 'must reject a result that is not the locked last successful artifact');
 
 assert.equal(recoverVimaxTaskProject({ id: 'task-3', status: 'failed', result: {} }), null);
+
+assert.equal(
+  shouldMountVimaxTaskBackedControls(recovered.project.messages[1]),
+  false,
+  'a delivered video must not mount controls that depend on an expiring task record',
+);
+assert.equal(
+  shouldMountVimaxTaskBackedControls(recoveredReferences.project.messages[1]),
+  true,
+  'a recoverable task without a delivered video must keep task-backed controls available',
+);
+assert.match(
+  readFileSync('src/components/generate/generate-workspace.tsx', 'utf8'),
+  /shouldMountVimaxTaskBackedControls\(message\)/,
+  'the workspace must apply the delivered-project task control boundary',
+);
 
 console.log('vimax task project recovery: PASS');
