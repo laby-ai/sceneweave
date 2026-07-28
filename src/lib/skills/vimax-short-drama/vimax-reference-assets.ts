@@ -63,8 +63,11 @@ async function generateOneImage(
   target: ReferenceTarget,
   config: VimaxReferenceAssetConfig,
   referenceImages: string[] = [],
+  signal?: AbortSignal,
 ) {
   const controller = new AbortController();
+  const cancel = () => controller.abort(signal?.reason);
+  signal?.addEventListener('abort', cancel, { once: true });
   const timeout = setTimeout(() => controller.abort(), 60_000);
   try {
     const generated = await imageWithBYOK({
@@ -82,12 +85,16 @@ async function generateOneImage(
     });
     return { ...target, url: generated.url, status: 'generated' as const };
   } catch (error) {
+    if (signal?.aborted) {
+      throw new DOMException('reference_generation_cancelled', 'AbortError');
+    }
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error(`参考图生成超时（60s）：${target.label}。`);
     }
     throw new Error(`参考图生成失败：${target.label} - ${error instanceof Error ? error.message : '未知错误'}`);
   } finally {
     clearTimeout(timeout);
+    signal?.removeEventListener('abort', cancel);
   }
 }
 
@@ -96,10 +103,11 @@ async function generateImageCandidates(
   config: VimaxReferenceAssetConfig,
   referenceImages: string[],
   count: number,
+  signal?: AbortSignal,
 ) {
   const candidates: Awaited<ReturnType<typeof generateOneImage>>[] = [];
   for (let index = 0; index < count; index += 1) {
-    candidates.push(await generateOneImage(target, config, referenceImages));
+    candidates.push(await generateOneImage(target, config, referenceImages, signal));
   }
   return candidates;
 }
@@ -109,6 +117,7 @@ async function generateReferenceTarget(input: {
   config: VimaxReferenceAssetConfig;
   firstShotIndex?: number;
   initialReferenceAssets?: VimaxAgentReferenceAsset[];
+  signal?: AbortSignal;
 }) {
   const initialReferences = (input.initialReferenceAssets || [])
     .filter(asset => typeof asset.url === 'string' && asset.url.length > 0);
@@ -132,6 +141,7 @@ async function generateReferenceTarget(input: {
     input.config,
     referenceImages,
     candidateCount,
+    input.signal,
   );
   const candidateUrls = candidates.map(candidate => candidate.url);
   const selection = await selectVimaxBestImageCandidate({
@@ -139,6 +149,7 @@ async function generateReferenceTarget(input: {
     referenceImages,
     candidateUrls,
     config: input.config,
+    signal: input.signal,
   });
   return {
     ...candidates[selection.index],
@@ -178,6 +189,7 @@ async function generateSubjectReferenceRegistry(input: {
   continuity: VimaxContinuityContract;
   config: VimaxReferenceAssetConfig;
   initialReferenceAssets?: VimaxAgentReferenceAsset[];
+  signal?: AbortSignal;
 }): Promise<VimaxSubjectReferenceRegistry> {
   const allCharacterAssets = input.plan.assets.filter(asset => asset.kind === 'character');
   const placeholderLabels = new Set(['主角', '短剧主角', '角色', '核心角色']);
@@ -205,7 +217,7 @@ async function generateSubjectReferenceRegistry(input: {
     const initialReferenceUrls = (input.initialReferenceAssets || [])
       .flatMap(asset => typeof asset.url === 'string' && asset.url ? [asset.url] : [])
       .slice(0, 9);
-    const front = await generateOneImage(frontTarget, input.config, initialReferenceUrls);
+    const front = await generateOneImage(frontTarget, input.config, initialReferenceUrls, input.signal);
     const views: VimaxSubjectReferenceView[] = [{
       id: `${subjectId}-front`,
       view: 'front',
@@ -230,6 +242,7 @@ async function generateSubjectReferenceRegistry(input: {
         target,
         input.config,
         [...new Set([front.url, ...initialReferenceUrls])].slice(0, 9),
+        input.signal,
       );
       views.push({
         id: `${subjectId}-${view}`,
@@ -286,6 +299,7 @@ export async function callVimaxReferenceImages(input: {
   existingAssets?: VimaxAgentReferenceAsset[];
   existingSubjectRegistry?: VimaxSubjectReferenceRegistry;
   initialReferenceAssets?: VimaxAgentReferenceAsset[];
+  signal?: AbortSignal;
 }) {
   if (!input.config.imageApiKey) throw new Error('缺少图像模型 API Key，无法进入参考素材阶段。');
   const subjectRegistry = input.existingSubjectRegistry || await generateSubjectReferenceRegistry(input);
@@ -337,12 +351,27 @@ export async function callVimaxReferenceImages(input: {
     throw new Error('当前计划没有可用于生成参考素材的提示词。');
   }
 
-  const settled = await Promise.allSettled(targets.map(target => generateReferenceTarget({
-    target,
-    config: input.config,
-    firstShotIndex: input.plan.shots[0]?.index,
-    initialReferenceAssets: input.initialReferenceAssets,
-  })));
+  const settled: PromiseSettledResult<Awaited<ReturnType<typeof generateReferenceTarget>>>[] = [];
+  for (const target of targets) {
+    if (input.signal?.aborted) {
+      throw new DOMException('reference_generation_cancelled', 'AbortError');
+    }
+    try {
+      settled.push({
+        status: 'fulfilled',
+        value: await generateReferenceTarget({
+          target,
+          config: input.config,
+          firstShotIndex: input.plan.shots[0]?.index,
+          initialReferenceAssets: input.initialReferenceAssets,
+          signal: input.signal,
+        }),
+      });
+    } catch (reason) {
+      if (input.signal?.aborted) throw reason;
+      settled.push({ status: 'rejected', reason });
+    }
+  }
   const generatedTargets = settled.flatMap(result => (
     result.status === 'fulfilled' ? [result.value] : []
   ));

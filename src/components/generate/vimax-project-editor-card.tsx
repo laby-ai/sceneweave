@@ -26,7 +26,14 @@ interface DirectionWritebackResponse {
   error?: string;
 }
 
-type StoryWritebackResponse = DirectionWritebackResponse;
+type StoryWritebackResponse = DirectionWritebackResponse & {
+  invalidation?: {
+    referenceAssets: number;
+    videoSegments: number;
+    finalVideos: number;
+    nextStage: 'reference_assets';
+  };
+};
 
 const emptyStoryDraft = {
   premise: '',
@@ -39,6 +46,12 @@ const emptyStoryDraft = {
   endingHook: '',
   emotionalArc: { start: '', shift: '', end: '' },
   continuityRules: '',
+};
+
+const notifyProjectUpdated = (taskId: string) => {
+  window.dispatchEvent(new CustomEvent('huiying-vimax-project-updated', {
+    detail: { taskId },
+  }));
 };
 
 export function VimaxProjectEditorCard({ taskId, requestHeaders }: {
@@ -55,6 +68,8 @@ export function VimaxProjectEditorCard({ taskId, requestHeaders }: {
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState<'asset' | 'shot' | 'direction' | 'story' | ''>('');
   const [error, setError] = useState('');
+  const [storyNotice, setStoryNotice] = useState('');
+  const [shotNotice, setShotNotice] = useState('');
   const loadSequence = useRef(0);
 
   const view = useMemo(
@@ -133,7 +148,32 @@ export function VimaxProjectEditorCard({ taskId, requestHeaders }: {
     if (!project || pending) return;
     setPending('story');
     setError('');
+    setStoryNotice('');
     try {
+      const currentStory = project.storyBible;
+      const patch: Record<string, unknown> = {};
+      for (const field of [
+        'premise',
+        'protagonist',
+        'desire',
+        'obstacle',
+        'relationship',
+        'conflict',
+        'turningPoint',
+        'endingHook',
+      ] as const) {
+        if (storyDraft[field] !== currentStory[field]) patch[field] = storyDraft[field];
+      }
+      const emotionalArc = Object.fromEntries(
+        (['start', 'shift', 'end'] as const)
+          .filter(field => storyDraft.emotionalArc[field] !== currentStory.emotionalArc[field])
+          .map(field => [field, storyDraft.emotionalArc[field]]),
+      );
+      if (Object.keys(emotionalArc).length > 0) patch.emotionalArc = emotionalArc;
+      const rules = storyDraft.continuityRules.split('\n').map(rule => rule.trim()).filter(Boolean);
+      if (JSON.stringify(rules) !== JSON.stringify(currentStory.continuityRules)) {
+        patch.continuityRules = rules;
+      }
       const response = await clientApiFetch<StoryWritebackResponse>(
         `/api/tasks/${encodeURIComponent(taskId)}`,
         {
@@ -141,14 +181,20 @@ export function VimaxProjectEditorCard({ taskId, requestHeaders }: {
           headers: requestHeaders,
           body: JSON.stringify({
             action: 'update-story-bible',
-            ...storyDraft,
-            continuityRules: storyDraft.continuityRules.split('\n').map(rule => rule.trim()).filter(Boolean),
+            ...patch,
           }),
           redirectOnUnauthorized: false,
         },
       );
       if (!response.success || !response.productionProject) throw new Error(response.error || 'save_failed');
       setProject(response.productionProject);
+      notifyProjectUpdated(taskId);
+      const stoppedResults = (response.invalidation?.referenceAssets || 0)
+        + (response.invalidation?.videoSegments || 0)
+        + (response.invalidation?.finalVideos || 0);
+      setStoryNotice(stoppedResults > 0
+        ? `故事已更新，${stoppedResults} 项旧参考素材或视频已停用。下一步按新故事重新准备参考素材。`
+        : '故事已更新。下一步按新故事准备参考素材。');
     } catch {
       setError('故事与角色 Bible 保存失败，请重试。当前草稿仍保留。');
     } finally {
@@ -208,6 +254,7 @@ export function VimaxProjectEditorCard({ taskId, requestHeaders }: {
     if (!project || !selectedShot || pending) return;
     setPending('shot');
     setError('');
+    setShotNotice('');
     try {
       const response = await clientApiFetch<VimaxStoryboardWritebackResponse>(
         `/api/production/projects/${encodeURIComponent(taskId)}/storyboard/${encodeURIComponent(selectedShot.id)}`,
@@ -219,6 +266,13 @@ export function VimaxProjectEditorCard({ taskId, requestHeaders }: {
         },
       );
       setProject(current => current ? applyVimaxStoryboardEditorWriteback(current, response) : current);
+      notifyProjectUpdated(taskId);
+      if (response.invalidation) {
+        const retained = response.invalidation.retainedAcceptedSegments;
+        setShotNotice(
+          `分镜已更新。已保留前 ${retained} 个完成镜头；从镜头 ${response.invalidation.fromShotIndex} 起的旧参考图、片段和成片已停用，可仅重做受影响镜头。`,
+        );
+      }
     } catch {
       setError('分镜保存失败，请重试。已保存的内容不会被覆盖。');
     } finally {
@@ -271,6 +325,15 @@ export function VimaxProjectEditorCard({ taskId, requestHeaders }: {
         </div>
         <textarea value={storyDraft.continuityRules} onChange={event => setStoryDraft(current => ({ ...current, continuityRules: event.target.value }))} aria-label="连续性规则" placeholder={'每行一条连续性规则\n例如：关键道具始终在主角左手'} rows={4} className="mt-2 w-full resize-y rounded-lg border border-[#dfe5ed] px-2.5 py-2 text-xs leading-relaxed" />
         <button type="button" disabled={Boolean(pending)} onClick={() => void saveStory()} className="mt-2 rounded-lg bg-[#2f6bff] px-3 py-1.5 text-[11px] font-medium text-white disabled:opacity-50">{pending === 'story' ? '正在保存…' : '保存故事'}</button>
+        {storyNotice ? (
+          <p
+            role="status"
+            data-testid="story-invalidation-notice"
+            className="mt-2 rounded-lg border border-[#cfe0ff] bg-[#f3f7ff] px-2.5 py-2 text-[11px] leading-5 text-[#3653a5]"
+          >
+            {storyNotice}
+          </p>
+        ) : null}
       </details>
 
       <div className="mt-3 rounded-lg border border-[#e2e7ee] bg-white p-3">
@@ -336,6 +399,15 @@ export function VimaxProjectEditorCard({ taskId, requestHeaders }: {
           <textarea value={shotDraft.prompt} onChange={event => setShotDraft(current => ({ ...current, prompt: event.target.value }))} aria-label="分镜提示词" rows={4} className="mt-2 w-full resize-y rounded-lg border border-[#dfe5ed] px-2.5 py-2 text-xs leading-relaxed" />
           <label className="mt-2 flex items-center gap-2 text-[11px] text-[#596270]">时长（秒）<input type="number" min={1} max={30} value={shotDraft.duration} onChange={event => setShotDraft(current => ({ ...current, duration: Number(event.target.value) }))} className="w-20 rounded-lg border border-[#dfe5ed] px-2 py-1.5 text-xs" /></label>
           <button type="button" disabled={!selectedShot || Boolean(pending)} onClick={() => void saveShot()} className="mt-2 rounded-lg bg-[#2f6bff] px-3 py-1.5 text-[11px] font-medium text-white disabled:opacity-50">{pending === 'shot' ? '正在保存…' : '保存分镜'}</button>
+          {shotNotice ? (
+            <p
+              className="mt-2 rounded-lg border border-[#c9dafd] bg-[#f3f7ff] px-2.5 py-2 text-[11px] leading-relaxed text-[#325da8]"
+              data-testid="shot-invalidation-notice"
+              role="status"
+            >
+              {shotNotice}
+            </p>
+          ) : null}
         </div>
       </div>
     </section>

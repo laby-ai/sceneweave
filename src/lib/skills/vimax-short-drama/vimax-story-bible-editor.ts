@@ -30,6 +30,12 @@ export interface VimaxStoryBibleWriteback {
   productionProject: ProductionProject;
   productionPlan: VimaxProductionPlan;
   assemblyPlan: ProductionAssemblyPlan;
+  invalidation: {
+    referenceAssets: number;
+    videoSegments: number;
+    finalVideos: number;
+    nextStage: 'reference_assets';
+  };
 }
 
 function requiredText(value: unknown, fallback: string, field: string, maxLength = 800) {
@@ -108,6 +114,88 @@ function rebuildProductionPlan(
   });
 }
 
+function invalidateGeneratedProjectAssets(project: ProductionProject, storyBible: ProductionStoryBible) {
+  const generatedAssets = project.assets.filter(asset => ['videoSegment', 'finalVideo'].includes(asset.kind));
+  const generatedAssetIds = new Set(generatedAssets.map(asset => asset.id));
+  const assets = project.assets
+    .filter(asset => !generatedAssetIds.has(asset.id))
+    .map(asset => {
+      if (asset.kind === 'script') {
+        return {
+          ...asset,
+          status: 'ready' as const,
+          summary: storyBible.premise,
+          metadata: {
+            ...(asset.metadata || {}),
+            storyBibleUpdatedAt: new Date().toISOString(),
+          },
+        };
+      }
+      if (asset.kind === 'deliverable') {
+        return {
+          ...asset,
+          status: 'pending' as const,
+          summary: '故事已更新，等待重新生成片段和成片',
+          metadata: undefined,
+        };
+      }
+      return asset;
+    });
+  const retainedAssetIds = new Set(assets.map(asset => asset.id));
+
+  return {
+    ...project,
+    prompt: storyBible.premise,
+    narrativeSummary: storyBible.premise,
+    storyBible,
+    assets,
+    stages: project.stages.map(stage => {
+      if (stage.id === 'script') {
+        return { ...stage, status: 'ready' as const, summary: storyBible.premise };
+      }
+      if (stage.id === 'assembly') {
+        return {
+          ...stage,
+          status: 'pending' as const,
+          summary: '等待按新故事重新生成视频片段和合成',
+          assetIds: stage.assetIds.filter(assetId => retainedAssetIds.has(assetId)),
+        };
+      }
+      if (stage.id === 'delivery') {
+        return {
+          ...stage,
+          status: 'pending' as const,
+          summary: '等待新版本成片生成后导出',
+          assetIds: stage.assetIds.filter(assetId => retainedAssetIds.has(assetId)),
+        };
+      }
+      return {
+        ...stage,
+        assetIds: stage.assetIds.filter(assetId => retainedAssetIds.has(assetId)),
+      };
+    }),
+    graph: {
+      nodes: project.graph.nodes.filter(node => retainedAssetIds.has(node.id)),
+      edges: project.graph.edges.filter(edge =>
+        retainedAssetIds.has(edge.from) && retainedAssetIds.has(edge.to)),
+    },
+    storyboard: {
+      ...project.storyboard,
+      shots: project.storyboard.shots.map(shot => ({ ...shot, status: 'planned' as const })),
+    },
+    output: {
+      ...project.output,
+      status: 'pending' as const,
+      canProceedToVideo: false,
+      nextStep: '按新故事重新准备参考素材，再生成受影响镜头',
+    },
+    invalidation: {
+      videoSegments: generatedAssets.filter(asset => asset.kind === 'videoSegment').length,
+      finalVideos: generatedAssets.filter(asset => asset.kind === 'finalVideo').length,
+    },
+  };
+}
+
 export function updateVimaxStoryBibleForTask(input: {
   taskId: string;
   owner: TaskOwner;
@@ -124,42 +212,87 @@ export function updateVimaxStoryBibleForTask(input: {
   if (!changed) {
     const assemblyPlan = task.result?.assemblyPlan as ProductionAssemblyPlan | undefined;
     if (!assemblyPlan) throw new Error('当前项目缺少分段制作合约');
-    return { productionProject: project, productionPlan: previousPlan, assemblyPlan };
+    return {
+      productionProject: project,
+      productionPlan: previousPlan,
+      assemblyPlan,
+      invalidation: {
+        referenceAssets: 0,
+        videoSegments: 0,
+        finalVideos: 0,
+        nextStage: 'reference_assets',
+      },
+    };
   }
 
-  const productionProject: ProductionProject = {
-    ...project,
-    prompt: storyBible.premise,
-    storyBible,
-    assets: project.assets.map(asset => asset.kind === 'script'
-      ? {
-          ...asset,
-          summary: storyBible.premise,
-          metadata: {
-            ...(asset.metadata || {}),
-            storyBibleUpdatedAt: new Date().toISOString(),
-          },
-        }
-      : asset),
-  };
+  const invalidatedProject = invalidateGeneratedProjectAssets(project, storyBible);
+  const { invalidation: generatedAssetInvalidation, ...productionProject } = invalidatedProject;
   const assemblyPlan = buildProductionAssemblyPlan({ productionProject, sourceTaskId: task.id });
   const productionPlan = rebuildProductionPlan(previousPlan, productionProject, assemblyPlan);
   const {
     vimaxReferenceAssets: _staleReferences,
+    vimaxReferenceTaskId: _staleReferenceTaskId,
     vimaxVideoResult: _staleVideo,
+    vimaxVideoTaskId: _staleVideoTaskId,
+    vimaxVideoTaskStatus: _staleVideoTaskStatus,
+    vimaxHappyHorseSegments: _staleHappyHorseSegments,
+    assemblyQueue: _staleAssemblyQueue,
+    videoUrl: _staleVideoUrl,
+    imageUrls: _staleImageUrls,
+    segments: _staleSegments,
+    isPartial: _staleIsPartial,
+    failedSegments: _staleFailedSegments,
+    failedSegmentsDetails: _staleFailedSegmentDetails,
+    successSegmentCount: _staleSuccessSegmentCount,
+    segmentCount: _staleSegmentCount,
     ...retainedResult
   } = task.result || {};
   void _staleReferences;
+  void _staleReferenceTaskId;
   void _staleVideo;
+  void _staleVideoTaskId;
+  void _staleVideoTaskStatus;
+  void _staleHappyHorseSegments;
+  void _staleAssemblyQueue;
+  void _staleVideoUrl;
+  void _staleImageUrls;
+  void _staleSegments;
+  void _staleIsPartial;
+  void _staleFailedSegments;
+  void _staleFailedSegmentDetails;
+  void _staleSuccessSegmentCount;
+  void _staleSegmentCount;
 
   const updated = updateTask(task.id, {
+    config: {
+      ...task.config,
+      prompt: storyBible.premise,
+    },
     result: {
       ...retainedResult,
+      ...(retainedResult.vimaxPlan && typeof retainedResult.vimaxPlan === 'object'
+        ? {
+            vimaxPlan: {
+              ...retainedResult.vimaxPlan,
+              summary: storyBible.premise,
+            },
+          }
+        : {}),
       productionProject,
       productionPlan,
       assemblyPlan,
     },
   });
   if (!updated) throw new Error('故事与角色 Bible 写回失败');
-  return { productionProject, productionPlan, assemblyPlan };
+  return {
+    productionProject,
+    productionPlan,
+    assemblyPlan,
+    invalidation: {
+      referenceAssets: Array.isArray(_staleReferences) ? _staleReferences.length : 0,
+      videoSegments: generatedAssetInvalidation.videoSegments,
+      finalVideos: generatedAssetInvalidation.finalVideos,
+      nextStage: 'reference_assets',
+    },
+  };
 }

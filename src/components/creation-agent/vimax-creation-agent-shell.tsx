@@ -126,7 +126,7 @@ export function VimaxCreationAgentShell() {
       <div className="min-h-0 flex-1">
         <div className={activeWorkspace === 'agent' ? 'h-full' : 'hidden'}>
           <GenerateWorkspace
-            availableModes={['agent', 'image', 'video']}
+            agentOnly
             showModelSettings={false}
             requestHeaders={context.requestHeaders}
             storageScope={context.storageScope}

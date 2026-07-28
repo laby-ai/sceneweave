@@ -311,19 +311,21 @@ export async function recoverHappyHorseVimaxVideo(
 export async function finalizeHappyHorseSegments(
   segments: HappyHorseVimaxSegment[],
   owner?: FinalVideoOwner,
-  options: { boundaryBridgeUrls?: string[] } = {},
+  options: { boundaryBridgeUrls?: string[]; signal?: AbortSignal } = {},
 ) {
+  if (options.signal?.aborted) throw new Error('video_background_cancelled');
   const segmentUrls = segments.map(segment => segment.videoUrl).filter((url): url is string => Boolean(url));
   if (segmentUrls.length !== segments.length) throw new Error('视频片段已生成，但缺少可交付地址。');
   const expectedDurationSeconds = segments.reduce((sum, segment) => sum + segment.duration, 0);
   if (owner) {
     const root = getFinalVideoStoreRoot();
     const saved = segmentUrls.length === 1
-      ? await saveMemberFinalVideoFromUrl(root, owner, segmentUrls[0])
+      ? await saveMemberFinalVideoFromUrl(root, owner, segmentUrls[0], options.signal)
       : await mergeMemberFinalVideos(root, owner, segmentUrls, {
         expectedDurationSeconds,
         segmentDurationsSeconds: segments.map(segment => segment.duration),
         boundaryBridgeUrls: options.boundaryBridgeUrls,
+        signal: options.signal,
       });
     const basePath = (process.env.NEXT_PUBLIC_BASE_PATH || '').replace(/\/$/, '');
     return {
@@ -340,6 +342,7 @@ export async function finalizeHappyHorseSegments(
     expectedDurationSeconds,
     segmentDurationsSeconds: segments.map(segment => segment.duration),
     boundaryBridgeUrls: options.boundaryBridgeUrls,
+    signal: options.signal,
   });
   return {
     videoUrl: merged.videoUrl,

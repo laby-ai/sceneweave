@@ -13,6 +13,7 @@ import {
   Loader2,
   Music,
   Plus,
+  RotateCcw,
   Search,
   Sparkles,
   Video,
@@ -22,22 +23,33 @@ import {
 
 import { VimaxProjectBar } from '@/components/generate/vimax-project-bar';
 import { VimaxProjectHome } from '@/components/generate/vimax-project-home';
-import { clientApiFetch } from '@/lib/client-api';
+import {
+  accountAuthHeaders,
+  clientApiDownloadBlob,
+  clientApiFetch,
+  clientApiPath,
+  clientApiRequest,
+} from '@/lib/client-api';
 import { genId, loadChatHistory, loadMessages, saveChatHistory, saveMessages, type ChatHistoryEntry, type ChatMessage } from '@/lib/smart-assistant-panel-model';
 import { VimaxProductionPlanCard } from '@/components/generate/vimax-production-plan-card';
 import { VimaxProjectEditorCard } from '@/components/generate/vimax-project-editor-card';
 import { VimaxSegmentedProductionCard } from '@/components/generate/vimax-segmented-production-card';
+import { VimaxShotReferenceGrid } from '@/components/generate/vimax-shot-reference-grid';
 import { VimaxProtectedDownload, VimaxProtectedVideo } from '@/components/generate/vimax-protected-media';
 import { BailianConnectionControl } from '@/components/generate/bailian-connection-control';
 import {
   useVimaxShortDramaSkill,
   VIMAX_REFERENCE_CONFIRM_REGEX,
 } from '@/lib/skills/vimax-short-drama/use-vimax-short-drama-skill';
+import { buildVimaxAgentConfirmationView } from '@/lib/skills/vimax-short-drama/vimax-agent-confirmation-view';
 import {
   resolveVimaxGenerationSettings,
   VIMAX_PLAN_MODEL,
 } from '@/lib/skills/vimax-short-drama/vimax-generation-preferences';
-import type { VimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
+import {
+  parseVimaxProductionPlan,
+  type VimaxProductionPlan,
+} from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 import {
   loadVimaxSkillPreset,
   resolveVimaxSkillPreset,
@@ -52,12 +64,9 @@ import {
   createVimaxProject,
   deleteVimaxProject,
   loadActiveVimaxProjectId,
-  loadVimaxProjectReferenceIds,
-  moveVimaxProjectReference,
   renameVimaxProject,
   restoreVimaxWorkspaceView,
   saveActiveVimaxProjectId,
-  saveVimaxProjectReferenceIds,
   saveVimaxWorkspaceView,
   summarizeVimaxProjects,
   upsertVimaxProjectMessages,
@@ -132,18 +141,27 @@ interface GenerateWorkspaceProps {
   onAuthenticationRequired?: (reason: string) => void;
 }
 
-type SubjectType = 'character' | 'scene' | 'object';
-type SubjectItem = { id: string; name: string; type: SubjectType; imageUrl: string };
+type ProjectAttachmentKind = 'image' | 'video' | 'document';
+type ProjectAttachmentItem = {
+  id: string;
+  projectId: string;
+  name: string;
+  kind: ProjectAttachmentKind;
+  mimeType: string;
+  bytes: number;
+  order: number;
+  url?: string;
+  previewUrl?: string;
+  status: 'uploading' | 'ready' | 'error';
+  progress: number;
+  file?: File;
+  error?: string;
+};
 
-function readImageAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => typeof reader.result === 'string'
-      ? resolve(reader.result)
-      : reject(new Error('reference_read_failed'));
-    reader.onerror = () => reject(new Error('reference_read_failed'));
-    reader.readAsDataURL(file);
-  });
+function releaseProjectAttachmentPreviews(attachments: ProjectAttachmentItem[]): void {
+  for (const attachment of attachments) {
+    if (attachment.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(attachment.previewUrl);
+  }
 }
 
 export function GenerateWorkspace({
@@ -165,8 +183,7 @@ export function GenerateWorkspace({
   const [skillMenuOpen, setSkillMenuOpen] = useState(false);
   const [skillSearch, setSkillSearch] = useState('');
   const [mediaModelMenuOpen, setMediaModelMenuOpen] = useState(false);
-  const [selectedReferences, setSelectedReferences] = useState<SubjectItem[]>([]);
-  const [referenceUploading, setReferenceUploading] = useState(false);
+  const [selectedReferences, setSelectedReferences] = useState<ProjectAttachmentItem[]>([]);
   const [referenceError, setReferenceError] = useState<string | null>(null);
   const [selectedRatio, setSelectedRatio] = useState('16:9');
   const [selectedQuality, setSelectedQuality] = useState('高清');
@@ -191,6 +208,8 @@ export function GenerateWorkspace({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const referenceInputRef = useRef<HTMLInputElement | null>(null);
   const restoredReferenceProjectRef = useRef<string | null>(null);
+  const selectedReferencesRef = useRef<ProjectAttachmentItem[]>([]);
+  const attachmentRequestsRef = useRef(new Map<string, XMLHttpRequest>());
   const selectedSkill = resolveVimaxSkillPreset(skillSelection.scope === skillScope ? skillSelection.id : undefined);
   const visibleSkillPresets = searchVimaxSkillPresets(skillSearch);
   const projects = summarizeVimaxProjects(history);
@@ -199,6 +218,7 @@ export function GenerateWorkspace({
     || messages.find(message => message.role === 'user')?.content.slice(0, 30)
     || '未命名创作';
   const effectiveRequestHeaders = useMemo(() => ({ ...(requestHeaders || {}) }), [requestHeaders]);
+  const referenceUploading = selectedReferences.some(reference => reference.status === 'uploading');
   const recoverableTaskId = useMemo(() => (
     resolveVimaxTaskId(messages, resumeTaskId, ignoreResumeTask)
   ), [ignoreResumeTask, messages, resumeTaskId]);
@@ -311,56 +331,54 @@ export function GenerateWorkspace({
     if (restoredScope !== (storageScope || '') || !activeProjectId) return;
     const projectKey = `${storageScope || 'default'}:${activeProjectId}`;
     if (restoredReferenceProjectRef.current === projectKey) return;
-    const savedIds = loadVimaxProjectReferenceIds(localStorage, storageScope, activeProjectId);
-    if (savedIds.length === 0) {
-      setSelectedReferences([]);
-      setReferenceError(null);
-      restoredReferenceProjectRef.current = projectKey;
-      return;
-    }
     let cancelled = false;
-    void clientApiFetch<{ subjects?: SubjectItem[] }>('/api/subjects', {
+    void clientApiFetch<{ attachments?: Array<Omit<ProjectAttachmentItem, 'status' | 'progress'>> }>(
+      `/api/project-attachments?projectId=${encodeURIComponent(activeProjectId)}`,
+      {
       headers: effectiveRequestHeaders,
       redirectOnUnauthorized: false,
-    }).then(payload => {
-      if (cancelled) return;
-      const visibleSubjects = payload.subjects || [];
-      const byId = new Map(visibleSubjects.map(subject => [subject.id, subject]));
-      const restored = savedIds
-        .map(id => byId.get(id))
-        .filter((subject): subject is SubjectItem => Boolean(subject));
+      },
+    ).then(async payload => {
+      const restored = await Promise.all((payload.attachments || []).map(async attachment => {
+        let previewUrl: string | undefined;
+        if (attachment.kind === 'image' && attachment.url) {
+          try {
+            const blob = await clientApiDownloadBlob(attachment.url, {
+              headers: effectiveRequestHeaders,
+              redirectOnUnauthorized: false,
+            });
+            previewUrl = URL.createObjectURL(blob);
+          } catch {
+            previewUrl = undefined;
+          }
+        }
+        return {
+          ...attachment,
+          previewUrl,
+          status: 'ready' as const,
+          progress: 100,
+        };
+      }));
+      if (cancelled) {
+        releaseProjectAttachmentPreviews(restored);
+        return;
+      }
+      releaseProjectAttachmentPreviews(selectedReferencesRef.current);
+      selectedReferencesRef.current = restored;
       setSelectedReferences(restored);
-      saveVimaxProjectReferenceIds(
-        localStorage,
-        storageScope,
-        activeProjectId,
-        restored.map(subject => subject.id),
-      );
-      setReferenceError(
-        restored.length === savedIds.length
-          ? null
-          : '部分参考图已失效或不属于当前账号，已安全移除。',
-      );
+      setReferenceError(null);
       restoredReferenceProjectRef.current = projectKey;
     }).catch(error => {
       if (cancelled) return;
-      setReferenceError(error instanceof Error ? error.message : '参考图恢复失败');
+      setReferenceError(error instanceof Error ? error.message : '项目素材恢复失败');
       restoredReferenceProjectRef.current = projectKey;
     });
     return () => { cancelled = true; };
   }, [activeProjectId, effectiveRequestHeaders, restoredScope, storageScope]);
 
-  useEffect(() => {
-    if (!activeProjectId) return;
-    const projectKey = `${storageScope || 'default'}:${activeProjectId}`;
-    if (restoredReferenceProjectRef.current !== projectKey) return;
-    saveVimaxProjectReferenceIds(
-      localStorage,
-      storageScope,
-      activeProjectId,
-      selectedReferences.map(reference => reference.id),
-    );
-  }, [activeProjectId, selectedReferences, storageScope]);
+  useEffect(() => () => {
+    releaseProjectAttachmentPreviews(selectedReferencesRef.current);
+  }, []);
 
   useEffect(() => {
     if (!recoverableTaskId || restoredScope !== (storageScope || '')) return;
@@ -453,6 +471,10 @@ export function GenerateWorkspace({
     });
     setMessages([]);
     setInput('');
+    attachmentRequestsRef.current.forEach(request => request.abort());
+    attachmentRequestsRef.current.clear();
+    releaseProjectAttachmentPreviews(selectedReferencesRef.current);
+    selectedReferencesRef.current = [];
     setSelectedReferences([]);
     setReferenceError(null);
     setIgnoreResumeTask(true);
@@ -487,7 +509,17 @@ export function GenerateWorkspace({
   }, [activeProjectId, storageScope]);
 
   const deleteProject = useCallback((projectId: string) => {
-    saveVimaxProjectReferenceIds(localStorage, storageScope, projectId, []);
+    const projectAttachments = projectId === activeProjectId
+      ? selectedReferencesRef.current.filter(attachment => attachment.status === 'ready')
+      : [];
+    void Promise.allSettled(projectAttachments.map(attachment => clientApiFetch(
+      `/api/project-attachments/${encodeURIComponent(attachment.id)}?projectId=${encodeURIComponent(projectId)}`,
+      {
+        method: 'DELETE',
+        headers: effectiveRequestHeaders,
+        redirectOnUnauthorized: false,
+      },
+    )));
     setHistory(previous => {
       const next = deleteVimaxProject(previous, projectId);
       saveChatHistory(next, storageScope);
@@ -501,8 +533,13 @@ export function GenerateWorkspace({
     setMessages([]);
     saveMessages([], storageScope);
     setInput('');
+    attachmentRequestsRef.current.forEach(request => request.abort());
+    attachmentRequestsRef.current.clear();
+    releaseProjectAttachmentPreviews(selectedReferencesRef.current);
+    selectedReferencesRef.current = [];
+    setSelectedReferences([]);
     setScopedWorkspaceView('home');
-  }, [activeProjectId, cancelCurrentRun, setScopedWorkspaceView, storageScope]);
+  }, [activeProjectId, cancelCurrentRun, effectiveRequestHeaders, setScopedWorkspaceView, storageScope]);
 
   const visibleCreationModes = availableModes
     ? CREATION_MODES.filter(item => availableModes.includes(item.id))
@@ -511,47 +548,219 @@ export function GenerateWorkspace({
     || visibleCreationModes[0]
     || CREATION_MODES[0];
 
-  const uploadReference = useCallback(async (file: File) => {
-    if (referenceUploading) return;
-    if (selectedReferences.length >= 8) {
-      setReferenceError('最多添加 8 张参考图。');
-      return;
-    }
-    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)
-      || file.size <= 0
-      || file.size > 15 * 1024 * 1024) {
-      setReferenceError('仅支持 15MB 以内的 PNG、JPEG 或 WebP 图片。');
-      return;
-    }
-    setReferenceUploading(true);
-    setReferenceError(null);
+  const ensureProjectForAttachments = useCallback(() => {
+    if (activeProjectId) return activeProjectId;
+    const projectId = genId();
+    setActiveProjectId(projectId);
+    saveActiveVimaxProjectId(sessionStorage, storageScope, projectId);
+    setHistory(previous => {
+      const next = createVimaxProject(previous, projectId);
+      saveChatHistory(next, storageScope);
+      return next;
+    });
+    restoredReferenceProjectRef.current = `${storageScope || 'default'}:${projectId}`;
+    setScopedWorkspaceView('project');
+    return projectId;
+  }, [activeProjectId, setScopedWorkspaceView, storageScope]);
+
+  const persistProjectAttachmentOrder = useCallback(async (
+    projectId: string,
+    attachments: ProjectAttachmentItem[],
+  ) => {
+    const orderedIds = attachments
+      .filter(attachment => attachment.status === 'ready')
+      .map(attachment => attachment.id);
+    if (orderedIds.length === 0) return;
+    await clientApiFetch('/api/project-attachments', {
+      method: 'PATCH',
+      headers: effectiveRequestHeaders,
+      body: JSON.stringify({ projectId, orderedIds }),
+      redirectOnUnauthorized: false,
+    });
+  }, [effectiveRequestHeaders]);
+
+  const uploadProjectAttachment = useCallback((
+    projectId: string,
+    localId: string,
+    file: File,
+  ) => new Promise<ProjectAttachmentItem>((resolve, reject) => {
+    const form = new FormData();
+    form.set('projectId', projectId);
+    form.set('file', file);
+    const request = new XMLHttpRequest();
+    attachmentRequestsRef.current.set(localId, request);
+    request.open('POST', clientApiPath('/api/project-attachments'));
+    request.withCredentials = true;
+    for (const [name, value] of Object.entries({
+      ...accountAuthHeaders(),
+      ...effectiveRequestHeaders,
+    })) request.setRequestHeader(name, value);
+    request.upload.onprogress = event => {
+      if (!event.lengthComputable) return;
+      const progress = Math.max(1, Math.min(99, Math.round((event.loaded / event.total) * 100)));
+      const next = selectedReferencesRef.current.map(attachment => (
+        attachment.id === localId ? { ...attachment, progress } : attachment
+      ));
+      selectedReferencesRef.current = next;
+      setSelectedReferences(next);
+    };
+    request.onerror = () => reject(new Error('项目素材上传失败，请重试。'));
+    request.onabort = () => reject(new Error('项目素材上传已取消。'));
+    request.onload = () => {
+      let payload: { attachment?: Omit<ProjectAttachmentItem, 'status' | 'progress'>; error?: string } = {};
+      try {
+        payload = JSON.parse(request.responseText || '{}') as typeof payload;
+      } catch {
+        reject(new Error('项目素材上传返回无效。'));
+        return;
+      }
+      if (request.status < 200 || request.status >= 300 || !payload.attachment) {
+        reject(new Error(payload.error || '项目素材上传失败，请重试。'));
+        return;
+      }
+      resolve({ ...payload.attachment, status: 'ready', progress: 100 });
+    };
+    request.onloadend = () => attachmentRequestsRef.current.delete(localId);
+    request.send(form);
+  }), [effectiveRequestHeaders]);
+
+  const commitUploadedAttachment = useCallback(async (
+    localId: string,
+    uploaded: ProjectAttachmentItem,
+  ) => {
+    const existing = selectedReferencesRef.current.find(attachment => attachment.id === localId);
+    const committed = {
+      ...uploaded,
+      previewUrl: existing?.previewUrl,
+      file: existing?.file,
+    };
+    const next = selectedReferencesRef.current.map(attachment => (
+      attachment.id === localId ? committed : attachment
+    ));
+    selectedReferencesRef.current = next;
+    setSelectedReferences(next);
+    await persistProjectAttachmentOrder(committed.projectId, next);
+  }, [persistProjectAttachmentOrder]);
+
+  const retryProjectAttachment = useCallback(async (localId: string) => {
+    const item = selectedReferencesRef.current.find(attachment => attachment.id === localId);
+    if (!item?.file || item.status === 'uploading') return;
+    const uploading = { ...item, status: 'uploading' as const, progress: 0, error: undefined };
+    const next = selectedReferencesRef.current.map(attachment => (
+      attachment.id === localId ? uploading : attachment
+    ));
+    selectedReferencesRef.current = next;
+    setSelectedReferences(next);
     try {
-      const referenceUrl = await readImageAsDataUrl(file);
-      const payload = await clientApiFetch<{ subject?: SubjectItem }>('/api/subjects', {
-        method: 'POST',
-        headers: effectiveRequestHeaders,
-        body: JSON.stringify({
-          name: file.name.replace(/\.[^.]+$/, '').slice(0, 80) || '未命名参考图',
-          type: 'character',
-          source: 'uploaded',
-          context: 'creation-agent',
-          referenceUrl,
-        }),
-        timeoutMs: 30_000,
-      });
-      if (!payload.subject) throw new Error('reference_upload_failed');
-      setSelectedReferences(current => [...current, payload.subject!].slice(0, 8));
-    } catch {
-      setReferenceError('参考图上传失败，请检查图片后重试。');
-    } finally {
-      setReferenceUploading(false);
-      if (referenceInputRef.current) referenceInputRef.current.value = '';
+      await commitUploadedAttachment(localId, await uploadProjectAttachment(item.projectId, localId, item.file));
+    } catch (error) {
+      const failed = selectedReferencesRef.current.map(attachment => (
+        attachment.id === localId
+          ? {
+            ...attachment,
+            status: 'error' as const,
+            progress: 0,
+            error: error instanceof Error ? error.message : '项目素材上传失败，请重试。',
+          }
+          : attachment
+      ));
+      selectedReferencesRef.current = failed;
+      setSelectedReferences(failed);
     }
-  }, [
-    effectiveRequestHeaders,
-    referenceUploading,
-    selectedReferences.length,
-  ]);
+  }, [commitUploadedAttachment, uploadProjectAttachment]);
+
+  const uploadProjectAttachments = useCallback(async (files: File[]) => {
+    const remaining = Math.max(0, 12 - selectedReferencesRef.current.length);
+    const accepted = files.slice(0, remaining);
+    if (accepted.length === 0) {
+      setReferenceError('每个项目最多添加 12 个素材。');
+      return;
+    }
+    const projectId = ensureProjectForAttachments();
+    const pending = accepted.map((file, index): ProjectAttachmentItem => ({
+      id: `pending-${genId()}`,
+      projectId,
+      name: file.name,
+      kind: file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'document',
+      mimeType: file.type,
+      bytes: file.size,
+      order: selectedReferencesRef.current.length + index,
+      status: 'uploading',
+      progress: 0,
+      file,
+      previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined,
+    }));
+    const next = [...selectedReferencesRef.current, ...pending];
+    selectedReferencesRef.current = next;
+    setSelectedReferences(next);
+    setReferenceError(files.length > accepted.length ? '最多保留前 12 个素材。' : null);
+
+    for (const item of pending) {
+      try {
+        await commitUploadedAttachment(
+          item.id,
+          await uploadProjectAttachment(projectId, item.id, item.file!),
+        );
+      } catch (error) {
+        const failed = selectedReferencesRef.current.map(attachment => (
+          attachment.id === item.id
+            ? {
+              ...attachment,
+              status: 'error' as const,
+              progress: 0,
+              error: error instanceof Error ? error.message : '项目素材上传失败，请重试。',
+            }
+            : attachment
+        ));
+        selectedReferencesRef.current = failed;
+        setSelectedReferences(failed);
+      }
+    }
+    if (referenceInputRef.current) referenceInputRef.current.value = '';
+  }, [commitUploadedAttachment, ensureProjectForAttachments, uploadProjectAttachment]);
+
+  const moveProjectAttachment = useCallback(async (attachmentId: string, direction: -1 | 1) => {
+    const current = selectedReferencesRef.current;
+    const index = current.findIndex(attachment => attachment.id === attachmentId);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= current.length) return;
+    const next = [...current];
+    [next[index], next[target]] = [next[target], next[index]];
+    selectedReferencesRef.current = next;
+    setSelectedReferences(next);
+    const projectId = next.find(attachment => attachment.status === 'ready')?.projectId;
+    if (!projectId) return;
+    try {
+      await persistProjectAttachmentOrder(projectId, next);
+    } catch {
+      setReferenceError('素材顺序保存失败，请重试。');
+    }
+  }, [persistProjectAttachmentOrder]);
+
+  const removeProjectAttachment = useCallback(async (attachmentId: string) => {
+    const item = selectedReferencesRef.current.find(attachment => attachment.id === attachmentId);
+    if (!item) return;
+    attachmentRequestsRef.current.get(attachmentId)?.abort();
+    if (item.status === 'ready') {
+      try {
+        await clientApiFetch(
+          `/api/project-attachments/${encodeURIComponent(item.id)}?projectId=${encodeURIComponent(item.projectId)}`,
+          {
+            method: 'DELETE',
+            headers: effectiveRequestHeaders,
+            redirectOnUnauthorized: false,
+          },
+        );
+      } catch {
+        setReferenceError('项目素材删除失败，请重试。');
+        return;
+      }
+    }
+    releaseProjectAttachmentPreviews([item]);
+    const next = selectedReferencesRef.current.filter(attachment => attachment.id !== attachmentId);
+    selectedReferencesRef.current = next;
+    setSelectedReferences(next);
+  }, [effectiveRequestHeaders]);
 
   const handleSend = useCallback(async (overrideText?: string, overrideSkillId?: string) => {
     const text = (overrideText ?? input).trim();
@@ -562,6 +771,18 @@ export function GenerateWorkspace({
     );
 
     if (mode === 'agent' || mode === 'video') {
+      if (/继续查看成片/.test(text)) {
+        setMessages(prev => [...prev, { id: genId(), role: 'user', content: text, timestamp: Date.now() }]);
+        setInput('');
+        await handleVideoStep({ resume: true });
+        return;
+      }
+      if (/取消成片/.test(text)) {
+        setMessages(prev => [...prev, { id: genId(), role: 'user', content: text, timestamp: Date.now() }]);
+        setInput('');
+        await handleVideoStep({ cancel: true });
+        return;
+      }
       if (/找回已完成片段/.test(text)) {
         setMessages(prev => [...prev, { id: genId(), role: 'user', content: text, timestamp: Date.now() }]);
         setInput('');
@@ -581,9 +802,21 @@ export function GenerateWorkspace({
         await handleVideoStep({ confirmRouteDecisions: true });
         return;
       }
+      if (/继续查看参考图/.test(text)) {
+        setMessages(prev => [...prev, { id: genId(), role: 'user', content: text, timestamp: Date.now() }]);
+        setInput('');
+        await handleReferenceAssetsStep({ recover: true });
+        return;
+      }
+      if (/取消参考图/.test(text)) {
+        setMessages(prev => [...prev, { id: genId(), role: 'user', content: text, timestamp: Date.now() }]);
+        setInput('');
+        await handleReferenceAssetsStep({ cancel: true });
+        return;
+      }
       // 点击“确认参考图，继续生成视频” -> 进入视频费用确认，不重复生成参考图
       if (/继续生成视频|生成视频/.test(text)) {
-        const routingCostDetail = '当前计划按每个主镜头创建一次视频任务；每镜会依照已确认的衔接计划执行“严格接镜”或“参考创作”，不再默认追加边界生成任务。';
+        const routingCostDetail = '将按已确认的分镜逐段制作并合成为完整短剧，不会额外增加镜头。';
         setMessages(prev => [...prev, { id: genId(), role: 'user', content: text, timestamp: Date.now() }]);
         setInput('');
         setMessages(prev => [...prev, {
@@ -624,7 +857,10 @@ export function GenerateWorkspace({
         skillId: requestSkill.id,
         sceneType: requestSkill.sceneType,
         settings: generationSettings,
-        referenceIds: selectedReferences.map(reference => reference.id),
+        projectId: activeProjectId || undefined,
+        projectAttachmentIds: selectedReferencesRef.current
+          .filter(reference => reference.status === 'ready')
+          .map(reference => reference.id),
       });
       return;
     }
@@ -641,7 +877,7 @@ export function GenerateWorkspace({
       timestamp: Date.now(),
     }]);
     setInput('');
-  }, [input, isLoading, mode, activeMode, onNavigate, handlePlanStep, handleReferenceAssetsStep, handleVideoStep, selectedRatio, selectedQuality, selectedReferences, selectedSkill, setScopedWorkspaceView]);
+  }, [activeProjectId, input, isLoading, mode, activeMode, onNavigate, handlePlanStep, handleReferenceAssetsStep, handleVideoStep, selectedRatio, selectedQuality, selectedSkill, setScopedWorkspaceView]);
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
@@ -761,18 +997,54 @@ export function GenerateWorkspace({
         className="rounded-lg border border-white/[0.11] bg-[#101620] p-3 shadow-[0_18px_48px_rgba(0,0,0,0.24)] transition focus-within:border-[#557fdc]/70 focus-within:bg-[#111925] focus-within:shadow-[0_22px_54px_rgba(0,0,0,0.3)]"
       >
         {selectedReferences.length > 0 && (
-          <div className="mb-2 flex flex-wrap gap-2" aria-label="已添加参考图">
+          <div className="mb-2 flex flex-wrap gap-2" aria-label="已添加项目素材">
             {selectedReferences.map((reference, index) => (
               <span
                 key={reference.id}
                 className="flex min-w-0 max-w-full items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.045] py-1 pl-1 pr-1.5 text-xs text-slate-300"
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={reference.imageUrl} alt="" className="h-8 w-8 shrink-0 rounded-md object-cover" />
-                <span className="max-w-28 truncate">{reference.name}</span>
+                {reference.kind === 'image' && reference.previewUrl
+                  ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={reference.previewUrl} alt="" className="h-8 w-8 shrink-0 rounded-md object-cover" />
+                  )
+                  : (
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white/[0.06]">
+                      {reference.kind === 'video'
+                        ? <Video className="h-4 w-4" />
+                        : reference.kind === 'image'
+                          ? <ImageIcon className="h-4 w-4" />
+                          : <FileJson className="h-4 w-4" />}
+                    </span>
+                  )}
+                <span className="min-w-0">
+                  <span className="block max-w-28 truncate">{reference.name}</span>
+                  <span className={reference.status === 'error' ? 'text-rose-400' : 'text-slate-500'}>
+                    {reference.status === 'uploading'
+                      ? `上传中 ${reference.progress}%`
+                      : reference.status === 'error'
+                        ? '上传失败'
+                        : reference.kind === 'image'
+                          ? '图片'
+                          : reference.kind === 'video'
+                            ? '视频'
+                            : '文档'}
+                  </span>
+                </span>
+                {reference.status === 'error' && (
+                  <button
+                    type="button"
+                    onClick={() => void retryProjectAttachment(reference.id)}
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-rose-300 transition hover:bg-rose-400/10 hover:text-rose-200"
+                    aria-label={`重试 ${reference.name}`}
+                    title={reference.error}
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={() => setSelectedReferences(current => moveVimaxProjectReference(current, reference.id, -1))}
+                  onClick={() => void moveProjectAttachment(reference.id, -1)}
                   disabled={index === 0}
                   className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-500 transition hover:bg-white/10 hover:text-slate-200 disabled:opacity-25"
                   aria-label={`前移 ${reference.name}`}
@@ -781,7 +1053,7 @@ export function GenerateWorkspace({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setSelectedReferences(current => moveVimaxProjectReference(current, reference.id, 1))}
+                  onClick={() => void moveProjectAttachment(reference.id, 1)}
                   disabled={index === selectedReferences.length - 1}
                   className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-500 transition hover:bg-white/10 hover:text-slate-200 disabled:opacity-25"
                   aria-label={`后移 ${reference.name}`}
@@ -790,7 +1062,7 @@ export function GenerateWorkspace({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setSelectedReferences(current => current.filter(item => item.id !== reference.id))}
+                  onClick={() => void removeProjectAttachment(reference.id)}
                   className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-500 transition hover:bg-white/10 hover:text-slate-200"
                   aria-label={`移除 ${reference.name}`}
                 >
@@ -806,19 +1078,20 @@ export function GenerateWorkspace({
             <input
               ref={referenceInputRef}
               type="file"
-              accept="image/png,image/jpeg,image/webp"
+              accept="image/png,image/jpeg,image/webp,video/mp4,video/webm,video/quicktime,application/pdf,text/plain,text/markdown"
+              multiple
               className="hidden"
               onChange={event => {
-                const file = event.target.files?.[0];
-                if (file) void uploadReference(file);
+                const files = Array.from(event.target.files || []);
+                if (files.length > 0) void uploadProjectAttachments(files);
               }}
             />
             <button
               className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-400 transition hover:border-white/20 hover:bg-white/[0.07] hover:text-[#8eb1ff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5e8dff]/45 disabled:opacity-40"
-              title="上传参考图"
-              aria-label="上传参考图"
+              title="添加图片、视频或文档"
+              aria-label="添加项目素材"
               type="button"
-              disabled={referenceUploading || selectedReferences.length >= 8}
+              disabled={selectedReferences.length >= 12}
               onClick={() => referenceInputRef.current?.click()}
             >
               {referenceUploading
@@ -838,11 +1111,7 @@ export function GenerateWorkspace({
         </div>
         <div className="mt-2 flex items-center gap-2">
           <div className="relative">
-            {agentOnly ? (
-              <span className="flex items-center gap-1.5 rounded-lg bg-[#14254a] px-2.5 py-1.5 text-xs font-medium text-[#8eb1ff] ring-1 ring-[#355da9]">
-                <Sparkles className="h-4 w-4" /> Agent 模式
-              </span>
-            ) : (
+            {!agentOnly ? (
               <button
                 type="button"
                 onClick={() => { setSkillMenuOpen(false); setMediaModelMenuOpen(false); setModeMenuOpen(open => !open); }}
@@ -852,7 +1121,7 @@ export function GenerateWorkspace({
                 {activeMode.label}
                 <ChevronDown className="h-3.5 w-3.5" />
               </button>
-            )}
+            ) : null}
             {!agentOnly && modeMenuOpen && (
               <div className="absolute bottom-full left-0 z-20 mb-2 w-44 overflow-hidden rounded-xl border border-[#e1e5eb] bg-white p-1 text-[#252931] shadow-[0_18px_38px_rgba(31,41,55,0.14)]">
                 <p className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#9299a4]">创作类型</p>
@@ -871,7 +1140,15 @@ export function GenerateWorkspace({
                         onNavigate(
                           item.section,
                           input.trim() || undefined,
-                          { imageRefs: selectedReferences.map(reference => reference.imageUrl) },
+                          {
+                            imageRefs: selectedReferences
+                              .filter(reference => (
+                                reference.status === 'ready'
+                                && reference.kind === 'image'
+                                && Boolean(reference.url)
+                              ))
+                              .map(reference => reference.url!),
+                          },
                         );
                         return;
                       }
@@ -893,10 +1170,11 @@ export function GenerateWorkspace({
             <button
               type="button"
               onClick={() => { setModeMenuOpen(false); setSkillMenuOpen(false); setMediaModelMenuOpen(open => !open); }}
-              className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.035] px-2.5 py-1.5 text-xs text-slate-400 transition hover:border-white/20 hover:bg-white/[0.07] hover:text-slate-100"
-              title="画面比例与清晰度"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-400 transition hover:border-white/20 hover:bg-white/[0.07] hover:text-slate-100"
+              aria-label="画面规格"
+              title="画面规格"
             >
-              <ImageIcon className="h-3.5 w-3.5" /> 画面
+              <ImageIcon className="h-3.5 w-3.5" />
             </button>
             {mediaModelMenuOpen && (
               <div className="absolute bottom-full left-0 z-20 mb-2 w-56 overflow-hidden rounded-xl border border-[#e1e5eb] bg-white p-2 text-[#252931] shadow-[0_18px_38px_rgba(31,41,55,0.14)]">
@@ -909,7 +1187,7 @@ export function GenerateWorkspace({
                 <p className="px-1 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-[#9299a4]">清晰度</p>
                 <div className="flex gap-1.5">
                   {["标清", "高清", "超清"].map(q => (
-                    <button key={q} type="button" onClick={() => setSelectedQuality(q)} className={`rounded-md border px-2 py-1 text-xs transition-colors ${selectedQuality === q ? "border-[#9bb8ff] bg-[#edf3ff] text-[#2f6bff]" : "border-[#e1e5eb] text-[#626a76] hover:bg-[#f5f7fa]"}`}>{q}</button>
+                    <button key={q} type="button" onClick={() => { setSelectedQuality(q); setMediaModelMenuOpen(false); }} className={`rounded-md border px-2 py-1 text-xs transition-colors ${selectedQuality === q ? "border-[#9bb8ff] bg-[#edf3ff] text-[#2f6bff]" : "border-[#e1e5eb] text-[#626a76] hover:bg-[#f5f7fa]"}`}>{q}</button>
                   ))}
                 </div>
               </div>
@@ -920,20 +1198,21 @@ export function GenerateWorkspace({
             <button
               type="button"
               onClick={() => { setModeMenuOpen(false); setMediaModelMenuOpen(false); setSkillMenuOpen(open => !open); }}
-              className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.035] px-2.5 py-1.5 text-xs text-slate-400 transition hover:border-white/20 hover:bg-white/[0.07] hover:text-slate-100"
-              title="使用技能"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-400 transition hover:border-white/20 hover:bg-white/[0.07] hover:text-slate-100"
+              aria-label="选择成片类型"
+              title="选择成片类型"
             >
-              <Wand2 className="h-3.5 w-3.5" /> {selectedSkill.name}
+              <Wand2 className="h-3.5 w-3.5" />
             </button>
             {skillMenuOpen && (
               <div className="absolute bottom-full left-0 z-20 mb-2 w-80 max-w-[calc(100vw-3rem)] overflow-hidden rounded-xl border border-[#e1e5eb] bg-white p-2 text-[#252931] shadow-[0_18px_38px_rgba(31,41,55,0.14)]">
-                <p className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-wider text-[#9299a4]">创作 Skill</p>
+                <p className="px-1 pb-2 text-[11px] font-semibold text-[#9299a4]">选择成片类型</p>
                 <label className="mb-2 flex items-center gap-2 rounded-lg border border-[#e1e5eb] bg-[#f8f9fb] px-2.5 py-2">
                   <Search className="h-3.5 w-3.5 text-[#9299a4]" />
                   <input
                     value={skillSearch}
                     onChange={event => setSkillSearch(event.target.value)}
-                    placeholder="搜索短剧、电商、分镜…"
+                    placeholder="搜索短剧、商品片、品牌片…"
                     className="min-w-0 flex-1 bg-transparent text-xs text-[#303640] outline-none placeholder:text-[#a0a6af]"
                   />
                 </label>
@@ -953,7 +1232,7 @@ export function GenerateWorkspace({
                   </button>
                 ))}
                 {visibleSkillPresets.length === 0 && (
-                  <p className="px-2 py-5 text-center text-xs text-[#9299a4]">没有匹配的 Skill</p>
+                  <p className="px-2 py-5 text-center text-xs text-[#9299a4]">没有匹配的成片类型</p>
                 )}
                 </div>
               </div>
@@ -993,6 +1272,7 @@ function MessageBubble({ message, onQuickOption, onResultIteration, onProduction
   }
 
   const agent = message.vimaxAgent;
+  const planConfirmation = buildVimaxAgentConfirmationView(message);
   const quickOptions = message.quickOptions?.filter(option => shouldShowVimaxQuickOption(option, agent?.productionPlan));
   const delivery = agent ? buildVimaxResultDelivery(message) : null;
   const manifestName = `${(agent?.title || 'vimax-project').replace(/[^\p{L}\p{N}-]+/gu, '-').replace(/^-|-$/g, '') || 'vimax-project'}-manifest.json`;
@@ -1002,16 +1282,95 @@ function MessageBubble({ message, onQuickOption, onResultIteration, onProduction
         {agent ? (
           <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px]">
             <span className="rounded-md bg-[#edf3ff] px-2 py-0.5 font-medium text-[#2f6bff]">{agent.title}</span>
-
-            <span className={`rounded-md px-2 py-0.5 ${agent.costState === 'incurred' ? 'bg-amber-500/15 text-amber-500' : agent.costState === 'blocked' ? 'bg-red-500/15 text-red-500' : 'bg-emerald-500/15 text-emerald-500'}`}>
-              {agent.costState === 'incurred' ? '已产生费用' : agent.costState === 'blocked' ? '已阻塞' : '未计费'}
-            </span>
+            {planConfirmation ? (
+              <span className="rounded-md bg-[#f1f3f6] px-2 py-0.5 text-[#68717e]">分镜待确认</span>
+            ) : (
+              <span className={`rounded-md px-2 py-0.5 ${agent.costState === 'incurred' ? 'bg-amber-500/15 text-amber-500' : agent.costState === 'blocked' ? 'bg-red-500/15 text-red-500' : 'bg-emerald-500/15 text-emerald-500'}`}>
+                {agent.costState === 'incurred' ? '正在制作' : agent.costState === 'blocked' ? '需要处理' : '尚未开始制作'}
+              </span>
+            )}
           </div>
         ) : null}
 
-        <p className="whitespace-pre-wrap text-sm leading-relaxed text-[#303640]">{message.content}</p>
+        {planConfirmation ? (
+          <div className="space-y-4">
+            <section aria-label="创作理解确认" className="rounded-xl border border-[#dfe5ee] bg-[#f8fafc] p-4">
+              <p className="text-xs font-semibold text-[#2f6bff]">{planConfirmation.heading}</p>
+              <h3 className="mt-1 text-base font-semibold text-[#252b34]">{planConfirmation.title}</h3>
+              {planConfirmation.summary ? (
+                <p className="mt-2 text-sm leading-6 text-[#535d6a]">{planConfirmation.summary}</p>
+              ) : null}
+              {Object.values(planConfirmation.story).some(Boolean) ? (
+                <dl className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {([
+                    ['故事起点', planConfirmation.story.premise],
+                    ['主角', planConfirmation.story.protagonist],
+                    ['目标', planConfirmation.story.goal],
+                    ['阻碍', planConfirmation.story.obstacle],
+                    ['关键转折', planConfirmation.story.turn],
+                    ['结尾钩子', planConfirmation.story.hook],
+                  ] as const).map(([label, value]) => value ? (
+                    <div key={label} className="rounded-lg border border-[#e4e8ee] bg-white px-3 py-2">
+                      <dt className="text-[11px] font-medium text-[#858e9a]">{label}</dt>
+                      <dd className="mt-0.5 text-xs leading-5 text-[#3e4652]">{value}</dd>
+                    </div>
+                  ) : null)}
+                </dl>
+              ) : null}
+              {planConfirmation.anchors.length > 0 ? (
+                <div className="mt-3 flex flex-wrap gap-2" aria-label="故事关键元素">
+                  {planConfirmation.anchors.map((anchor, index) => (
+                    <span key={`${anchor.kind}-${anchor.label}-${index}`} title={anchor.description} className="rounded-full border border-[#dfe5ee] bg-white px-2.5 py-1 text-[11px] text-[#596270]">
+                      {anchor.label}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+            </section>
 
-        {delivery ? (
+            <section aria-label="分镜确认" className="space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-[#2d3440]">分镜方案</p>
+                  <p className="mt-0.5 text-xs text-[#858e9a]">先确认故事和镜头，确认后再准备画面。</p>
+                </div>
+                <span className="shrink-0 text-xs text-[#68717e]">{planConfirmation.shots.length} 个镜头</span>
+              </div>
+              <div className="grid gap-2">
+                {planConfirmation.shots.map(shot => (
+                  <article key={shot.index} className="rounded-xl border border-[#e1e6ed] bg-white px-3.5 py-3">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="text-xs font-semibold text-[#2f6bff]">镜头 {shot.index}</span>
+                      <span className="text-sm font-medium text-[#343b46]">{shot.title}</span>
+                      <span className="ml-auto text-[11px] text-[#858e9a]">{shot.duration} 秒 · {shot.camera}</span>
+                    </div>
+                    <p className="mt-1.5 text-xs leading-5 text-[#596270]">{shot.description}</p>
+                    {shot.action ? <p className="mt-1 text-[11px] leading-5 text-[#7b8490]">动作：{shot.action}</p> : null}
+                    {shot.dialogue ? <p className="mt-1 text-[11px] leading-5 text-[#596270]">对白：{shot.dialogue}</p> : null}
+                    {shot.narration ? <p className="mt-1 text-[11px] leading-5 text-[#596270]">旁白：{shot.narration}</p> : null}
+                  </article>
+                ))}
+              </div>
+            </section>
+
+            <div aria-label="下一步确认" className="flex items-center gap-2 rounded-xl border border-[#d8e3ff] bg-[#f5f8ff] px-3.5 py-3 text-xs text-[#52617a]">
+              <Check className="h-4 w-4 shrink-0 text-[#2f6bff]" />
+              <span>{planConfirmation.nextStep}</span>
+            </div>
+            {agent?.taskId && agent.productionPlan ? (
+              <VimaxPlanConfirmationActions
+                taskId={agent.taskId}
+                plan={agent.productionPlan}
+                requestHeaders={requestHeaders}
+                onPlanChange={onProductionPlanChange}
+              />
+            ) : null}
+          </div>
+        ) : (
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-[#303640]">{message.content}</p>
+        )}
+
+        {delivery && !planConfirmation ? (
           <div className="mt-3 space-y-3" data-testid="vimax-result-delivery">
             {agent?.productionPlan ? (
               <VimaxProductionPlanCard
@@ -1060,7 +1419,7 @@ function MessageBubble({ message, onQuickOption, onResultIteration, onProduction
           </div>
         ) : null}
 
-        {agent?.taskId && shouldMountVimaxTaskBackedControls(message) ? (
+        {agent?.taskId && shouldMountVimaxTaskBackedControls(message) && !planConfirmation ? (
           <>
             <VimaxProjectEditorCard taskId={agent.taskId} requestHeaders={requestHeaders} />
             <VimaxSegmentedProductionCard taskId={agent.taskId} requestHeaders={requestHeaders} />
@@ -1089,49 +1448,16 @@ function MessageBubble({ message, onQuickOption, onResultIteration, onProduction
           </div>
         )}
 
-        {agent?.shots && agent.shots.length > 0 && (
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            {agent.shots.map(shot => (
-              <div key={shot.index} className="overflow-hidden rounded-xl border border-[#e1e5eb] bg-[#f8f9fb]">
-                {shot.videoUrl ? (
-                  <video
-                    src={shot.videoUrl}
-                    controls
-                    playsInline
-                    preload="metadata"
-                    className="aspect-video w-full bg-black object-cover"
-                  />
-                ) : shot.referenceUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={shot.referenceUrl} alt={`Clip ${shot.index} · ${shot.title}`} className="aspect-video w-full object-cover" />
-                ) : null}
-                <div className="space-y-1 px-3 py-2 text-xs">
-                  <div className="flex min-h-[24px] items-center gap-2">
-                    <span className="shrink-0 font-medium text-[#2f6bff]">Clip {shot.index}</span>
-                    <span className="min-w-0 flex-1 truncate text-[#3a414b]">{shot.title}</span>
-                    {shot.handoffIntent ? (
-                      <span
-                        title={shot.handoffReason}
-                        className="shrink-0 rounded-full border border-[#dce4f4] bg-white px-2 py-0.5 text-[11px] font-medium text-[#596579]"
-                      >
-                        {shot.handoffIntent === 'strict-frame' ? '严格接镜' : '参考创作'}
-                      </span>
-                    ) : null}
-                    <span className="shrink-0 text-[#858c97]">{shot.duration}s · {shot.camera}</span>
-                  </div>
-                  {shot.handoffReason ? (
-                    <p className="line-clamp-2 text-[#68758a]">衔接：{shot.handoffReason}</p>
-                  ) : null}
-                  {shot.prompt ? (
-                    <p className="line-clamp-3 text-[#858c97]">{shot.prompt}</p>
-                  ) : null}
-                </div>
-              </div>
-            ))}
-          </div>
+        {agent?.shots && agent.shots.length > 0 && !planConfirmation && (
+          <VimaxShotReferenceGrid
+            taskId={agent.taskId}
+            shots={agent.shots}
+            phase={agent.phase}
+            requestHeaders={requestHeaders}
+          />
         )}
 
-        {delivery ? (
+        {delivery && !planConfirmation ? (
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#e3e7ed] pt-3">
             {message.generationStatus === 'completed' ? (
               <>
@@ -1178,6 +1504,104 @@ function MessageBubble({ message, onQuickOption, onResultIteration, onProduction
             ))}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function VimaxPlanConfirmationActions({ taskId, plan, requestHeaders, onPlanChange }: {
+  taskId: string;
+  plan: VimaxProductionPlan;
+  requestHeaders?: Record<string, string>;
+  onPlanChange: (plan: VimaxProductionPlan) => void;
+}) {
+  const [pendingAction, setPendingAction] = useState('');
+  const [error, setError] = useState('');
+  const awaitingPlan = plan.governance.status === 'awaiting-plan-approval';
+  const awaitingExecution = plan.governance.status === 'plan-approved'
+    || plan.governance.status === 'awaiting-cost-decision';
+  const ready = plan.governance.status === 'ready';
+  const videoReady = plan.providerRoutes.find(route => route.stage === 'video')?.ready === true;
+
+  const updatePlan = useCallback(async (action: string, fallbackError: string) => {
+    if (pendingAction) return;
+    setPendingAction(action);
+    setError('');
+    try {
+      const response = await clientApiRequest(`/api/tasks/${encodeURIComponent(taskId)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...requestHeaders },
+        body: JSON.stringify({ action }),
+        redirectOnUnauthorized: false,
+      });
+      const data = await response.json().catch(() => ({}));
+      const updated = parseVimaxProductionPlan(data.productionPlan);
+      if (!response.ok || !updated) throw new Error(data.error || fallbackError);
+      onPlanChange(updated);
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : fallbackError);
+    } finally {
+      setPendingAction('');
+    }
+  }, [onPlanChange, pendingAction, requestHeaders, taskId]);
+
+  if (ready) {
+    return (
+      <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-3 text-xs text-emerald-800">
+        故事与执行方式已确认，可以继续准备画面参考。
+      </div>
+    );
+  }
+
+  if (!awaitingPlan && !awaitingExecution) return null;
+
+  return (
+    <div className="rounded-xl border border-[#dfe5ee] bg-white px-3.5 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold text-[#343b46]">
+            {awaitingPlan ? '先确认故事和分镜' : '选择接下来的制作方式'}
+          </p>
+          <p className="mt-1 text-[11px] leading-5 text-[#7b8490]">
+            {awaitingPlan
+              ? '确认后才会进入画面准备，当前不会生成图片或视频。'
+              : '继续制作会使用当前账号已配置的百炼；也可以先保存方案，稍后再继续。'}
+          </p>
+          {error ? <p className="mt-1 text-[11px] text-red-600">{error}</p> : null}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {awaitingPlan ? (
+            <button
+              type="button"
+              disabled={Boolean(pendingAction)}
+              onClick={() => void updatePlan('approve-production-plan', '故事和分镜确认失败')}
+              className="rounded-lg bg-[#2f6bff] px-3.5 py-2 text-xs font-medium text-white transition-colors hover:bg-[#245de3] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {pendingAction ? '正在保存…' : '确认故事和分镜'}
+            </button>
+          ) : (
+            <>
+              {videoReady ? (
+                <button
+                  type="button"
+                  disabled={Boolean(pendingAction)}
+                  onClick={() => void updatePlan('confirm-production-external', '制作方式保存失败')}
+                  className="rounded-lg bg-[#2f6bff] px-3.5 py-2 text-xs font-medium text-white transition-colors hover:bg-[#245de3] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {pendingAction === 'confirm-production-external' ? '正在保存…' : '使用百炼继续制作'}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                disabled={Boolean(pendingAction)}
+                onClick={() => void updatePlan('confirm-production-draft', '方案保存失败')}
+                className="rounded-lg border border-[#dfe5ee] bg-white px-3.5 py-2 text-xs font-medium text-[#596270] transition-colors hover:border-[#b9c8e8] hover:text-[#2f6bff] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {pendingAction === 'confirm-production-draft' ? '正在保存…' : '先保存方案'}
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

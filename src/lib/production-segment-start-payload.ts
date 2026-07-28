@@ -387,7 +387,7 @@ function buildProviderTimeAxisConstraint(
   return [
     openingRule,
     `${openingEnd}-${actionEnd}秒必须让观众看见本段信息增量：${progression.mustUnderstand || storyContract.videoDesc.visibleAction}；可见证据=${progression.visualEvidence || storyContract.videoDesc.visualCausality}`,
-    `${finalStart}-${duration}秒停在可给下一段接住的尾帧：${contract.handoff.exitContinuity}；非最后段优先用地图、旗帜、门楼、道具、远景人物或场景方向作为尾帧，不用人物正脸近景`,
+    `${finalStart}-${duration}秒到达模型计划的目标尾态：${contract.lastFrame.description}；并保留下一镜所需状态：${contract.handoff.exitContinuity}`,
     `声音时间轴：对白=${dialogue}；旁白=${narration}；音效=${audio || '现场环境声和动作声'}；口型和声线跨段保持一致`,
   ].join('；');
 }
@@ -411,8 +411,8 @@ function buildProviderSafePrompt(segment: ProductionSegmentPlan) {
   const firstFrameInput = resolveFirstFrameInput(segment);
   const firstFrameImage = firstFrameInput.firstFrameImage;
   const firstFrameSourceText = describeFirstFrameSource(firstFrameInput.firstFrameSource);
-  const previousStoryCue = segment.expectedInputs.previousStoryStateCue || '无上一段故事状态';
-  const previousAudioCue = segment.expectedInputs.previousAudioCue || '无上一段声音状态';
+  const previousStoryCue = segment.expectedInputs.previousStoryStateCue || '';
+  const previousAudioCue = segment.expectedInputs.previousAudioCue || '';
   const providerPreviousStoryCue = removeNarrationCarryover(previousStoryCue, segment);
   const providerPreviousAudioCue = removeNarrationCarryover(previousAudioCue, segment);
   const compactPreviousStoryCue = compactProviderValue(providerPreviousStoryCue, 150);
@@ -425,65 +425,28 @@ function buildProviderSafePrompt(segment: ProductionSegmentPlan) {
     140
   );
   const progression = buildSegmentProgressionCue(segment);
-  const progressionStartFrame = firstFrameInput.firstFrameSource === 'boundary-new-camera'
-    ? '边界 bridge 的 new-camera 首帧'
-    : '上一段尾帧';
   const continuityHardConstraint = firstFrameImage
-    ? `连续性硬约束：${firstFrameSourceText} 开头1到2秒必须直接承接传入首帧图像的人物位置、服装、关键道具、场景方向和情绪，不重新开场；本段不是上一段重复，承接完成后必须推进到「${progression.title}」，不得整段停留在上一段场景；故事承接上一段，上一段故事=${compactPreviousStoryCue}；声音承接上一段，上一段声音=${compactPreviousAudioCue}`
-    : '连续性硬约束：第一段必须清楚建立人物、地点、关键道具、主角目标、冲突对象和声音基调';
-  const progressionHardConstraint = firstFrameImage && segment.index > 0
-    ? `本段不是上一段重复：承接完成后必须从${progressionStartFrame}推进到「${progression.title}」，不得整段停留在上一段场景；画面必须出现${progression.visualEvidence || storyContract.videoDesc.visualCausality}；声音必须出现${progression.soundCue || storyContract.audioContract.soundDesign}`
-    : `本段核心信息：${progression.title}；画面必须出现${progression.visualEvidence || storyContract.videoDesc.visualCausality}；声音必须出现${progression.soundCue || storyContract.audioContract.soundDesign}`;
+    ? `从传入首帧的真实人物位置、服装、道具、场景方向和动作状态继续，不重新开场；随后自然推进到本镜头目标「${progression.title}」`
+    : `建立本镜头计划中的人物、地点、道具和动作起点`;
   const timeAxisConstraint = buildProviderTimeAxisConstraint(segment, firstFrameInput);
 
   return compactProviderPrompt([
-    `短剧连续片段 ${segment.index + 1}，写实电影感，镜头和角色动作连续`,
-    '尾帧传递安全：非最后段最终画面必须停在地图、旗帜、门楼、道具或场景远景，避免人物正脸和近脸。',
-    firstFrameImage && segment.index > 0
-      ? `本段不是上一段重复：承接首帧后必须推进到本段核心信息，不得整段停留在上一段场景。`
-      : '',
-    `连续性硬约束摘要：首帧来源=${firstFrameSourceText}；故事承接上一段；上一段故事=${compactPreviousStoryCue}；声音承接上一段；上一段声音=${compactPreviousAudioCue}；边界桥接计划=${boundaryBridgePrompt || '第一段无上一段边界，建立稳定开场'}；时间轴硬约束=开头复现传入首帧状态后推进本段，结尾停在可给下一段接住的尾帧；声音时间轴=承接上一段音色后进入本段`,
-    `声音事件摘要：${audioEventSummary}`,
-    `开头画面：${contract.firstFrame.description}`,
-    `主角目标：${storyContract.storyState.currentGoal}`,
-    `本段核心信息：${progression.title}；画面必须出现${progression.visualEvidence || storyContract.videoDesc.visualCausality}`,
-    progressionHardConstraint,
-    `声音设计：${segment.audioState?.audioCue || contract.audioDescription || storyContract.audioContract.soundDesign}`,
-    `声音事件：${storyContract.audioContract.audioEventContract.providerInstruction}`,
-    '版权安全硬约束：只生成原创公共史实画面，人物、构图、服装和镜头均为新设计；服化道只使用晚唐到五代十国公共历史元素',
-    '内容安全硬约束：不表现伤口、流血、暴力细节或近景创伤；战争代价只用换旗、地图红印、医棚火光、疲惫军士、急促脚步和道具状态表达',
-    '尾帧传递安全：非最后段的最终画面必须是可继续作为下一段首帧的地图、旗帜、门楼、道具或场景远景，避免人物正脸、近脸和疑似真人隐私图。',
-    `本段有声收尾：对白=${storyContract.audioContract.dialogue || '无'}；旁白=${storyContract.audioContract.narration || '无'}；声音=${segment.audioState?.soundDesign || storyContract.audioContract.soundDesign}`,
-    `本段结尾动作：${contract.lastFrame.description}；最后停在${contract.handoff.exitContinuity}`,
+    `短剧连续片段 ${segment.index + 1}，按模型规划的镜头语义执行`,
+    `首帧来源：${firstFrameSourceText}`,
     continuityHardConstraint,
-    `声音设计：${segment.audioState?.audioCue || contract.audioDescription || '现场环境声、角色呼吸和短句对白'}`,
-    `声音事件：${storyContract.audioContract.audioEventContract.providerInstruction}`,
-    `声音承接上一段：${compactPreviousAudioCue}`,
-    `故事承接上一段：${compactPreviousStoryCue}`,
     `开头画面：${contract.firstFrame.description}`,
-    progressionHardConstraint,
+    `动作起止：${storyContract.videoDesc.entryState} -> ${storyContract.videoDesc.exitState}`,
+    `镜头运动：${contract.motionDescription}`,
+    `画面因果：${storyContract.videoDesc.visualCausality}`,
+    `目标尾帧：${contract.lastFrame.description}`,
     timeAxisConstraint,
-    `对白旁白：对白 ${storyContract.audioContract.dialogue || '无'}，旁白 ${storyContract.audioContract.narration || '无'}`,
-    `开头画面：${contract.firstFrame.description}`,
-    `本段动作：${contract.motionDescription}`,
-    `本段剧情：${segment.prompt}`,
-    `主角目标：${storyContract.storyState.currentGoal}`,
-    `故事冲突：${storyContract.storyState.conflict}`,
-    `可见状态变化：${storyContract.storyState.visibleStateChange}`,
-    `可见冲突：${contract.visualStoryEvidence.conflictEvidence}`,
-    `操作结果：${contract.visualStoryEvidence.operationResultEvidence}`,
-    `结尾画面：${contract.lastFrame.description}`,
-    `下一段钩子：${contract.visualStoryEvidence.endingHookEvidence}`,
-    contract.handoff.requiresPreviousLastFrame
-      ? `承接上一段尾帧：${contract.handoff.entryContinuity}`
-      : '第一段先建立人物、地点、关键道具和目标',
-    `交给下一段：${contract.handoff.exitContinuity}`,
-    providerPreviousAudioCue
-      ? `声音承接上一段：${compactPreviousAudioCue}`
-      : '声音从本段环境声开始建立',
-    providerPreviousStoryCue
-      ? `故事承接上一段：${compactPreviousStoryCue}`
-      : '故事从本段建立主角目标、冲突、关键道具和情绪',
+    boundaryBridgePrompt ? `镜头边界修正：${boundaryBridgePrompt}` : '',
+    compactPreviousStoryCue ? `上一镜已确认状态：${compactPreviousStoryCue}` : '',
+    compactPreviousAudioCue ? `上一镜声音余韵：${compactPreviousAudioCue}` : '',
+    `对白：${storyContract.audioContract.dialogue || '无'}`,
+    `旁白：${storyContract.audioContract.narration || '无'}`,
+    `声音：${segment.audioState?.soundDesign || storyContract.audioContract.soundDesign || contract.audioDescription}`,
+    audioEventSummary ? `声音执行：${audioEventSummary}` : '',
     '画面不出现字幕文字，角色服装、关键道具、场景方向和情绪保持一致',
   ]);
 }

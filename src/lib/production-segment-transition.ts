@@ -1,6 +1,7 @@
 import type { ProductionAssemblyPlan, ProductionSegmentPlan } from './production-assembly-plan';
 import { evaluateStorySegmentStartReadiness } from './production-story-segment-contract';
 import type { TaskResult } from './task-manager';
+import { evaluateVimaxBridgeTailHandoffReadiness } from './skills/vimax-short-drama/vimax-bridge-tail-acceptance';
 
 type LegacySegment = NonNullable<TaskResult['segments']>[number];
 
@@ -176,6 +177,28 @@ export function evaluateProductionSegmentTransition(
       storyContractWarnings: storyReadiness.warnings,
       reason: `第 ${segmentIndex + 1} 段依赖第 ${segmentIndex} 段尾帧，但上一段缺少 lastFrameUrl，不能启动真实生成。`,
     };
+  }
+
+  if (previous.generationRoute?.boundaryIntent === 'bridge') {
+    const bridgeTailReadiness = evaluateVimaxBridgeTailHandoffReadiness(
+      previous.expectedOutputs.bridgeTailAcceptance,
+    );
+    if (!bridgeTailReadiness.ok) {
+      return {
+        ok: false,
+        segmentIndex,
+        dependencySegmentIndex: segmentIndex - 1,
+        dependencySegmentId: previous.id,
+        dependencyTaskId: previousTaskId,
+        firstFrameUrl,
+        previousLastFrameUrl: previousInputUrl,
+        continuityPrompt: normalizeContinuityPrompt(segmentIndex, segment.expectedInputs.continuityPrompt),
+        storyContractReady: storyReadiness.pass,
+        storyContractBlockers: storyReadiness.blockers,
+        storyContractWarnings: storyReadiness.warnings,
+        reason: bridgeTailReadiness.reason,
+      };
+    }
   }
 
   const requiresGeneratedBoundaryBridge = segment.expectedInputs.bridgeStrategy === 'transition-bridge';

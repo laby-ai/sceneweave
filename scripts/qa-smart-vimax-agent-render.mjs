@@ -73,12 +73,12 @@ check(
   'model, ratio and quality controls must affect the existing Vimax requests',
 );
 check(
-  'vimax-shot-routing-is-visible-without-stale-call-counts',
-  /严格接镜/.test(generateWorkspace)
-    && /参考创作/.test(generateWorkspace)
-    && /shot\.handoffReason/.test(generateWorkspace)
+  'vimax-confirmation-hides-internal-routing',
+  /buildVimaxAgentConfirmationView/.test(generateWorkspace)
+    && !/严格接镜/.test(generateWorkspace)
+    && !/参考创作/.test(generateWorkspace)
     && !/3 个镜头共 5 次调用/.test(generateWorkspace),
-  'the workspace must explain each persisted shot route without exposing the retired fixed bridge-call model',
+  'the user confirmation surface must not expose internal route or provider mechanics',
 );
 check('workspace-renders-stage-card', /msg\.vimaxAgent/.test(workspace) && /真实 AgentPlan/.test(workspace) && /千问参考素材/.test(workspace));
 check('route-calls-real-ark-text-model', /chat\/completions/.test(route) && /ARK_API_KEY/.test(route) && /usedRealKey:\s*true/.test(route));
@@ -99,7 +99,8 @@ check(
     && /buildProductionBackedVimaxPlan/.test(planEnvelope)
     && /buildProductionProject/.test(planArtifacts)
     && /buildProductionAssemblyPlan/.test(planArtifacts)
-    && /generateShotsFromUserPrompt/.test(planArtifacts)
+    && /authoritativeStoryBible/.test(planArtifacts)
+    && /planShots/.test(planArtifacts)
     && /【首尾帧契约】/.test(planArtifacts)
     && /【镜头变化】/.test(planArtifacts),
   'short-drama skill must not bypass the embedded ViMAX-style production artifacts',

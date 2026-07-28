@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -14,6 +14,8 @@ const origin = `http://127.0.0.1:${appPort}`;
 const appOrigin = `${origin}/huiying`;
 const workspaceKey = 'guest-creation-planning-cancel-20260726';
 const taskFile = path.join(tmpdir(), `sceneweave-planning-cancel-${randomUUID()}.json`);
+const attachmentRoot = path.join(tmpdir(), `sceneweave-project-attachments-${randomUUID()}`);
+const attachmentFixtureRoot = path.join(tmpdir(), `sceneweave-project-attachment-fixtures-${randomUUID()}`);
 
 const fixturePlan = JSON.stringify({
   title: '雨夜天台的胶片',
@@ -121,6 +123,20 @@ async function waitForHealth() {
 }
 
 async function main() {
+  mkdirSync(attachmentFixtureRoot, { recursive: true });
+  const imageFixture = path.join(attachmentFixtureRoot, 'reporter.png');
+  const videoFixture = path.join(attachmentFixtureRoot, 'rain-reference.mp4');
+  const documentFixture = path.join(attachmentFixtureRoot, 'story-outline.txt');
+  writeFileSync(
+    imageFixture,
+    Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      'base64',
+    ),
+  );
+  writeFileSync(videoFixture, Buffer.from('000000186674797069736f6d0000000069736f6d69736f32', 'hex'));
+  writeFileSync(documentFixture, '雨夜旧影院。记者拾到会发光的胶片，并沿蓝光寻找记录源头。\n', 'utf8');
+
   let providerCalls = 0;
   let firstProviderClosed = false;
   const providerServer = createServer((request, response) => {
@@ -175,6 +191,7 @@ async function main() {
         HUIYING_REAL_ARK_API_KEY: 'fixture-planning-key',
         HUIYING_REAL_ARK_API_BASE: `http://127.0.0.1:${providerPort}/api/plan/v3`,
         HUIYING_TASKS_FILE: taskFile,
+        HUIYING_PROJECT_ATTACHMENT_STORE_PATH: attachmentRoot,
         HUIYING_OBSERVABILITY_HASH_KEY: 'fixture-observability-hash-key-32-bytes',
       },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -227,11 +244,26 @@ async function main() {
       }
       await route.continue();
     });
+    let forcedAttachmentFailure = false;
+    await page.route('**/api/project-attachments', async route => {
+      if (route.request().method() === 'POST' && !forcedAttachmentFailure) {
+        forcedAttachmentFailure = true;
+        await route.fulfill({
+          status: 503,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'fixture_upload_interrupted' }),
+        });
+        return;
+      }
+      await route.continue();
+    });
     const errors: string[] = [];
     const failedResponses: Array<{ status: number; url: string }> = [];
     let planningRequests = 0;
+    const planningAttachmentIds: string[][] = [];
     let cancelRequests = 0;
     let mediaStageRequests = 0;
+    let subjectWriteRequests = 0;
     const requestedUrls: string[] = [];
     page.on('console', message => {
       if (message.type() === 'error') errors.push(message.text());
@@ -244,11 +276,15 @@ async function main() {
       requestedUrls.push(`${request.method()} ${request.url()}`);
       const pathname = new URL(request.url()).pathname;
       if (pathname.endsWith('/api/smart/vimax-agent-step') && request.method() === 'POST') {
-        const body = request.postDataJSON() as { phase?: string } | null;
-        if (body?.phase === 'plan') planningRequests += 1;
+        const body = request.postDataJSON() as { phase?: string; projectAttachmentIds?: string[] } | null;
+        if (body?.phase === 'plan') {
+          planningRequests += 1;
+          planningAttachmentIds.push(Array.isArray(body.projectAttachmentIds) ? body.projectAttachmentIds : []);
+        }
         if (body?.phase === 'reference_assets' || body?.phase === 'video') mediaStageRequests += 1;
       }
       if (request.method() === 'DELETE' && /\/api\/tasks\/[^/]+$/.test(pathname)) cancelRequests += 1;
+      if (request.method() !== 'GET' && pathname.endsWith('/api/subjects')) subjectWriteRequests += 1;
     });
 
     const url = `${appOrigin}/embed/creation-agent?embed=creation-agent&workspaceKey=${workspaceKey}`;
@@ -259,6 +295,32 @@ async function main() {
       /account-login/,
       `unexpected login redirect; requests=${requestedUrls.join(' | ')}`,
     );
+    const attachmentChooser = page.waitForEvent('filechooser');
+    await page.getByRole('button', { name: '添加项目素材' }).click();
+    await (await attachmentChooser).setFiles([imageFixture, videoFixture, documentFixture]);
+    const retryAttachment = page.getByRole('button', { name: '重试 reporter.png' });
+    await retryAttachment.waitFor({ state: 'visible', timeout: 15_000 });
+    await retryAttachment.click();
+    await page.getByText('上传失败', { exact: true }).waitFor({ state: 'hidden', timeout: 15_000 });
+    const attachmentRegion = page.getByLabel('已添加项目素材');
+    await expect(attachmentRegion).toContainText('reporter.png');
+    await expect(attachmentRegion).toContainText('rain-reference.mp4');
+    await expect(attachmentRegion).toContainText('story-outline.txt');
+    await page.getByRole('button', { name: '后移 reporter.png' }).click();
+    await page.getByRole('button', { name: '移除 story-outline.txt' }).click();
+    await expect(attachmentRegion).not.toContainText('story-outline.txt');
+    const attachmentOrderBeforeRefresh = await attachmentRegion.locator('span > span.min-w-0 > span:first-child').allTextContents();
+    assert.deepEqual(attachmentOrderBeforeRefresh, ['rain-reference.mp4', 'reporter.png']);
+    const outputDir = path.resolve('outputs');
+    mkdirSync(outputDir, { recursive: true });
+    const attachmentScreenshot = path.join(outputDir, 'project-attachments-1280.png');
+    await page.screenshot({ path: attachmentScreenshot });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    const restoredAttachmentRegion = page.getByLabel('已添加项目素材');
+    await restoredAttachmentRegion.waitFor({ state: 'visible', timeout: 15_000 });
+    const attachmentOrderAfterRefresh = await restoredAttachmentRegion.locator('span > span.min-w-0 > span:first-child').allTextContents();
+    assert.deepEqual(attachmentOrderAfterRefresh, attachmentOrderBeforeRefresh);
+
     const input = page.getByPlaceholder(/写下故事、粘贴剧本，或上传参考素材/);
     await input.fill('10秒短剧：记者在雨夜天台拾起发光胶片，两个连续的5秒镜头。');
     await input.press('Enter');
@@ -287,10 +349,60 @@ async function main() {
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.getByText(/本次规划已取消/).waitFor({ state: 'visible', timeout: 15_000 });
     await page.getByRole('button', { name: '重新生成' }).dblclick();
-    await page.getByText('雨夜天台的胶片', { exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
+    await page.getByRole('heading', { name: '雨夜天台的胶片' }).waitFor({ state: 'visible', timeout: 15_000 });
+    await page.getByText('拾起胶片', { exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
+    await page.getByText('追随蓝光', { exact: true }).waitFor({ state: 'visible', timeout: 15_000 });
+    await expect(page.getByLabel('创作理解确认')).toBeVisible();
+    await expect(page.getByLabel('分镜确认')).toBeVisible();
+    await expect(page.getByLabel('下一步确认')).toBeVisible();
+    const confirmationScreenshots: string[] = [];
+    for (const viewport of [
+      { width: 1280, height: 900 },
+      { width: 768, height: 900 },
+      { width: 390, height: 844 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await page.getByLabel('创作理解确认').scrollIntoViewIfNeeded();
+      await page.waitForTimeout(150);
+      const screenshotPath = path.join(outputDir, `agent-confirmation-${viewport.width}.png`);
+      await page.screenshot({ path: screenshotPath });
+      confirmationScreenshots.push(screenshotPath);
+    }
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.getByRole('button', { name: '确认故事和分镜' }).click();
+    await expect(page.getByRole('button', { name: '使用百炼继续制作' })).toBeVisible();
+    await page.getByRole('button', { name: '使用百炼继续制作' }).click();
+    await expect(page.getByRole('button', { name: '确认分镜，生成参考图' })).toBeVisible();
+    await expect(page.getByTestId('creation-production-plan')).toHaveCount(0);
+    const visiblePlanText = await page.locator('body').innerText();
+    assert.match(visiblePlanText, /拾起胶片/);
+    assert.match(visiblePlanText, /追随蓝光/);
+    assert.match(visiblePlanText, /深蓝风衣/);
+    assert.match(visiblePlanText, /右侧铁门/);
+    assert.match(visiblePlanText, /延续上一镜尾帧/);
+    assert.match(visiblePlanText, /故事起点/);
+    assert.match(visiblePlanText, /主角/);
+    assert.match(visiblePlanText, /目标/);
+    assert.doesNotMatch(visiblePlanText, /qwen3\.7|wan2\.7|happyhorse|I2V|R2V|渲染路线|供应商/i);
+    assert.doesNotMatch(
+      visiblePlanText,
+      /短剧主角|The Data Stream|核心场景|关键物件「信」|宁静的水域|初见之时|进一步了解|最终，我们看到的，是|被威胁对象|倒计时|报警屏/,
+      'the visible plan must not be overwritten by a generic short-drama template',
+    );
     assert.equal(planningRequests, 2, 'double click retry must start exactly one new planning attempt');
+    assert.deepEqual(
+      planningAttachmentIds.map(ids => ids.length),
+      [2, 2],
+      'the initial plan and its idempotent retry must keep the same two project attachments',
+    );
+    assert.deepEqual(
+      planningAttachmentIds[1],
+      planningAttachmentIds[0],
+      'retry must preserve project attachment identity and order',
+    );
     assert.equal(providerCalls, 2, 'cancelled attempt plus one retry should be the only planning provider calls');
     assert.equal(mediaStageRequests, 0, 'planning cancel/retry must not enter reference or video stages');
+    assert.equal(subjectWriteRequests, 0, 'ordinary project attachments must not be written into the reusable subject library');
     assert.equal(firstProviderClosed, true, 'browser cancellation must close the in-flight planning provider stream');
 
     let planningTasks: Array<{ status?: string; config?: { phase?: string } }> = [];
@@ -304,8 +416,38 @@ async function main() {
     }).toBe(1);
     assert.equal(planningTasks.filter(task => task.status === 'cancelled').length, 1);
     assert.equal(planningTasks.filter(task => task.status === 'completed').length, 1);
-    assert.equal(errors.length, 0, `browser errors: ${errors.join(' | ')}`);
-    assert.deepEqual(failedResponses, [], `failed responses: ${JSON.stringify(failedResponses)}`);
+    const unexpectedFailures = failedResponses.filter(response => !(
+      response.status === 503 && response.url.endsWith('/api/project-attachments')
+    ));
+    assert.deepEqual(unexpectedFailures, [], `failed responses: ${JSON.stringify(failedResponses)}`);
+    const actionableErrors = errors.filter(error => !error.startsWith('Failed to load resource:'));
+    assert.equal(actionableErrors.length, 0, `browser errors: ${actionableErrors.join(' | ')}`);
+    await page.waitForTimeout(250);
+    assert.doesNotMatch(
+      appOutput.join(''),
+      /Controller is already closed|ERR_INVALID_STATE|uncaughtException/,
+      'cancelling the planning stream must not close or enqueue into an already closed controller',
+    );
+    const screenshots: string[] = [];
+    for (const viewport of [
+      { width: 1280, height: 900 },
+      { width: 768, height: 900 },
+      { width: 390, height: 844 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await page.waitForTimeout(200);
+      const overflow = await page.evaluate(() => ({
+        innerWidth: window.innerWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+      }));
+      assert.ok(
+        overflow.scrollWidth <= overflow.innerWidth + 1,
+        `${viewport.width}px viewport overflow: ${JSON.stringify(overflow)}`,
+      );
+      const screenshotPath = path.join(outputDir, `model-driven-plan-${viewport.width}.png`);
+      await page.screenshot({ path: screenshotPath, fullPage: true });
+      screenshots.push(screenshotPath);
+    }
 
     console.log(JSON.stringify({
       ok: true,
@@ -313,7 +455,14 @@ async function main() {
       cancelRequests,
       providerCalls,
       mediaStageRequests,
+      attachmentOrder: attachmentOrderAfterRefresh,
+      attachmentRetryRequests: 1,
+      subjectWriteRequests,
+      visibleStoryPreserved: true,
       statuses: planningTasks.map(task => task.status),
+      confirmationScreenshots,
+      attachmentScreenshot,
+      screenshots,
     }));
     await context.close();
   } catch (error) {
@@ -324,6 +473,8 @@ async function main() {
     await stop(app);
     await new Promise<void>(resolve => providerServer.close(() => resolve()));
     rmSync(taskFile, { force: true });
+    rmSync(attachmentRoot, { recursive: true, force: true });
+    rmSync(attachmentFixtureRoot, { recursive: true, force: true });
   }
 }
 

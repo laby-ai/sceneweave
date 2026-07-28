@@ -1,0 +1,265 @@
+import assert from 'node:assert/strict';
+
+import { buildProductionBackedVimaxPlan } from '../src/lib/skills/vimax-short-drama/vimax-plan-artifacts';
+
+const prompt = '电影感雨夜悬疑短剧，30 秒，6 个 5 秒镜头。记者从天台穿过铁门进入放映室。';
+const shots = [
+  {
+    index: 1,
+    title: '天台孤影',
+    duration: 5,
+    camera: '广角缓推',
+    prompt: '雨夜天台，林浅发现积水中的发光胶片。',
+    sceneId: 'scene-rooftop',
+    characterIds: ['character-linqian'],
+    propIds: ['prop-film'],
+    actionStart: '林浅站在天台低头寻找线索',
+    actionEnd: '林浅看见积水中的发光胶片',
+    firstFrameDescription: '雨夜天台广角，林浅站在画面左侧',
+    lastFrameDescription: '林浅前倾，视线锁定脚边蓝光',
+    motionDescription: '镜头缓慢推近，林浅微微弯腰',
+    dialogue: '',
+    narration: '',
+    audioIntent: '暴雨、远处车流和低频环境声',
+    spatialRelation: 'new-scene' as const,
+    temporalRelation: 'time-jump' as const,
+    routeConfidence: 'high' as const,
+    conflictFlags: [],
+  },
+  {
+    index: 2,
+    title: '拾取微光',
+    duration: 5,
+    camera: '中景跟随',
+    prompt: '林浅弯腰拾起胶片，蓝光照亮她的脸。',
+    sceneId: 'scene-rooftop',
+    characterIds: ['character-linqian'],
+    propIds: ['prop-film'],
+    actionStart: '林浅看见积水中的发光胶片',
+    actionEnd: '林浅握住胶片并转向铁门',
+    firstFrameDescription: '林浅前倾，视线锁定脚边蓝光',
+    lastFrameDescription: '林浅直起身，右手握住胶片，身体朝向铁门',
+    motionDescription: '镜头跟随拾取动作下移再回升',
+    dialogue: '',
+    narration: '',
+    audioIntent: '手掌拨开积水，胶片发出轻微电流声',
+    spatialRelation: 'same-scene' as const,
+    temporalRelation: 'continuous' as const,
+    routeConfidence: 'high' as const,
+    conflictFlags: [],
+  },
+  {
+    index: 3,
+    title: '蓝光指引',
+    duration: 5,
+    camera: '胶片特写后拉焦铁门',
+    prompt: '胶片投出一道蓝光，光束准确指向锈蚀铁门。',
+    sceneId: 'scene-rooftop',
+    characterIds: ['character-linqian'],
+    propIds: ['prop-film', 'prop-door'],
+    actionStart: '林浅握住胶片并转向铁门',
+    actionEnd: '林浅迈步走向铁门',
+    firstFrameDescription: '林浅右手胶片特写，铁门在背景虚焦',
+    lastFrameDescription: '蓝色光束落在铁门把手上，林浅开始迈步',
+    motionDescription: '焦点从胶片平滑转移到铁门',
+    dialogue: '',
+    narration: '',
+    audioIntent: '雨声持续，胶片高频轻鸣',
+    spatialRelation: 'same-scene' as const,
+    temporalRelation: 'continuous' as const,
+    routeConfidence: 'high' as const,
+    conflictFlags: [],
+  },
+  {
+    index: 4,
+    title: '抵达门前',
+    duration: 5,
+    camera: '侧面跟拍',
+    prompt: '林浅沿蓝光走到铁门前，伸手握住生锈门把手。',
+    sceneId: 'scene-rooftop',
+    characterIds: ['character-linqian'],
+    propIds: ['prop-film', 'prop-door'],
+    actionStart: '林浅迈步走向铁门',
+    actionEnd: '林浅右手握住铁门把手',
+    firstFrameDescription: '林浅沿蓝光向右走，铁门位于画面右侧',
+    lastFrameDescription: '林浅停在门前，右手握住铁门把手',
+    motionDescription: '侧面跟拍至人物停在门前',
+    dialogue: '谁把它留在这里？',
+    narration: '',
+    audioIntent: '脚步踩过积水，风声压低对白',
+    spatialRelation: 'same-scene' as const,
+    temporalRelation: 'continuous' as const,
+    routeConfidence: 'high' as const,
+    conflictFlags: [],
+  },
+  {
+    index: 5,
+    title: '推开未知',
+    duration: 5,
+    camera: '过肩跟随穿门',
+    prompt: '林浅推开铁门，跟随镜头从雨夜天台进入黑暗放映室。',
+    sceneId: 'scene-screening-room',
+    characterIds: ['character-linqian'],
+    propIds: ['prop-film', 'prop-door', 'prop-projector'],
+    actionStart: '林浅右手握住铁门把手',
+    actionEnd: '林浅进入放映室，铁门在身后半掩',
+    firstFrameDescription: '林浅握住门把手，门外仍是雨夜天台',
+    lastFrameDescription: '林浅已在放映室内，身后铁门半掩，前方出现放映机轮廓',
+    motionDescription: '镜头跟随人物穿门，曝光从雨夜高光过渡到室内低光',
+    dialogue: '',
+    narration: '',
+    audioIntent: '门轴摩擦，雨声随门半掩迅速变闷',
+    spatialRelation: 'new-scene' as const,
+    temporalRelation: 'continuous' as const,
+    routeConfidence: 'high' as const,
+    conflictFlags: [],
+  },
+  {
+    index: 6,
+    title: '昨日重现',
+    duration: 5,
+    camera: '室内中景缓推',
+    prompt: '放映机启动，墙上投出林浅十分钟前在天台拾取胶片的画面。',
+    sceneId: 'scene-screening-room',
+    characterIds: ['character-linqian'],
+    propIds: ['prop-film', 'prop-projector'],
+    actionStart: '林浅进入放映室，铁门在身后半掩',
+    actionEnd: '林浅震惊地看见墙上正在播放十分钟前的自己',
+    firstFrameDescription: '林浅站在放映室内，放映机轮廓位于前方',
+    lastFrameDescription: '林浅侧脸被投影照亮，墙上清楚出现她拾取胶片的画面',
+    motionDescription: '镜头缓慢推向林浅，背景投影同时亮起',
+    dialogue: '这是……刚才的我？',
+    narration: '',
+    audioIntent: '放映机机械声，投影中传出遥远雨声',
+    spatialRelation: 'same-scene' as const,
+    temporalRelation: 'continuous' as const,
+    routeConfidence: 'high' as const,
+    conflictFlags: [],
+  },
+];
+
+const built = buildProductionBackedVimaxPlan(prompt, {
+  title: '雨夜回响',
+  summary: '记者沿发光胶片的指引进入放映室，看见十分钟前的自己。',
+  story: {
+    premise: '雨夜天台上的发光胶片把记者引向一间废弃放映室。',
+    protagonist: '林浅，年轻调查记者',
+    desire: '查明胶片是谁留下的',
+    obstacle: '暴雨和无法解释的时间线索',
+    conflict: '理性调查与超现实证据之间的冲突',
+    turningPoint: '林浅决定推开铁门',
+    endingHook: '投影正在播放十分钟前的林浅',
+    emotionalArc: { start: '警惕', shift: '决断', end: '震惊' },
+  },
+  characters: [{
+    id: 'character-linqian',
+    label: '林浅',
+    description: '年轻调查记者，深蓝风衣，短发',
+    continuityAnchors: ['深蓝风衣', '短发'],
+  }],
+  scenes: [
+    {
+      id: 'scene-rooftop',
+      label: '雨夜天台',
+      description: '霓虹反光、积水、锈蚀铁门',
+      timeOfDay: '深夜',
+      continuityAnchors: ['湿地反光', '锈蚀铁门'],
+    },
+    {
+      id: 'scene-screening-room',
+      label: '废弃放映室',
+      description: '低照度、旧放映机、白墙',
+      timeOfDay: '深夜',
+      continuityAnchors: ['旧放映机', '半掩铁门'],
+    },
+  ],
+  props: [
+    { id: 'prop-film', label: '发光胶片', description: '发出蓝光的旧胶片', state: '起初落在天台积水中' },
+    { id: 'prop-door', label: '锈蚀铁门', description: '通往放映室', state: '起初关闭' },
+    { id: 'prop-projector', label: '旧放映机', description: '能够播放异常影像', state: '起初熄灭' },
+  ],
+  assets: [
+    { kind: 'character', label: '林浅', prompt: '年轻调查记者，深蓝风衣，短发' },
+    { kind: 'scene', label: '雨夜天台', prompt: '霓虹反光、积水、锈蚀铁门' },
+    { kind: 'scene', label: '废弃放映室', prompt: '低照度、旧放映机、白墙' },
+    { kind: 'prop', label: '发光胶片', prompt: '发出蓝光的旧胶片' },
+  ],
+  shots,
+  nextAction: '确认后生成参考图。',
+}, {
+  phase: 'plan',
+  skillId: 'short-drama',
+  sceneType: 'drama',
+  style: '电影感悬疑短剧',
+  duration: 30,
+  segmentDuration: 5,
+  segmentCount: 6,
+  ratio: '16:9',
+  resolution: '720p',
+}, 'fixture-drama-plan-authority');
+
+assert.deepEqual(
+  built.productionProject.storyboard.shots.map(shot => shot.subtitleText),
+  ['', '', '', '谁把它留在这里？', '', '这是……刚才的我？'],
+  'model-authored dialogue must be the only subtitle source',
+);
+assert.deepEqual(
+  built.productionProject.storyboard.shots.map(shot => shot.narrationText),
+  ['', '', '', '', '', ''],
+  'empty model-authored narration must not fall back to generic portrait copy',
+);
+
+const promptText = built.assemblyPlan.segments.map(segment => segment.prompt).join('\n');
+const artifactText = JSON.stringify(built);
+const genericNarrativePattern =
+  /初见之时|进一步了解|最终，我们看到的，是|车厢|孩子|客户|店铺|避难所|倒计时|报警屏|被威胁对象|人物形象展示/;
+assert.doesNotMatch(
+  promptText,
+  genericNarrativePattern,
+  'the execution prompt must not inject unrelated generic narration or threat examples',
+);
+assert.doesNotMatch(
+  artifactText,
+  genericNarrativePattern,
+  'no persisted production artifact may retain generic narrative fallback text',
+);
+assert.deepEqual(
+  {
+    premise: built.productionProject.storyBible.premise,
+    protagonist: built.productionProject.storyBible.protagonist,
+    desire: built.productionProject.storyBible.desire,
+    obstacle: built.productionProject.storyBible.obstacle,
+    conflict: built.productionProject.storyBible.conflict,
+    turningPoint: built.productionProject.storyBible.turningPoint,
+    endingHook: built.productionProject.storyBible.endingHook,
+    emotionalArc: built.productionProject.storyBible.emotionalArc,
+  },
+  {
+    premise: '雨夜天台上的发光胶片把记者引向一间废弃放映室。',
+    protagonist: '林浅，年轻调查记者',
+    desire: '查明胶片是谁留下的',
+    obstacle: '暴雨和无法解释的时间线索',
+    conflict: '理性调查与超现实证据之间的冲突',
+    turningPoint: '林浅决定推开铁门',
+    endingHook: '投影正在播放十分钟前的林浅',
+    emotionalArc: { start: '警惕', shift: '决断', end: '震惊' },
+  },
+  'Story Bible must preserve the model-authored story as the narrative source of truth',
+);
+assert.equal(
+  built.productionProject.suggestions.narration.script,
+  '',
+  'empty model-authored narration must remain empty in persisted suggestions',
+);
+assert.match(built.assemblyPlan.segments[4].prompt, /废弃放映室/);
+assert.match(built.assemblyPlan.segments[4].prompt, /林浅进入放映室，铁门在身后半掩/);
+assert.match(built.assemblyPlan.segments[5].prompt, /放映机启动/);
+assert.equal(built.assemblyPlan.segments[5].audioState?.dialogue, '这是……刚才的我？');
+assert.doesNotMatch(promptText, /主角始终保持为从天台|场景连续保持为天台/);
+
+console.log(JSON.stringify({
+  ok: true,
+  script: 'test-vimax-drama-plan-authority',
+  shots: built.plan.shots.length,
+  providerCalls: 0,
+}));

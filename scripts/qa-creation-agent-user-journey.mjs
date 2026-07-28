@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { chromium } from '@playwright/test';
 
@@ -12,6 +13,18 @@ const appOrigin = `${origin}/huiying`;
 const fixtureToken = 'fixture-session-token';
 const fixtureKey = ['fixture', 'browser', 'only'].join('-');
 const outputRoot = path.join(process.cwd(), 'output', 'creation-agent-user-journey');
+const attachmentRoot = await mkdtemp(path.join(os.tmpdir(), 'huiying-browser-attachments-'));
+const fixtureFiles = {
+  image: path.join(attachmentRoot, 'character.png'),
+  video: path.join(attachmentRoot, 'motion.mp4'),
+  document: path.join(attachmentRoot, 'outline.txt'),
+};
+await writeFile(
+  fixtureFiles.image,
+  Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64'),
+);
+await writeFile(fixtureFiles.video, Buffer.from('000000186674797069736f6d00000000', 'hex'));
+await writeFile(fixtureFiles.document, '雨夜天台，女主角沿蓝色光带找到遗失胶片。', 'utf8');
 let profile = null;
 const accountCalls = [];
 const appOutput = [];
@@ -149,6 +162,7 @@ try {
       ACCOUNT_CENTER_CREDENTIAL_KEY: 'fixture-credential',
       ACCOUNT_CENTER_CLIENT_SECRET: 'fixture-client-secret',
       HUIYING_OBSERVABILITY_HASH_KEY: 'fixture-observability-hash-key-32-bytes',
+      HUIYING_PROJECT_ATTACHMENT_STORE_PATH: attachmentRoot,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -160,8 +174,13 @@ try {
   assert.equal(normalizedRoot.status, 308);
   assert.match(normalizedRoot.headers.get('location') || '', /\/huiying$/);
   const creationRedirect = await fetch(appOrigin, { redirect: 'manual' });
-  assert.equal(creationRedirect.status, 307);
-  assert.match(creationRedirect.headers.get('location') || '', /\/huiying\/embed\/creation-agent$/);
+  assert(
+    creationRedirect.status === 200 || creationRedirect.status === 307,
+    `unexpected creation entry status ${creationRedirect.status}`,
+  );
+  if (creationRedirect.status === 307) {
+    assert.match(creationRedirect.headers.get('location') || '', /\/huiying\/embed\/creation-agent$/);
+  }
 
   browser = await chromium.launch({ headless: true });
   const viewports = [
@@ -179,9 +198,32 @@ try {
     const failedResponses = [];
     let imageGenerateRequests = 0;
     let videoPlanRequests = 0;
+    let attachmentUploadRequests = 0;
+    let forcedAttachmentFailure = false;
+    await page.route('**/api/project-attachments', async route => {
+      if (route.request().method() === 'POST') {
+        attachmentUploadRequests += 1;
+        if (!forcedAttachmentFailure) {
+          forcedAttachmentFailure = true;
+          await route.fulfill({
+            status: 503,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: 'fixture_upload_interrupted' }),
+          });
+          return;
+        }
+      }
+      await route.continue();
+    });
     page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
     page.on('pageerror', error => errors.push(error.message));
-    page.on('response', response => { if (response.status() >= 400) failedResponses.push({ status: response.status(), url: response.url() }); });
+    page.on('response', response => {
+      const pathname = new URL(response.url()).pathname;
+      if (response.status() >= 400
+        && !(response.status() === 503 && pathname.endsWith('/api/project-attachments'))) {
+        failedResponses.push({ status: response.status(), url: response.url() });
+      }
+    });
     page.on('request', request => {
       const pathname = new URL(request.url()).pathname;
       if (pathname.endsWith('/api/image/generate')) imageGenerateRequests += 1;
@@ -192,7 +234,11 @@ try {
     assert.match(page.url(), /\/huiying\/embed\/creation-agent$/);
     await page.locator('[data-testid="vimax-project-home"]').waitFor({ state: 'visible' });
     await assertDarkAndContained(page, viewport.name);
-    assert.equal(await page.getByRole('button', { name: 'Agent 模式', exact: true }).count(), 1, 'creation mode control missing');
+    assert.equal(await page.getByRole('button', { name: 'Agent 模式', exact: true }).count(), 0, 'internal agent mode is visible');
+    assert.equal(await page.getByRole('button', { name: '图片生成', exact: true }).count(), 0, 'internal image mode is visible');
+    assert.equal(await page.getByRole('button', { name: '视频生成', exact: true }).count(), 0, 'internal video mode is visible');
+    assert.equal(await page.getByLabel('参考图用途').count(), 0, 'internal reference taxonomy is visible');
+    assert.equal(await page.getByRole('button', { name: '添加主体', exact: true }).count(), 0, 'subject registry leaked into the composer');
 
     const header = page.locator('header');
     await header.getByRole('img', { name: '绘影' }).waitFor({ state: 'visible' });
@@ -224,62 +270,22 @@ try {
     await page.getByText('creator@example.test', { exact: true }).waitFor({ state: 'hidden' });
 
     const composerInput = page.getByPlaceholder('写下故事、粘贴剧本，或上传参考素材');
-    const imageDraft = '雨夜城市天台上的蓝衣女主角，电影级宽银幕构图';
-    await composerInput.fill(imageDraft);
-    await page.getByRole('button', { name: 'Agent 模式', exact: true }).click();
+    const storyDraft = '雨夜城市天台上的蓝衣女主角发现一段失落的影像，制作一支连续短剧。';
+    await composerInput.fill(storyDraft);
     assert.equal(await page.getByRole('button', { name: '配音生成', exact: true }).count(), 0);
-    await page.getByRole('button', { name: '图片生成', exact: true }).click();
-    await page.getByTestId('creation-agent-image-workspace').waitFor({ state: 'visible' });
-    await page.getByRole('heading', { name: '图片生成', exact: true }).waitFor({ state: 'visible' });
-    assert.equal(
-      await page.getByPlaceholder('描述你想生成的图片，也可直接粘贴图片…', { exact: true }).inputValue(),
-      imageDraft,
-      `${viewport.name} image handoff lost the composer prompt`,
-    );
-    if (viewport.width < 1024) {
-      const mobileNav = page.locator('[aria-label="图片创作工作区"]');
-      await mobileNav.getByRole('button', { name: '结果', exact: true }).click();
-      await page.getByTestId('image-results-panel').waitFor({ state: 'visible' });
-      await mobileNav.getByRole('button', { name: '助手', exact: true }).click();
-      await page.getByTestId('image-assistant-panel').waitFor({ state: 'visible' });
-      await mobileNav.getByRole('button', { name: '参数', exact: true }).click();
-      await page.getByTestId('image-settings-panel').waitFor({ state: 'visible' });
-    } else {
-      await page.getByTestId('image-settings-panel').waitFor({ state: 'visible' });
-      await page.getByTestId('image-results-panel').waitFor({ state: 'visible' });
-      await page.getByTestId('image-assistant-panel').waitFor({ state: 'visible' });
-    }
-    const imageLayout = await page.evaluate(() => ({
-      scrollWidth: document.documentElement.scrollWidth,
-      clientWidth: document.documentElement.clientWidth,
-    }));
-    assert(
-      imageLayout.scrollWidth <= imageLayout.clientWidth + 1,
-      `${viewport.name} image workspace horizontal overflow`,
-    );
-    assert.equal(imageGenerateRequests, 0, `${viewport.name} opening image mode triggered a billable request`);
-    await page.screenshot({ path: path.join(outputRoot, `${viewport.name}-image.png`), fullPage: true });
-    await page.getByRole('button', { name: '返回创作智能体', exact: true }).click();
-    await page.locator('[data-testid="vimax-project-home"]').waitFor({ state: 'visible' });
-    assert.equal(await composerInput.inputValue(), imageDraft, `${viewport.name} image back navigation lost the draft`);
-
-    await page.getByRole('button', { name: 'Agent 模式', exact: true }).click();
-    await page.getByRole('button', { name: '视频生成', exact: true }).click();
-    await page.getByRole('button', { name: '视频生成', exact: true }).waitFor({ state: 'visible' });
-    assert.equal(await composerInput.inputValue(), imageDraft, `${viewport.name} video entry lost the draft`);
-    await page.getByTitle('使用技能').getByText('短剧一键成片', { exact: true }).waitFor({ state: 'visible' });
-    assert.equal(videoPlanRequests, 0, `${viewport.name} opening video mode triggered a planning request`);
+    assert.equal(await composerInput.inputValue(), storyDraft, `${viewport.name} main composer lost the story draft`);
+    await page.getByRole('button', { name: '选择成片类型', exact: true }).waitFor({ state: 'visible' });
+    assert.equal(imageGenerateRequests, 0, `${viewport.name} main composer triggered an image request`);
+    assert.equal(videoPlanRequests, 0, `${viewport.name} main composer triggered a planning request`);
     assert.equal(
       await page.getByRole('button', { name: '数字人', exact: true }).count(),
       0,
       `${viewport.name} exposed an unverified digital-human entry`,
     );
-    await page.screenshot({ path: path.join(outputRoot, `${viewport.name}-video.png`), fullPage: true });
-
     await page.screenshot({ path: path.join(outputRoot, `${viewport.name}-home.png`), fullPage: true });
 
-    await page.getByTitle('使用技能').click();
-    const skillSearch = page.getByPlaceholder('搜索短剧、电商、分镜…');
+    await page.getByRole('button', { name: '选择成片类型', exact: true }).click();
+    const skillSearch = page.getByPlaceholder('搜索短剧、商品片、品牌片…');
     const skillMenuBox = await skillSearch.locator('..').locator('..').boundingBox();
     assert(
       skillMenuBox
@@ -287,16 +293,43 @@ try {
       && skillMenuBox.y + skillMenuBox.height <= viewport.height,
       `${viewport.name} skill menu is clipped by the viewport`,
     );
+    assert.equal(
+      await page.getByRole('button', { name: /分镜导演/ }).count(),
+      0,
+      `${viewport.name} exposed an internal storyboard workflow as a result skill`,
+    );
     await skillSearch.fill('电商');
     await page.getByRole('button', { name: '电商商品片 商品卖点、使用场景与转化镜头', exact: true }).click();
     assert.match(await composerInput.inputValue(), /商品/);
-    await page.getByTitle('画面比例与清晰度').click();
+    await page.getByRole('button', { name: '画面规格', exact: true }).click();
     await page.getByRole('button', { name: '9:16', exact: true }).click();
     await page.getByRole('button', { name: '超清', exact: true }).click();
     await page.getByRole('button', { name: '创建第一个项目' }).click();
     await page.getByRole('button', { name: '返回项目' }).waitFor({ state: 'visible' });
+    const attachmentInput = page.locator('input[type="file"][multiple]');
+    await attachmentInput.setInputFiles([fixtureFiles.image, fixtureFiles.video, fixtureFiles.document]);
+    const attachmentList = page.getByLabel('已添加项目素材');
+    await attachmentList.getByText('上传失败', { exact: true }).waitFor({ state: 'visible' });
+    await attachmentList.getByRole('button', { name: '重试 character.png' }).click();
+    await page.waitForFunction(() => (
+      !document.body.innerText.includes('上传中')
+      && !document.body.innerText.includes('上传失败')
+    ));
+    assert.equal(attachmentUploadRequests, 4, `${viewport.name} did not retry exactly one failed attachment`);
+    await attachmentList.getByRole('button', { name: '后移 character.png' }).click();
+    const attachmentNamesAfterMove = await attachmentList.locator(':scope > span').evaluateAll(items => (
+      items.map(item => item.textContent || '')
+    ));
+    assert.match(attachmentNamesAfterMove[0] || '', /motion\.mp4/);
+    assert.match(attachmentNamesAfterMove[1] || '', /character\.png/);
+    await attachmentList.getByRole('button', { name: '移除 outline.txt' }).click();
+    await attachmentList.getByText('outline.txt', { exact: true }).waitFor({ state: 'hidden' });
+    await page.screenshot({ path: path.join(outputRoot, `${viewport.name}-attachments.png`), fullPage: true });
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.getByRole('button', { name: '返回项目' }).waitFor({ state: 'visible' });
+    await page.getByLabel('已添加项目素材').getByText('motion.mp4', { exact: true }).waitFor({ state: 'visible' });
+    await page.getByLabel('已添加项目素材').getByText('character.png', { exact: true }).waitFor({ state: 'visible' });
+    assert.equal(await page.getByLabel('已添加项目素材').getByText('outline.txt', { exact: true }).count(), 0);
 
     await page.getByRole('button', { name: '返回项目' }).click();
     const recentProjects = page.locator('[data-testid="vimax-recent-projects"]');
@@ -331,7 +364,12 @@ try {
       session: Object.values(sessionStorage).some(value => String(value).includes(secret)),
     }), fixtureKey);
     assert.deepEqual(leaked, { body: false, local: false, session: false });
-    assert.deepEqual(errors, [], `${viewport.name} console errors: ${errors.join(' | ')}`);
+    const expectedUploadErrors = errors.filter(message =>
+      message.includes('Failed to load resource')
+      && message.includes('503 (Service Unavailable)'));
+    const unexpectedErrors = errors.filter(message => !expectedUploadErrors.includes(message));
+    assert.equal(expectedUploadErrors.length, 1, `${viewport.name} did not surface the forced upload failure once`);
+    assert.deepEqual(unexpectedErrors, [], `${viewport.name} console errors: ${unexpectedErrors.join(' | ')}`);
     assert.deepEqual(failedResponses, [], `${viewport.name} failed responses: ${JSON.stringify(failedResponses)}`);
     await page.screenshot({ path: path.join(outputRoot, `${viewport.name}-project.png`), fullPage: true });
     results.push({
@@ -340,11 +378,10 @@ try {
       overflow: false,
       accountVisible: true,
       heroVisible: true,
-      imageEntry: true,
+      modeSwitcherHidden: true,
       imageAutoGenerateRequests: imageGenerateRequests,
-      imageOverflow: false,
-      videoEntry: true,
       videoAutoPlanRequests: videoPlanRequests,
+      internalReferenceTaxonomyHidden: true,
       voiceEntryVisible: false,
       avatarEntryVisible: false,
       heroBounds: { y: Math.round(heroBox.y), height: Math.round(heroBox.height) },
@@ -352,6 +389,10 @@ try {
       projectRecovered: true,
       projectReopenedWithKeyboard: true,
       projectDeletionPersisted: true,
+      attachmentBatchUploaded: true,
+      attachmentRetryRecovered: true,
+      attachmentOrderPersisted: true,
+      attachmentDeletePersisted: true,
     });
     await context.close();
   }
@@ -365,4 +406,5 @@ try {
   if (browser) await browser.close().catch(() => undefined);
   if (app && !app.killed) app.kill('SIGTERM');
   accountServer.close();
+  await rm(attachmentRoot, { recursive: true, force: true });
 }

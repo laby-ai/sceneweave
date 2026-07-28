@@ -89,8 +89,16 @@ export async function saveMemberFinalVideo(
   return { id, filePath, bytes: bytes.length, segmentCount: options.segmentCount };
 }
 
-export async function saveMemberFinalVideoFromUrl(root: string, owner: FinalVideoOwner, url: string) {
-  const response = await fetch(url, { signal: AbortSignal.timeout(120_000) });
+export async function saveMemberFinalVideoFromUrl(
+  root: string,
+  owner: FinalVideoOwner,
+  url: string,
+  signal?: AbortSignal,
+) {
+  const timeoutSignal = AbortSignal.timeout(120_000);
+  const response = await fetch(url, {
+    signal: signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal,
+  });
   if (!response.ok || !response.body) throw new Error(`final_video_download_failed_${response.status}`);
   const declared = Number(response.headers.get('content-length') || 0);
   if (declared > MAX_FINAL_VIDEO_BYTES) throw new Error('final_video_too_large');
@@ -132,6 +140,7 @@ export async function mergeMemberFinalVideos(
     expectedDurationSeconds?: number;
     segmentDurationsSeconds?: number[];
     boundaryBridgeUrls?: string[];
+    signal?: AbortSignal;
   } = {},
 ) {
   const id = randomUUID();
@@ -143,6 +152,7 @@ export async function mergeMemberFinalVideos(
     expectedDurationSeconds: options.expectedDurationSeconds,
     segmentDurationsSeconds: options.segmentDurationsSeconds,
     boundaryBridgeUrls: options.boundaryBridgeUrls,
+    signal: options.signal,
   });
   return {
     id,

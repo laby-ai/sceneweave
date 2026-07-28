@@ -24,6 +24,7 @@ export interface VimaxAgentReferenceAsset {
   candidateUrls?: string[];
   selectedCandidateIndex?: number;
   selectionReason?: string;
+  sourceShotIndex?: number;
 }
 
 export interface VimaxAgentPlan {
@@ -75,6 +76,8 @@ export interface VimaxAgentPlan {
     duration: number;
     camera: string;
     prompt: string;
+    /** Model-authored shot description for user review; prompt may contain executor-only contracts. */
+    description?: string;
     sceneId?: string;
     characterIds?: string[];
     propIds?: string[];
@@ -122,6 +125,8 @@ export interface VimaxAgentStepBody {
   /** 仅用于用户看过冲突列表后确认低置信镜头路线，不适用于旧计划。 */
   confirmRouteDecisions?: boolean;
   referenceIds?: string[];
+  projectId?: string;
+  projectAttachmentIds?: string[];
   /** 长视频阶段由既有任务中心异步执行，避免请求被网关超时截断。 */
   background?: boolean;
   recover?: boolean;

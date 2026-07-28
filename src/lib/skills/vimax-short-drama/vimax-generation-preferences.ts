@@ -44,6 +44,8 @@ interface VimaxPlanRequestInput {
   sceneType?: string;
   settings: VimaxGenerationSettings;
   referenceIds?: string[];
+  projectId?: string;
+  projectAttachmentIds?: string[];
 }
 
 export function buildVimaxPlanRequest(input: VimaxPlanRequestInput) {
@@ -62,5 +64,7 @@ export function buildVimaxPlanRequest(input: VimaxPlanRequestInput) {
     resolution: input.settings.resolution,
     stream: true,
     ...(input.referenceIds?.length ? { referenceIds: input.referenceIds } : {}),
+    ...(input.projectId ? { projectId: input.projectId } : {}),
+    ...(input.projectAttachmentIds?.length ? { projectAttachmentIds: input.projectAttachmentIds } : {}),
   };
 }

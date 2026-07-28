@@ -56,6 +56,22 @@ assert.equal(cancelled?.messageId, 'progress-b');
 assert.equal(secondRun.signal.aborted, true);
 assert.equal(coordinator.isCurrent(secondRun), false, 'cancelled events must not update the project');
 
+const gracefulPlanRun = coordinator.begin({
+  projectId: 'project-c',
+  phase: 'plan',
+  messageId: 'progress-c',
+  timeoutMs: 60_000,
+});
+assert.equal(coordinator.current()?.requestId, gracefulPlanRun.requestId);
+const gracefullyCancelled = coordinator.cancel({ abort: false });
+assert.equal(gracefullyCancelled?.messageId, 'progress-c');
+assert.equal(
+  gracefulPlanRun.signal.aborted,
+  false,
+  'planning cancellation must allow the server stream to end cleanly after the persisted task is cancelled',
+);
+assert.equal(coordinator.isCurrent(gracefulPlanRun), false, 'late planning events must still be ignored');
+
 const incremental: ChatMessage[] = [
   {
     id: 'user-a',

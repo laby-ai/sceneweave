@@ -2,6 +2,7 @@ import {
   completeTask,
   createTask,
   failTask,
+  getAllTasksForOwner,
   getTaskForOwner,
   startTask,
   updateTask,
@@ -42,13 +43,31 @@ interface CreateVimaxVideoTaskRuntimeInput<Result extends object, Segment extend
   ratio: string;
   resolution: string;
   modelId: string;
-  execute: (persistSegment: (segment: Segment) => void) => Promise<Result>;
+  execute: (
+    persistSegment: (segment: Segment) => void,
+    signal: AbortSignal,
+  ) => Promise<Result>;
 }
 
 export function createVimaxVideoTaskRuntime<
   Result extends object,
   Segment extends PersistedVideoSegment,
 >(input: CreateVimaxVideoTaskRuntimeInput<Result, Segment>) {
+  const updateParentVideoTaskState = (
+    backgroundTaskId: string,
+    status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled',
+  ) => {
+    const parent = getTaskForOwner(input.parentTaskId, input.owner);
+    if (!parent) return;
+    updateTask(input.parentTaskId, {
+      result: {
+        ...(parent.result || {}),
+        vimaxVideoTaskId: backgroundTaskId,
+        vimaxVideoTaskStatus: status,
+      },
+    });
+  };
+
   const persistSegment = (segment: Segment, backgroundTaskId?: string) => {
     const latest = getTaskForOwner(input.parentTaskId, input.owner);
     const existing = Array.isArray(latest?.result?.vimaxHappyHorseSegments)
@@ -111,11 +130,23 @@ export function createVimaxVideoTaskRuntime<
     }
   };
 
-  const execute = async (backgroundTaskId?: string) => {
-    const result = await input.execute(segment => persistSegment(segment, backgroundTaskId));
-    if (backgroundTaskId && getTaskForOwner(backgroundTaskId, input.owner)?.status === 'cancelled') {
+  const assertActive = (backgroundTaskId: string | undefined, signal: AbortSignal) => {
+    if (signal.aborted
+      || (backgroundTaskId && getTaskForOwner(backgroundTaskId, input.owner)?.status === 'cancelled')) {
       throw new Error('video_background_cancelled');
     }
+  };
+
+  const execute = async (
+    backgroundTaskId?: string,
+    signal: AbortSignal = new AbortController().signal,
+  ) => {
+    assertActive(backgroundTaskId, signal);
+    const result = await input.execute(
+      segment => persistSegment(segment, backgroundTaskId),
+      signal,
+    );
+    assertActive(backgroundTaskId, signal);
     const parent = getTaskForOwner(input.parentTaskId, input.owner);
     const currentResult = {
       ...(parent?.result || {}),
@@ -135,6 +166,7 @@ export function createVimaxVideoTaskRuntime<
     if (!updateTask(input.parentTaskId, {
       result: currentResult as TaskResult,
     })) throw new Error('完整短剧结果保存失败。');
+    assertActive(backgroundTaskId, signal);
     if (final.videoUrl && final.merge?.renderReport) {
       const latest = getTaskForOwner(input.parentTaskId, input.owner);
       const latestResult = latest?.result as CanonicalVideoTaskResult | undefined;
@@ -159,23 +191,28 @@ export function createVimaxVideoTaskRuntime<
     return result;
   };
 
-  const startBackground = () => {
-    const backgroundTaskId = createTask('video', {
-      parentTaskId: input.parentTaskId,
-      workflow: 'vimax-agent-video',
-      prompt: input.prompt,
-      ratio: input.ratio,
-      resolution: input.resolution,
-      modelId: input.modelId,
-    }, input.owner);
-    if (!startTask(backgroundTaskId)) throw new Error('后台视频任务无法进入运行状态。');
+  const launchBackground = (backgroundTaskId: string, controller: AbortController) => {
     updateTask(backgroundTaskId, {
       progress: 5,
       stage: '视频任务已受理',
       message: '页面可以安全刷新，生成进度会从任务中心继续恢复。',
       result: { parentTaskId: input.parentTaskId },
     });
-    void execute(backgroundTaskId).then(result => {
+    const parent = getTaskForOwner(input.parentTaskId, input.owner);
+    if (!parent || !updateTask(input.parentTaskId, {
+      result: {
+        ...(parent.result || {}),
+        vimaxVideoTaskId: backgroundTaskId,
+        vimaxVideoTaskStatus: 'running',
+      },
+    })) throw new Error('视频与成片任务号保存失败。');
+    const cancellationWatch = setInterval(() => {
+      if (getTaskForOwner(backgroundTaskId, input.owner)?.status === 'cancelled') {
+        controller.abort('video_background_cancelled');
+      }
+    }, 100);
+    cancellationWatch.unref?.();
+    void execute(backgroundTaskId, controller.signal).then(result => {
       const latest = getTaskForOwner(backgroundTaskId, input.owner);
       if (!latest || latest.status === 'cancelled') return;
       completeTask(backgroundTaskId, {
@@ -183,11 +220,44 @@ export function createVimaxVideoTaskRuntime<
         parentTaskId: input.parentTaskId,
         vimaxVideoResult: result,
       });
+      updateParentVideoTaskState(backgroundTaskId, 'completed');
     }).catch(error => {
-      if (getTaskForOwner(backgroundTaskId, input.owner)?.status === 'cancelled') return;
+      if (getTaskForOwner(backgroundTaskId, input.owner)?.status === 'cancelled') {
+        updateParentVideoTaskState(backgroundTaskId, 'cancelled');
+        return;
+      }
       failTask(backgroundTaskId, error instanceof Error ? error.message : '后台视频生成失败');
+      updateParentVideoTaskState(backgroundTaskId, 'failed');
+    }).finally(() => {
+      clearInterval(cancellationWatch);
     });
-    return backgroundTaskId;
+  };
+
+  const startBackground = () => {
+    const active = getAllTasksForOwner(input.owner).find(task => (
+      task.config.parentTaskId === input.parentTaskId
+      && task.config.workflow === 'vimax-agent-video'
+      && (task.status === 'pending' || task.status === 'running')
+    ));
+    if (active?.status === 'running') return active.id;
+
+    const taskId = active?.id || createTask('video', {
+      parentTaskId: input.parentTaskId,
+      workflow: 'vimax-agent-video',
+      prompt: input.prompt,
+      ratio: input.ratio,
+      resolution: input.resolution,
+      modelId: input.modelId,
+    }, input.owner);
+    const controller = new AbortController();
+    if (!startTask(taskId, controller)) {
+      const latest = getTaskForOwner(taskId, input.owner);
+      if (latest?.status === 'running') return taskId;
+      throw new Error('后台视频任务无法进入运行状态。');
+    }
+    updateParentVideoTaskState(taskId, 'running');
+    launchBackground(taskId, controller);
+    return taskId;
   };
 
   return { execute, startBackground };

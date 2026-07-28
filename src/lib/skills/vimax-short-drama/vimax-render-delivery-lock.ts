@@ -3,6 +3,7 @@ import { computeProductionArtifactRevision } from '@/lib/production-artifact-sta
 import type { ProductionProject } from '@/lib/production-project';
 
 import { evaluateVimaxCanonicalFirstFrameReadiness } from './vimax-canonical-first-frame';
+import { evaluateVimaxBridgeTailHandoffReadiness } from './vimax-bridge-tail-acceptance';
 import {
   parseVimaxProductionPlan,
   type VimaxProductionPlan,
@@ -43,6 +44,8 @@ function assertCurrentAssemblyArtifacts(context: VimaxRenderContext) {
     || !segment.artifactReadiness
     || segment.artifactReadiness.stale
     || segment.artifactReadiness.sourceRevision !== artifactVersion
+    || (segment.generationRoute?.boundaryIntent === 'bridge'
+      && !evaluateVimaxBridgeTailHandoffReadiness(segment.expectedOutputs.bridgeTailAcceptance).ok)
   ));
   if (assemblyPlan.status !== 'completed' || invalidSegment) {
     throw new Error('当前版本仍有未完成或已失效的片段，不能进入成片合成。');

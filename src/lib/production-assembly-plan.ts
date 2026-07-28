@@ -15,6 +15,7 @@ import { buildBoundaryBridgePlan, buildSegmentBridgePlan } from './trailer-beat-
 import type { BoundaryBridgePlan, SegmentBridge, SegmentBridgePlan } from './trailer-beat-sheet';
 import type { VimaxShotGenerationRoute } from './skills/vimax-short-drama/vimax-shot-generation-route';
 import type { VimaxCanonicalFirstFrameState } from './skills/vimax-short-drama/vimax-canonical-first-frame';
+import type { VimaxBridgeTailAcceptance } from './skills/vimax-short-drama/vimax-bridge-tail-acceptance';
 
 export interface ProductionSegmentAudioState {
   dialogue: string | null;
@@ -66,6 +67,7 @@ export interface ProductionSegmentPlan {
     audioCue?: string | null;
     hasAudio?: boolean | null;
     storyStateCue?: string | null;
+    bridgeTailAcceptance?: VimaxBridgeTailAcceptance;
   };
   audioState?: ProductionSegmentAudioState;
   shotFrameContract: ShotFrameContract;
@@ -123,7 +125,11 @@ function primaryPropName(project: ProductionProject) {
   return prop?.name || '关键线索';
 }
 
-function projectSceneName(project: ProductionProject) {
+function projectSceneName(
+  project: ProductionProject,
+  shot?: ProductionProject['storyboard']['shots'][number],
+) {
+  if (shot?.sceneLabel?.trim()) return shot.sceneLabel.trim();
   const sceneAsset = project.assets.find(asset => asset.kind === 'scene');
   const sceneBible = project.semanticPlan?.sceneBibles?.[0];
   return sceneAsset?.name || sceneBible?.name || project.storyBible.relationship.split('与')[1]?.split('、')[0] || '主要场景';
@@ -262,137 +268,68 @@ function buildVisualSegmentPrompt(
 }
 
 function cleanSegmentExecutionPrompt(
-  project: ProductionProject,
+  _project: ProductionProject,
   shot: ProductionProject['storyboard']['shots'][number]
 ) {
-  const subject = project.storyBible.protagonist;
-  const location = projectSceneName(project);
-  const prop = primaryPropName(project);
-  const cleanPrompt = shot.prompt
-    .replaceAll('辽阔的海边沙滩，浪花轻柔拍打岸边', location)
-    .replaceAll('温馨舒适的室内空间', location)
-    .replaceAll('柔和的自然光空间', location)
-    .replaceAll('故事发生的场景空间', location)
-    .replaceAll('壮丽的自然景观', location)
-    .replaceAll('人物形象展示', `${subject}面对${prop}的选择`)
-    .replace(/[\u4e00-\u9fa5]{0,6}(女性|男性)?穿着舒适家居服的人物/g, subject)
-    .replace(/着装符合人物身份和剧情场景的人物/g, subject)
-    .trim();
-  return [
-    `本镜头必须让观众直接看见${subject}在${location}围绕${prop}完成剧情动作`,
-    cleanPrompt,
-    `结尾保留${prop}的明确状态，连接下一段。`,
-  ].join('。');
+  return shot.prompt.trim();
 }
 
 function visibleBeatForShot(
-  project: ProductionProject,
+  _project: ProductionProject,
   shot: ProductionProject['storyboard']['shots'][number]
 ) {
-  const subject = project.storyBible.protagonist;
-  const prop = primaryPropName(project);
-  const location = projectSceneName(project);
-
-  switch (shot.storyBeat) {
-    case 'setup':
-      return `观众必须看见${subject}身处${location}，手边或视线里出现${prop}，让故事从人物处境开始，而不是空镜。`;
-    case 'inciting':
-      return `观众必须看见${subject}发现${prop}出现异常信息，并做出停下、靠近、拿起或查看的明确动作。`;
-    case 'conflict':
-      return `观众必须看见${prop}带来的威胁升级：画面中出现被威胁的人/地点/对象、倒计时、报警屏、阻挡者或环境压力，${subject}明显被迫选择。`;
-    case 'turning':
-      return `观众必须看见${subject}主动改变行动：重剪、调换、按下、藏起或夺回${prop}，让转折通过动作发生。`;
-    case 'resolution':
-      return `观众必须看见${subject}的选择造成结果：${prop}状态改变、失败结局被改写或留下新悬念，最后画面必须出现一个新的未解问题。`;
-    default:
-      return `观众必须看见${subject}围绕${prop}完成一个清楚动作，动作前后状态发生变化。`;
-  }
-}
-
-function visibleThreatTargetForShot(project: ProductionProject, shot: ProductionProject['storyboard']['shots'][number]) {
-  const subject = project.storyBible.protagonist;
-  const prop = primaryPropName(project);
-  if (shot.storyBeat === 'setup') return `先让观众看见${subject}所在场景里谁或什么可能受影响，不要只拍${prop}特写。`;
-  return `画面必须出现被威胁对象：人、车厢、孩子、客户、店铺、避难所、公开证据或${subject}必须保护/挽回的具体对象。`;
-}
-
-function visibleDangerSourceForShot(project: ProductionProject, shot: ProductionProject['storyboard']['shots'][number]) {
-  const prop = primaryPropName(project);
-  if (shot.storyBeat === 'setup') return `${prop}或环境里必须埋下危险源线索，例如异常屏幕、警报灯、倒计时、裂缝、封锁线或错误数据。`;
-  return `危险源必须入画：倒计时、报警屏、追赶者、断裂结构、失控装置、直播曝光或具体失败画面，不能只靠主角表情表示紧张。`;
+  return shot.prompt.trim();
 }
 
 function visibleConflictEvidenceForShot(project: ProductionProject, shot: ProductionProject['storyboard']['shots'][number]) {
-  const subject = project.storyBible.protagonist;
-  const prop = primaryPropName(project);
-  if (shot.storyBeat === 'setup') {
-    return `开场也必须埋下冲突证据：${prop}的异常状态、环境警报、被威胁对象或失败提示至少出现一个，不能只展示美术氛围。`;
-  }
-  if (shot.storyBeat === 'resolution') {
-    return `结尾必须保留冲突余波：${prop}的新状态、危险源熄灭/转移、被威胁对象未完全安全或${subject}发现更大风险。`;
-  }
-  return `本段必须把冲突拍成外部证据：危险源、阻挡物、失败提示、倒计时、追赶者或被威胁对象必须和${subject}的选择同画面出现。`;
+  return `用本镜计划中的动作和道具状态表现冲突，不添加旁白解释：${shot.prompt}`;
 }
 
-function visibleOperationResultForShot(project: ProductionProject) {
-  const subject = project.storyBible.protagonist;
-  const prop = primaryPropName(project);
-  return `本段结尾必须看见${subject}操作后的结果：${prop}屏幕内容改变、危险被短暂阻止、失败对象暴露、新路线打开或局面变得更糟。`;
+function visibleOperationResultForShot(
+  project: ProductionProject,
+  shot: ProductionProject['storyboard']['shots'][number],
+) {
+  return shot.actionEnd?.trim()
+    ? `本段结束在计划动作终点：${shot.actionEnd.trim()}`
+    : `本段结尾必须完成当前剧情目的：${shot.dramaticPurpose || project.storyBible.turningPoint}`;
 }
 
 function visibleNextQuestionForShot(project: ProductionProject, shot: ProductionProject['storyboard']['shots'][number], index: number) {
-  const prop = primaryPropName(project);
-  const subject = project.storyBible.protagonist;
   const isLast = index >= project.storyboard.shots.length - 1;
-  if (isLast) return `最后画面必须留下新问题：${prop}出现新状态、屏幕弹出新线索、被威胁对象仍未完全安全或${subject}发现更大的危险。`;
-  return `本段结尾必须留下下一段问题：${prop}的新状态、危险源的新变化或被威胁对象的新位置要清楚可见。`;
+  if (isLast) return `最后画面只落实 Story Bible 的结尾钩子：${project.storyBible.endingHook}`;
+  const next = project.storyboard.shots[index + 1];
+  return `本段尾态必须能自然触发下一镜计划：${next?.dramaticPurpose || next?.prompt || '继续当前剧情'}`;
 }
 
 function visibleEndingHookEvidenceForShot(project: ProductionProject, shot: ProductionProject['storyboard']['shots'][number], index: number) {
-  const prop = primaryPropName(project);
-  const subject = project.storyBible.protagonist;
   const next = index < project.storyboard.shots.length - 1 ? project.storyboard.shots[index + 1] : null;
   if (next) {
-    return `尾帧必须给下一段可接的画面钩子：${subject}的视线/手部动作、${prop}状态、危险源变化或被威胁对象新位置要指向镜头${next.index}。`;
+    return next.firstFrameDescription?.trim()
+      ? `尾帧必须与下一镜首帧状态相容：${next.firstFrameDescription.trim()}`
+      : `尾帧必须自然连接镜头${next.index}：${next.prompt}`;
   }
-  return `最终尾帧必须是可截图理解的悬念：${prop}新状态、未完全安全的对象、熄灭/误导的危险提示或${subject}的结果反应同框出现。`;
+  return `最终尾帧必须直接呈现结尾钩子：${project.storyBible.endingHook}`;
 }
 
 function actionCausalityForShot(
-  project: ProductionProject,
+  _project: ProductionProject,
   shot: ProductionProject['storyboard']['shots'][number],
   index: number
 ) {
-  const subject = project.storyBible.protagonist;
-  const prop = primaryPropName(project);
-  const previous = index > 0 ? project.storyboard.shots[index - 1] : null;
-  const next = index < project.storyboard.shots.length - 1 ? project.storyboard.shots[index + 1] : null;
+  const next = index < _project.storyboard.shots.length - 1 ? _project.storyboard.shots[index + 1] : null;
   return [
-    previous ? `承接上一镜头 ${previous.index} 的动作/道具状态` : `开场先交代${subject}和${prop}的空间关系`,
-    `本镜头必须完成一个可见动作：${subject}观察、触碰、移动、隐藏、改写或交付${prop}`,
-    next ? `结尾要给下一镜头 ${next.index} 留下清楚因果钩子` : '结尾要留下结果画面或悬念画面',
-  ].join('；');
+    shot.actionStart?.trim(),
+    shot.actionEnd?.trim(),
+    next?.actionStart?.trim(),
+  ].filter(Boolean).join(' -> ') || shot.prompt.trim();
 }
 
 function bridgeActionForBeat(project: ProductionProject, shot: ProductionProject['storyboard']['shots'][number]) {
-  const subject = project.storyBible.protagonist;
-  const prop = primaryPropName(project);
-  const location = projectSceneName(project);
-
-  switch (shot.storyBeat) {
-    case 'setup':
-      return `${subject}的视线从${location}环境扫到${prop}，用一个停顿或靠近动作把观众带到线索上。`;
-    case 'inciting':
-      return `${subject}拿起、插入、按下或查看${prop}，画面必须显示异常信息第一次被触发。`;
-    case 'conflict':
-      return `${prop}里的威胁信息升级，${subject}从被动观看转为做出选择，动作不能只是站立凝视。`;
-    case 'turning':
-      return `${subject}主动重剪、调换、倒带、藏起或按下关键按钮，让改写结局这件事通过手部动作发生。`;
-    case 'resolution':
-      return `${prop}状态改变后，${subject}和画面中的结果产生可见反应，最后留下新状态或悬念。`;
-    default:
-      return `${subject}围绕${prop}完成一个从旧状态到新状态的可见动作。`;
+  if (shot.motionDescription?.trim()) return shot.motionDescription.trim();
+  if (shot.actionStart?.trim() || shot.actionEnd?.trim()) {
+    return `按计划从“${shot.actionStart || '当前状态'}”推进到“${shot.actionEnd || '本镜尾态'}”。`;
   }
+  return `${project.storyBible.protagonist}完成本镜计划动作：${shot.prompt}`;
 }
 
 function segmentBridgeForShot(
@@ -402,27 +339,31 @@ function segmentBridgeForShot(
 ) {
   const subject = project.storyBible.protagonist;
   const prop = primaryPropName(project);
-  const location = projectSceneName(project);
+  const location = projectSceneName(project, shot);
   const previous = index > 0 ? project.storyboard.shots[index - 1] : null;
   const next = index < project.storyboard.shots.length - 1 ? project.storyboard.shots[index + 1] : null;
 
   return {
-    entryState: previous
-      ? `承接上一段末尾：${subject}仍在${location}，${prop}的位置、屏幕内容或手部动作保持连续；开头1-2秒先复现上一段最后状态，再推进新信息。`
-      : `开场先建立${subject}在${location}与${prop}的空间关系，让观众知道谁在哪里、正在面对什么。`,
-    exitState: next
-      ? `本段结尾必须留下下一段能接住的明确状态：${subject}的视线、手部动作或${prop}的屏幕/位置发生变化，并指向镜头${next.index}。`
-      : `结尾必须把${prop}的新状态和${subject}的结果反应放在同一画面里，不要突然切到无关空镜。`,
+    entryState: shot.firstFrameDescription?.trim()
+      || shot.actionStart?.trim()
+      || (previous
+        ? `承接镜头${previous.index}的真实尾帧，再推进本镜动作。`
+        : `开场建立${subject}在${location}与${prop}的空间关系。`),
+    exitState: shot.lastFrameDescription?.trim()
+      || shot.actionEnd?.trim()
+      || (next
+        ? `结尾保留能直接接入镜头${next.index}的稳定状态。`
+        : `结尾呈现${project.storyBible.endingHook}`),
     bridgeAction: bridgeActionForBeat(project, shot),
     editBridge: previous
-      ? `剪辑上把上一段末尾动作当作本段开场动作，避免换人、换景、换道具或无原因跳到新构图。`
+      ? `从上一段真实尾帧承接；若场景变化，当前镜头必须按计划完成空间过渡后再结束。`
       : `剪辑上用稳定开场建立主角、场景和道具，后续段落才能按同一空间继续。`,
-    previousFrameMemory: previous
-      ? `复现上一段最后一帧的三件事：${subject}的身体朝向、${prop}的位置或屏幕内容、${location}里的危险标识。`
-      : `第一段开头必须清楚建立${subject}在${location}与${prop}的空间关系。`,
-    nextFrameTrigger: next
-      ? `结尾留给下一段的触发点：${subject}的视线、手部动作或${prop}状态变化必须指向镜头${next.index}。`
-      : `最后一段收在${prop}的新状态和${subject}的结果反应上，不突然换到无关画面。`,
+    previousFrameMemory: previous?.lastFrameDescription?.trim()
+      || previous?.actionEnd?.trim()
+      || `第一段开头必须清楚建立${subject}在${location}与${prop}的空间关系。`,
+    nextFrameTrigger: next?.firstFrameDescription?.trim()
+      || next?.actionStart?.trim()
+      || `最后一段收在 Story Bible 的结尾钩子：${project.storyBible.endingHook}`,
     viewerCheckpoint: `观众看完本段后必须能说清：${subject}对${prop}做了什么，局面因此发生了什么变化。`,
   };
 }
@@ -494,21 +435,18 @@ function buildStoryAwareSegmentPrompt(
     shotId: shot.id,
     fromBeat: shot.storyBeat,
     toBeat: shot.storyBeat,
-    continuityCheck: `主角=${storyBible.protagonist}；场景=${projectSceneName(project)}；关键道具=${primaryPropName(project)}`,
+    continuityCheck: `主角=${storyBible.protagonist}；场景=${projectSceneName(project, shot)}；关键道具=${primaryPropName(project)}`,
     ...fallbackBridge,
   };
   const checkpoint = bridge.viewerCheckpoint
     || `观众看完本段后必须能说清：${storyBible.protagonist}对${primaryPropName(project)}做了什么，局面因此发生了什么变化。`;
   return [
-    `【短剧前提】${storyBible.premise}`,
-    `【角色动机】${storyBible.desire}`,
-    `【当前冲突】${storyBible.conflict}`,
-    `【剧情目的】${shot.dramaticPurpose || beat?.purpose || '推进当前剧情节点'}`,
+    storyBible.premise ? `【模型故事】${storyBible.premise}` : '',
+    storyBible.desire ? `【角色动机】${storyBible.desire}` : '',
+    storyBible.conflict ? `【故事冲突】${storyBible.conflict}` : '',
+    `【剧情目的】${shot.dramaticPurpose || beat?.purpose || shot.prompt}`,
     `【观众必须看见】${visibleBeatForShot(project, shot)}`,
-    `【威胁对象】${visibleThreatTargetForShot(project, shot)}`,
-    `【危险源】${visibleDangerSourceForShot(project, shot)}`,
     `【视觉冲突证据】${visibleConflictEvidenceForShot(project, shot)}`,
-    `【观众检查点】${checkpoint}`,
     `【动作因果】${actionCausalityForShot(project, shot, index)}`,
     `【入点状态】${bridge.entryState}`,
     `【上一段画面记忆】${bridge.previousFrameMemory}`,
@@ -516,18 +454,17 @@ function buildStoryAwareSegmentPrompt(
     `【下一段触发点】${bridge.nextFrameTrigger}`,
     `【桥接动作】${bridge.bridgeAction}`,
     `【剪辑衔接】${bridge.editBridge}`,
-    `【操作结果】${visibleOperationResultForShot(project)}`,
+    `【操作结果】${visibleOperationResultForShot(project, shot)}`,
     `【结尾钩子证据】${visibleEndingHookEvidenceForShot(project, shot, index)}`,
     `【结尾新问题】${visibleNextQuestionForShot(project, shot, index)}`,
-    `【预告片节拍】${bridge.fromBeat} -> ${bridge.toBeat}`,
-    `【连续性检查】${bridge.continuityCheck}`,
-    `【道具状态】${primaryPropName(project)}必须在画面中有可见状态变化或明确位置，不要只作为抽象概念出现。`,
-    `【情绪变化】${shot.emotionShift || beat?.emotion || storyBible.emotionalArc.shift}`,
-    `【连续性规则】${continuity}`,
+    checkpoint ? `【观众检查点】${checkpoint}` : '',
+    bridge.continuityCheck ? `【连续性事实】${bridge.continuityCheck}` : '',
+    continuity ? `【连续性规则】${continuity}` : '',
     `【镜头执行】${cleanSegmentExecutionPrompt(project, shot)}`,
-    `【三要素验收】如果观众看不出${storyBible.protagonist}、${projectSceneName(project)}和${primaryPropName(project)}之间发生了什么，本段视为失败。`,
-    '要求：画面必须服务剧情，主体动作、道具状态和场景阻碍都要能被观众直接看出来；不要只展示无意义的宇宙、胶片、抽象流光、空镜、纯氛围特写或无法推动故事的美术素材；保留角色、场景、道具的连续性。',
-  ].join('\n');
+    shot.subtitleText?.trim() ? `【对白】${shot.subtitleText.trim()}` : '',
+    shot.narrationText?.trim() ? `【旁白】${shot.narrationText.trim()}` : '',
+    shot.audioIntent?.trim() ? `【声音】${shot.audioIntent.trim()}` : '',
+  ].filter(Boolean).join('\n');
 }
 
 export function buildProductionAssemblyPlan(params: BuildProductionAssemblyPlanParams): ProductionAssemblyPlan {

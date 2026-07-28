@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 
 import {
   canStreamWorkspaceProtectedMedia,
+  fetchWorkspaceProtectedImage,
   fetchWorkspaceProtectedMedia,
+  isWorkspaceProtectedImageUrl,
   isWorkspaceProtectedMediaUrl,
   prepareWorkspaceProtectedMediaStream,
 } from '../src/lib/creation-agent/workspace-protected-media';
@@ -12,6 +14,11 @@ const originalFetch = globalThis.fetch;
 async function main() {
   assert.equal(isWorkspaceProtectedMediaUrl('/sceneweave/api/final-videos/54ab7cb6-b1a4-494c-aa38-6c58b6165187'), true);
   assert.equal(isWorkspaceProtectedMediaUrl('https://cdn.example/video.mp4'), false);
+  assert.equal(
+    isWorkspaceProtectedImageUrl('/huiying/api/project-attachments/54ab7cb6-b1a4-494c-aa38-6c58b6165187?projectId=project-1'),
+    true,
+  );
+  assert.equal(isWorkspaceProtectedImageUrl('https://cdn.example/reference.jpg'), false);
   assert.equal(
     canStreamWorkspaceProtectedMedia('/sceneweave/api/final-videos/54ab7cb6-b1a4-494c-aa38-6c58b6165187', {}),
     true,
@@ -45,6 +52,20 @@ async function main() {
   assert.equal(blob.type, 'video/mp4');
   assert.equal(receivedHeaders?.get('x-paper-host-embed'), 'creation-agent');
   assert.equal(receivedHeaders?.get('x-paper-host-guest-workspace'), 'guest-fixture');
+
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    receivedHeaders = new Headers(init?.headers);
+    return new Response(new Blob(['image'], { type: 'image/jpeg' }), {
+      status: 200,
+      headers: { 'content-type': 'image/jpeg' },
+    });
+  }) as typeof fetch;
+  const imageBlob = await fetchWorkspaceProtectedImage(
+    '/huiying/api/project-attachments/54ab7cb6-b1a4-494c-aa38-6c58b6165187?projectId=project-1',
+    { authorization: 'Bearer fixture' },
+  );
+  assert.equal(imageBlob.type, 'image/jpeg');
+  assert.equal(receivedHeaders?.get('authorization'), 'Bearer fixture');
 
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     receivedInput = String(input);

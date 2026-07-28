@@ -152,6 +152,7 @@ function markSegmentStale(
       ...segment.expectedOutputs,
       videoUrl: null,
       lastFrameUrl: null,
+      taskId: null,
       providerTaskId: null,
       hasAudio: null,
     },

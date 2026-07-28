@@ -39,12 +39,19 @@ import {
 } from '@/lib/skills/vimax-short-drama/happyhorse-vimax-video';
 import { resolveAndPersistVimaxVideoReferenceAssets } from '@/lib/skills/vimax-short-drama/vimax-video-reference-assets';
 import { runVimaxReferenceAssetsPhase } from '@/lib/skills/vimax-short-drama/vimax-reference-phase';
+import { createVimaxReferenceTaskRuntime } from '@/lib/skills/vimax-short-drama/vimax-reference-task-runtime';
 import {
   appendVimaxInitialReferenceContext,
   materializeVimaxInitialReferenceAssets,
   normalizeVimaxInitialReferenceIds,
   resolveVimaxInitialReferenceRecords,
 } from '@/lib/skills/vimax-short-drama/vimax-initial-references';
+import {
+  appendVimaxProjectAttachmentContext,
+  materializeVimaxProjectImageAttachments,
+  normalizeVimaxProjectAttachmentIds,
+  resolveVimaxProjectAttachments,
+} from '@/lib/skills/vimax-short-drama/vimax-project-attachments';
 import { callWithSanitizedVimaxPlanningFailure, reportVimaxPlanningFailure, resolveVimaxPlanningConnectionPhase, resolveVimaxPlanningReadinessFailure } from '@/lib/skills/vimax-short-drama/vimax-planning-readiness';
 import { buildVimaxFrameProviderPrompt, type VimaxContinuityContract } from '@/lib/skills/vimax-short-drama/vimax-continuity-contract';
 export const runtime = 'nodejs';
@@ -506,11 +513,19 @@ export async function POST(request: NextRequest) {
       const prompt = assertPrompt(body.prompt);
       const referenceIds = normalizeVimaxInitialReferenceIds(body.referenceIds);
       const initialReferenceRecords = await resolveVimaxInitialReferenceRecords(owner, referenceIds);
-      const planningPrompt = appendVimaxInitialReferenceContext(prompt, initialReferenceRecords);
+      const projectAttachmentIds = normalizeVimaxProjectAttachmentIds(body.projectAttachmentIds);
+      const projectAttachments = await resolveVimaxProjectAttachments(
+        owner,
+        body.projectId || '',
+        projectAttachmentIds,
+      );
+      const subjectPrompt = appendVimaxInitialReferenceContext(prompt, initialReferenceRecords);
+      const planningPrompt = await appendVimaxProjectAttachmentContext(subjectPrompt, owner, projectAttachments);
       const preset = resolveVimaxSkillPresetForRuntime(body.skillId);
       const trustedBody: VimaxAgentStepBody = {
         ...body,
         referenceIds,
+        projectAttachmentIds,
         skillId: preset.id,
         sceneType: preset.sceneType,
         style: preset.style,
@@ -526,17 +541,48 @@ export async function POST(request: NextRequest) {
 
       if (wantStream) {
         const encoder = new TextEncoder();
+        let cancelPlanningStream: (() => void) | undefined;
         const stream = new ReadableStream({
           async start(controller) {
-            const send = (event: string, data: unknown) => controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+            let closed = false;
+            const planningAbort = new AbortController();
+            const handleRequestAbort = () => planningAbort.abort();
+            request.signal.addEventListener('abort', handleRequestAbort, { once: true });
+            cancelPlanningStream = () => planningAbort.abort();
+            const send = (event: string, data: unknown) => {
+              if (closed || planningAbort.signal.aborted) return false;
+              try {
+                controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+                return true;
+              } catch (error) {
+                const code = error && typeof error === 'object' && 'code' in error
+                  ? String(error.code)
+                  : '';
+                if (code === 'ERR_INVALID_STATE') {
+                  closed = true;
+                  planningAbort.abort();
+                  return false;
+                }
+                throw error;
+              }
+            };
+            const close = () => {
+              if (closed) return;
+              closed = true;
+              try {
+                controller.close();
+              } catch {
+                // The browser may have already cancelled the stream.
+              }
+            };
             const taskId = createVimaxPlanningTask(owner, prompt, trustedBody);
             try {
               send('plan.start', { phase: 'plan' });
-              startVimaxPlanningTask(taskId);
+              startVimaxPlanningTask(taskId, planningAbort);
               send('plan.accepted', { phase: 'plan', taskId });
               const result = await callArkTextStream(planningPrompt, preset, body.model, (delta) => {
                 send('plan.delta', { delta });
-              }, planConnection, request.signal);
+              }, planConnection, planningAbort.signal);
               if (isVimaxPlanningTaskCancelled(taskId, owner)) return;
               const envelope = createPersistedVimaxPlanEnvelope({
                 owner,
@@ -555,18 +601,19 @@ export async function POST(request: NextRequest) {
               if (settleVimaxPlanningTaskError({
                 taskId,
                 owner,
-                requestAborted: request.signal.aborted,
+                requestAborted: request.signal.aborted || planningAbort.signal.aborted,
                 error,
               }) === 'failed') {
                 send('plan.error', { ...reportVimaxPlanningFailure(error), taskId });
               }
             } finally {
-              try {
-                controller.close();
-              } catch {
-                // The browser may have already cancelled the stream.
-              }
+              request.signal.removeEventListener('abort', handleRequestAbort);
+              cancelPlanningStream = undefined;
+              close();
             }
+          },
+          cancel() {
+            cancelPlanningStream?.();
           },
         });
         return new Response(stream, { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' } });
@@ -602,36 +649,51 @@ export async function POST(request: NextRequest) {
       const planConnection = requestConnections.planning;
       const imageConnection = requestConnections.image;
       const initialReferenceRecords = await resolveVimaxInitialReferenceRecords(owner, task.config.referenceIds);
-      const initialReferenceAssets = await materializeVimaxInitialReferenceAssets(owner, initialReferenceRecords);
-      const result = await runVimaxReferenceAssetsPhase({
-        task,
-        plan: canonical.plan,
-        productionPlan: canonical.productionPlan,
-        planningConnection: planConnection,
-        imageConnection,
-        initialReferenceAssets,
-        config: {
-          textModel: config.textModel,
-          imageModel: config.imageModel,
-          videoModel: config.videoModel,
-          imageApiKey: imageConnection?.apiKey || config.imageApiKey || '',
-          imageApiBase: imageConnection?.apiBase || config.imageApiBase,
-          selectorApiKey: planConnection?.apiKey || config.apiKey || '',
-          selectorApiBase: planConnection?.apiBase || config.apiBase,
-          selectorModel: planConnection?.model || config.selectorModel,
-        },
+      const projectAttachments = await resolveVimaxProjectAttachments(
+        owner,
+        typeof task.config.projectId === 'string' ? task.config.projectId : '',
+        task.config.projectAttachmentIds,
+      );
+      const initialReferenceAssets = [
+        ...await materializeVimaxInitialReferenceAssets(owner, initialReferenceRecords),
+        ...await materializeVimaxProjectImageAttachments(owner, projectAttachments),
+      ];
+      const referenceConfig = {
+        textModel: config.textModel,
+        imageModel: config.imageModel,
+        videoModel: config.videoModel,
+        imageApiKey: imageConnection?.apiKey || config.imageApiKey || '',
+        imageApiBase: imageConnection?.apiBase || config.imageApiBase,
+        selectorApiKey: planConnection?.apiKey || config.apiKey || '',
+        selectorApiBase: planConnection?.apiBase || config.apiBase,
+        selectorModel: planConnection?.model || config.selectorModel,
+      };
+      const referenceRuntime = createVimaxReferenceTaskRuntime({
+        owner,
+        parentTaskId: canonical.taskId,
+        prompt: canonical.plan.summary || canonical.plan.title,
+        modelId: imageConnection?.imageModel || referenceConfig.imageModel,
+        execute: signal => runVimaxReferenceAssetsPhase({
+          task,
+          plan: canonical.plan,
+          productionPlan: canonical.productionPlan,
+          planningConnection: planConnection,
+          imageConnection,
+          initialReferenceAssets,
+          signal,
+          config: referenceConfig,
+        }),
       });
+      const backgroundTaskId = referenceRuntime.startBackground();
       return NextResponse.json({
         success: true,
+        accepted: true,
         phase,
         usedRealKey: true,
         incurredCost: true,
-        model: result.model,
-        assets: result.assets,
-        subjectRegistry: result.subjectRegistry,
-        complete: result.complete,
-        failedShotIndices: result.failedShotIndices,
-      });
+        taskId: canonical.taskId,
+        backgroundTaskId,
+      }, { status: 202 });
     }
 
     if (phase === 'video') {
@@ -715,7 +777,7 @@ export async function POST(request: NextRequest) {
         ratio: generationPreferences.ratio,
         resolution: generationPreferences.resolution,
         modelId: videoModel,
-        execute: async persistSegment => body.recover === true && videoConnection?.provider === 'happyhorse-dashscope'
+        execute: async (persistSegment, signal) => body.recover === true && videoConnection?.provider === 'happyhorse-dashscope'
           ? await recoverHappyHorseVimaxVideo(
             canonical.plan,
             videoConnection,
@@ -727,8 +789,9 @@ export async function POST(request: NextRequest) {
               owner, parentTaskId: canonical.taskId,
               connection: videoConnection, imageConnection: planConnection,
               model: videoModel,
-              generateAudio: true,
-              shots: canonical.plan.shots,
+               generateAudio: true,
+               signal,
+               shots: canonical.plan.shots,
               onSegmentState: persistSegment,
             })
             : await callSeedanceVideo(canonical.plan, assets, preset, continuity, generationPreferences),

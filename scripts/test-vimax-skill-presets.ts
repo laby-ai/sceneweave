@@ -19,7 +19,20 @@ assert.doesNotMatch(
   /ViMAX|Vimax|VIMAX/,
 );
 assert.equal(searchVimaxSkillPresets('电商')[0]?.id, 'commerce-video');
-assert.ok(searchVimaxSkillPresets('  分镜  ').some(preset => preset.id === 'storyboard-director'));
+assert.equal(
+  searchVimaxSkillPresets('').some(preset => preset.id === 'storyboard-director'),
+  false,
+  'internal storyboard workflow must not appear as a user-facing result skill',
+);
+assert.equal(
+  searchVimaxSkillPresets('  分镜  ').some(preset => preset.id === 'storyboard-director'),
+  false,
+);
+assert.equal(
+  resolveVimaxSkillPreset('storyboard-director').id,
+  'storyboard-director',
+  'legacy projects must still restore their stored workflow',
+);
 assert.equal(searchVimaxSkillPresets('不存在的技能').length, 0);
 
 const preset = resolveVimaxSkillPreset('commerce-video');

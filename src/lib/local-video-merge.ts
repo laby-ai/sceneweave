@@ -25,6 +25,7 @@ export interface LocalVideoMergeOptions {
   boundaryBridgeUrls?: string[];
   boundaryEffectiveDurationSeconds?: number;
   boundaryTransitionSeconds?: number;
+  signal?: AbortSignal;
 }
 
 export interface LocalVideoMergeRenderReport {
@@ -77,8 +78,13 @@ function toPublicVideoUrl(fileName: string) {
   return baseUrl ? `${baseUrl.replace(/\/+$/, '')}${publicPath}` : publicPath;
 }
 
-async function downloadVideoSegment(url: string, targetPath: string) {
-  const response = await fetch(url);
+function throwIfAborted(signal?: AbortSignal) {
+  if (signal?.aborted) throw signal.reason || new Error('video_merge_cancelled');
+}
+
+async function downloadVideoSegment(url: string, targetPath: string, signal?: AbortSignal) {
+  throwIfAborted(signal);
+  const response = await fetch(url, { signal });
   if (!response.ok) {
     throw new Error(`下载片段失败：HTTP ${response.status}`);
   }
@@ -92,7 +98,7 @@ async function downloadVideoSegment(url: string, targetPath: string) {
   return buffer.length;
 }
 
-async function runConcat(concatListPath: string, outputPath: string) {
+async function runConcat(concatListPath: string, outputPath: string, signal?: AbortSignal) {
   const ffmpegPath = resolveFfmpegPath();
   try {
     await execFileAsync(ffmpegPath, [
@@ -103,9 +109,10 @@ async function runConcat(concatListPath: string, outputPath: string) {
       '-c', 'copy',
       '-movflags', '+faststart',
       outputPath,
-    ], { timeout: 180000 });
+    ], { timeout: 180000, signal });
   } catch {
-      await execFileAsync(ffmpegPath, [
+    throwIfAborted(signal);
+    await execFileAsync(ffmpegPath, [
       '-y',
       '-f', 'concat',
       '-safe', '0',
@@ -114,15 +121,16 @@ async function runConcat(concatListPath: string, outputPath: string) {
       '-c:a', 'aac',
       '-movflags', '+faststart',
       outputPath,
-    ], { timeout: 300000 });
+    ], { timeout: 300000, signal });
   }
 }
 
-async function probeVideoDuration(filePath: string) {
+async function probeVideoDuration(filePath: string, signal?: AbortSignal) {
   const ffmpegPath = resolveFfmpegPath();
   try {
-    await execFileAsync(ffmpegPath, ['-hide_banner', '-i', filePath], { timeout: 30_000 });
+    await execFileAsync(ffmpegPath, ['-hide_banner', '-i', filePath], { timeout: 30_000, signal });
   } catch (error) {
+    throwIfAborted(signal);
     const stderr = (error as { stderr?: string }).stderr || '';
     return parseFfmpegDuration(stderr);
   }
@@ -136,6 +144,7 @@ async function runBoundaryBridgeEdit(
   outputPath: string,
   effectiveBridgeDuration: number,
   transitionDuration: number,
+  signal?: AbortSignal,
 ) {
   const timeline = buildBoundaryBridgeTimeline(
     segmentFiles,
@@ -151,7 +160,7 @@ async function runBoundaryBridgeEdit(
     const duration = orderedDurations[index];
     const isBridge = index % 2 === 1;
     if (isBridge) {
-      const sourceDuration = await probeVideoDuration(orderedFiles[index]);
+      const sourceDuration = await probeVideoDuration(orderedFiles[index], signal);
       const speed = sourceDuration / duration;
       filters.push(`[${index}:v]settb=AVTB,setpts=${(duration / sourceDuration).toFixed(8)}*(PTS-STARTPTS),fps=30,format=yuv420p[v${index}]`);
       filters.push(`[${index}:a]aresample=async=1:first_pts=0,atempo=${speed.toFixed(8)}[a${index}]`);
@@ -181,7 +190,7 @@ async function runBoundaryBridgeEdit(
     '-map', `[${videoLabel}]`, '-map', `[${audioLabel}]`,
     '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac',
     '-movflags', '+faststart', outputPath,
-  ], { timeout: 300_000 });
+  ], { timeout: 300_000, signal });
 }
 
 function parseFfmpegDuration(stderr: string) {
@@ -195,6 +204,7 @@ async function verifyMergedVideo(
   bytes: number,
   segmentCount: number,
   expectedDurationSeconds?: number,
+  signal?: AbortSignal,
 ): Promise<LocalVideoMergeRenderReport> {
   const ffmpegPath = resolveFfmpegPath();
   const nullTarget = process.platform === 'win32' ? 'NUL' : '/dev/null';
@@ -206,7 +216,7 @@ async function verifyMergedVideo(
     '-c', 'copy',
     '-f', 'null',
     nullTarget,
-  ], { timeout: 180000 });
+  ], { timeout: 180000, signal });
   const actualDurationSeconds = parseFfmpegDuration(stderr);
   const expected = expectedDurationSeconds && expectedDurationSeconds > 0
     ? expectedDurationSeconds
@@ -264,10 +274,11 @@ export async function mergeVideosWithLocalFfmpeg(
   await fs.mkdir(outputDir, { recursive: true });
 
   try {
+    throwIfAborted(options.signal);
     const segmentFiles: string[] = [];
     for (let index = 0; index < segmentUrls.length; index += 1) {
       const segmentPath = path.join(tempDir, `segment-${index}.mp4`);
-      await downloadVideoSegment(segmentUrls[index], segmentPath);
+      await downloadVideoSegment(segmentUrls[index], segmentPath, options.signal);
       segmentFiles.push(segmentPath);
     }
 
@@ -280,7 +291,7 @@ export async function mergeVideosWithLocalFfmpeg(
       const bridgeFiles: string[] = [];
       for (let index = 0; index < boundaryBridgeUrls.length; index += 1) {
         const bridgePath = path.join(tempDir, `boundary-${index}.mp4`);
-        await downloadVideoSegment(boundaryBridgeUrls[index], bridgePath);
+        await downloadVideoSegment(boundaryBridgeUrls[index], bridgePath, options.signal);
         bridgeFiles.push(bridgePath);
       }
       await runBoundaryBridgeEdit(
@@ -290,6 +301,7 @@ export async function mergeVideosWithLocalFfmpeg(
         outputPath,
         options.boundaryEffectiveDurationSeconds || 2,
         options.boundaryTransitionSeconds || 1,
+        options.signal,
       );
     } else {
 
@@ -300,7 +312,7 @@ export async function mergeVideosWithLocalFfmpeg(
         'utf8',
       );
 
-      await runConcat(concatListPath, outputPath);
+      await runConcat(concatListPath, outputPath, options.signal);
     }
 
     const stat = await fs.stat(outputPath);
@@ -313,6 +325,7 @@ export async function mergeVideosWithLocalFfmpeg(
       stat.size,
       segmentUrls.length,
       options.expectedDurationSeconds,
+      options.signal,
     );
 
     return {
@@ -322,6 +335,9 @@ export async function mergeVideosWithLocalFfmpeg(
       segmentCount: segmentUrls.length,
       renderReport,
     };
+  } catch (error) {
+    await fs.rm(outputPath, { force: true }).catch(() => undefined);
+    throw error;
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
   }

@@ -5,10 +5,77 @@ import { useEffect, useState } from 'react';
 
 import {
   canStreamWorkspaceProtectedMedia,
+  fetchWorkspaceProtectedImage,
   fetchWorkspaceProtectedMedia,
+  isWorkspaceProtectedImageUrl,
   isWorkspaceProtectedMediaUrl,
   prepareWorkspaceProtectedMediaStream,
 } from '@/lib/creation-agent/workspace-protected-media';
+
+export function VimaxProtectedImage({
+  url,
+  alt,
+  requestHeaders = {},
+  className,
+}: {
+  url: string;
+  alt: string;
+  requestHeaders?: Record<string, string>;
+  className?: string;
+}) {
+  const protectedUrl = isWorkspaceProtectedImageUrl(url);
+  const headerSignature = JSON.stringify(requestHeaders);
+  const [source, setSource] = useState(protectedUrl ? '' : url);
+  const [error, setError] = useState('');
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    if (!protectedUrl) {
+      setSource(url);
+      setError('');
+      return;
+    }
+    const controller = new AbortController();
+    let objectUrl = '';
+    setSource('');
+    setError('');
+    const headers = JSON.parse(headerSignature) as Record<string, string>;
+    void fetchWorkspaceProtectedImage(url, headers, controller.signal)
+      .then(blob => {
+        objectUrl = URL.createObjectURL(blob);
+        setSource(objectUrl);
+      })
+      .catch(reason => {
+        if (!controller.signal.aborted) {
+          setError(reason instanceof Error ? reason.message : '参考图读取失败');
+        }
+      });
+    return () => {
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [attempt, headerSignature, protectedUrl, url]);
+
+  if (error) {
+    return (
+      <div className={`flex aspect-video flex-col items-center justify-center gap-2 bg-[#f4f6f9] px-4 text-center text-xs text-rose-600 ${className || ''}`}>
+        <span>{error}</span>
+        <button type="button" onClick={() => setAttempt(value => value + 1)} className="rounded-md border border-rose-200 bg-white px-2 py-1 text-[11px]">
+          重新读取
+        </button>
+      </div>
+    );
+  }
+  if (!source) {
+    return (
+      <div className={`flex aspect-video items-center justify-center gap-2 bg-[#f4f6f9] text-xs text-[#6f7782] ${className || ''}`}>
+        <Loader2 className="h-4 w-4 animate-spin" />正在恢复参考图…
+      </div>
+    );
+  }
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={source} alt={alt} className={className} />;
+}
 
 export function VimaxProtectedVideo({
   url,

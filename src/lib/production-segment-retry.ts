@@ -96,6 +96,41 @@ function createSegmentTask(
   });
 }
 
+const BRIDGE_REVISION_MARKER = '【本次单镜修正】';
+
+function withoutBridgeRevision(value: string | null | undefined) {
+  return String(value || '').split(BRIDGE_REVISION_MARKER)[0].trim();
+}
+
+export function applyVimaxBridgeTailRevisionForRetry(
+  segment: ProductionSegmentPlan,
+): ProductionSegmentPlan {
+  const acceptance = segment.expectedOutputs.bridgeTailAcceptance;
+  const revisionInstruction = acceptance?.status === 'rejected'
+    ? acceptance.revisionInstruction?.trim()
+    : '';
+  if (!revisionInstruction) return segment;
+
+  const prompt = withoutBridgeRevision(segment.prompt);
+  const continuityPrompt = withoutBridgeRevision(segment.expectedInputs.continuityPrompt);
+  return {
+    ...segment,
+    prompt: [prompt, BRIDGE_REVISION_MARKER, revisionInstruction].filter(Boolean).join('\n'),
+    expectedInputs: {
+      ...segment.expectedInputs,
+      continuityPrompt: [
+        continuityPrompt,
+        BRIDGE_REVISION_MARKER,
+        revisionInstruction,
+      ].filter(Boolean).join('\n'),
+    },
+    expectedOutputs: {
+      ...segment.expectedOutputs,
+      bridgeTailAcceptance: undefined,
+    },
+  };
+}
+
 function updateParentForRetry(
   parentTaskId: string,
   segmentIndex: number,
@@ -132,14 +167,15 @@ function updateParentForRetry(
       };
     }
     if (segment.index !== segmentIndex) return segment;
+    const revisedSegment = applyVimaxBridgeTailRevisionForRetry(segment);
     return {
-      ...segment,
+      ...revisedSegment,
       status: 'queued' as const,
       error: null,
       startedAt: undefined,
       completedAt: undefined,
       expectedOutputs: {
-        ...segment.expectedOutputs,
+        ...revisedSegment.expectedOutputs,
         taskId: childTaskId,
         videoUrl: null,
         lastFrameUrl: null,

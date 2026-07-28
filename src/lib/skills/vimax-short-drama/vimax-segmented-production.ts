@@ -19,6 +19,7 @@ export interface VimaxSegmentTaskSnapshot {
   status?: string;
   progress?: number;
   stage?: string;
+  error?: string;
 }
 
 export interface VimaxSegmentedProductionSegmentView {
@@ -51,6 +52,17 @@ const STATUS_LABELS: Record<VimaxSegmentedProductionView['state'], string> = {
   failed: '有片段需要重试',
   completed: '全部片段已完成',
 };
+
+function resolveSegmentError(status: string, ...candidates: Array<string | null | undefined>): string | null {
+  if (status !== 'failed') return null;
+  if (candidates.some(candidate => (
+    candidate?.includes('[bridge-tail-revision-ready]')
+    || candidate?.includes('[bridge-tail-target-not-reached]')
+  ))) {
+    return '这一镜的结尾还没有自然进入下一幕。系统已根据实际画面准备调整，确认后只会重做这一镜。';
+  }
+  return '该片段未完成，可单独重试。';
+}
 
 function resolveState(
   segments: VimaxSegmentedProductionSegmentView[],
@@ -97,7 +109,7 @@ export function buildVimaxSegmentedProductionView(
       taskId: childTaskId || null,
       progress: Math.max(0, Math.min(100, childTask?.progress || 0)),
       stage: childTask?.stage || '',
-      error: status === 'failed' ? '该片段未完成，可单独重试。' : null,
+      error: resolveSegmentError(status, childTask?.error, segment.error),
       retryAction: status === 'failed' || status === 'cancelled' ? {
         path: '/api/production/assembly-plan/segment/retry',
         body: {
@@ -143,7 +155,7 @@ export function applyVimaxSegmentTaskSnapshot(
       status,
       progress: Math.max(0, Math.min(100, snapshot.progress ?? segment.progress)),
       stage: snapshot.stage ?? segment.stage,
-      error: status === 'failed' ? '该片段未完成，可单独重试。' : null,
+      error: resolveSegmentError(status, snapshot.error, segment.error),
       retryAction: status === 'failed' || status === 'cancelled' ? {
         path: '/api/production/assembly-plan/segment/retry',
         body: { parentTaskId: view.taskId, segmentIndex: segment.index, childTaskId: taskId },

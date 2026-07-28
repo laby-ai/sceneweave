@@ -154,6 +154,16 @@ export interface ProductionProject {
       dramaticPurpose: string;
       emotionShift: string;
       prompt: string;
+      sceneId?: string;
+      sceneLabel?: string;
+      characterIds?: string[];
+      propIds?: string[];
+      actionStart?: string;
+      actionEnd?: string;
+      firstFrameDescription?: string;
+      lastFrameDescription?: string;
+      motionDescription?: string;
+      audioIntent?: string;
       subtitleText?: string;
       narrationText?: string;
       status: ProductionAssetStatus;
@@ -184,7 +194,22 @@ export interface BuildProductionProjectParams {
   narrativeSummary: string;
   subtitleSuggestion: SubtitleSuggestion;
   narrationSuggestion: NarrationSuggestion;
-  shots: Array<PromptBasedShot & { index?: number; status?: ProductionAssetStatus }>;
+  shots: Array<PromptBasedShot & {
+    index?: number;
+    status?: ProductionAssetStatus;
+    sceneId?: string;
+    sceneLabel?: string;
+    characterIds?: string[];
+    propIds?: string[];
+    actionStart?: string;
+    actionEnd?: string;
+    firstFrameDescription?: string;
+    lastFrameDescription?: string;
+    motionDescription?: string;
+    audioIntent?: string;
+  }>;
+  authoritativeStoryBible?: ProductionStoryBible;
+  preserveShotNarrative?: boolean;
 }
 
 function compactText(value: string | undefined, fallback: string) {
@@ -529,6 +554,122 @@ function findBeatForShot(storyBible: ProductionStoryBible, shotId: string) {
   return storyBible.beats.find(beat => beat.shotIds.includes(shotId)) || storyBible.beats[storyBible.beats.length - 1];
 }
 
+function buildAuthoritativeSemanticInputs(
+  params: BuildProductionProjectParams,
+  context: {
+    subject: string;
+    location: string;
+    atmosphere: string;
+    storyBible: ProductionStoryBible;
+    characterAssetIds: string[];
+    sceneAssetIds: string[];
+    objectNames: string[];
+  },
+): { writerOutput: WriterOutput; directorOutput: DirectorOutput } {
+  const characterProfiles: WriterOutput['characterProfiles'] = {
+    [context.subject]: {
+      id: 'char-1',
+      name: context.subject,
+      appearance: context.subject,
+      personality: context.storyBible.emotionalArc.start,
+      motivation: context.storyBible.desire,
+      arc: [
+        context.storyBible.emotionalArc.start,
+        context.storyBible.emotionalArc.shift,
+        context.storyBible.emotionalArc.end,
+      ].filter(Boolean).join(' -> '),
+      relationships: {},
+    },
+  };
+  const writerOutput: WriterOutput = {
+    contentType: 'short_drama',
+    typeName: '短剧',
+    outline: context.storyBible.premise,
+    narrative: params.shots.map((shot, index) => {
+      const beat = findBeatForShot(context.storyBible, shot.id);
+      return {
+        segmentId: `segment-${index + 1}`,
+        sequence: index + 1,
+        type: beat.id === 'setup'
+          ? 'setup'
+          : beat.id === 'turning'
+            ? 'climax'
+            : beat.id === 'resolution' ? 'resolution' : 'conflict',
+        text: shot.narrationText?.trim() || shot.subtitleText?.trim() || '',
+        emotion: 'neutral',
+        pacing: 'medium',
+        subject: context.subject,
+        setting: shot.sceneLabel || context.location,
+        lighting: context.atmosphere,
+        style: params.style,
+        characterIds: shot.characterIds?.length ? shot.characterIds : ['char-1'],
+        assetRefs: [
+          ...context.characterAssetIds,
+          ...context.sceneAssetIds,
+          ...context.objectNames.map((_, propIndex) => `prop-${propIndex + 1}`),
+        ],
+      };
+    }),
+    characterProfiles,
+    template: {
+      name: '模型计划',
+      keywords: [],
+      structure: [],
+      shotDistribution: {},
+      pacing: 'medium',
+      transitionStyle: 'cut',
+    },
+  };
+  const directorShots: DirectorOutput['shots'] = params.shots.map((shot, index) => ({
+    shotId: shot.id,
+    sequence: index + 1,
+    shotType: 'MS',
+    cameraMovement: 'static',
+    visualPrompt: shot.prompt,
+    duration: shot.duration,
+    cameraDetail: shot.shotTypeLabel || '',
+    subject: context.subject,
+    environment: shot.sceneLabel || context.location,
+    lighting: context.atmosphere,
+    style: params.style,
+    pacing: 'medium',
+    audioType: shot.subtitleText?.trim()
+      ? 'dialogue'
+      : shot.narrationText?.trim() ? 'narration' : '',
+    audioContent: shot.subtitleText?.trim() || shot.narrationText?.trim() || '',
+    emotionTag: '',
+    transitionFrom: 'cut',
+    transitionTo: 'cut',
+    characterRefs: shot.characterIds?.length ? shot.characterIds : ['char-1'],
+    assetLibraryRefs: [
+      ...context.characterAssetIds,
+      ...context.sceneAssetIds,
+      ...context.objectNames.map((_, propIndex) => `prop-${propIndex + 1}`),
+    ],
+    sceneRefs: shot.sceneId ? [shot.sceneId] : context.sceneAssetIds,
+    assetSource: '',
+    assetId: '',
+    matchScore: 0,
+  }));
+  return {
+    writerOutput,
+    directorOutput: {
+      shots: directorShots,
+      emotionCurve: directorShots.map(shot => ({
+        sequence: shot.sequence,
+        emotion: 'neutral',
+        intensity: 0.5,
+      })),
+      totalDuration: directorShots.reduce((sum, shot) => sum + shot.duration, 0),
+      shotTypeDistribution: directorShots.length > 0 ? { MS: directorShots.length } : {},
+      keyMoments: directorShots.map(shot => ({
+        sequence: shot.sequence,
+        description: shot.visualPrompt,
+      })),
+    },
+  };
+}
+
 function buildSemanticPlan(params: BuildProductionProjectParams, context: {
   projectId: string;
   subject: string;
@@ -542,12 +683,14 @@ function buildSemanticPlan(params: BuildProductionProjectParams, context: {
   deliverableAssetId: string;
 }): ProductionSemanticPlan {
   const now = new Date().toISOString();
-  const writer = new WriterAgent();
-  const director = new DirectorAgent();
-  const writerOutput = writer.generateStoryOutline(params.prompt, 'short_drama', {
-    duration: params.duration,
-    characters: [{ name: context.subject, role: 'protagonist' }],
-  });
+  const authoritative = params.preserveShotNarrative
+    ? buildAuthoritativeSemanticInputs(params, context)
+    : null;
+  const writerOutput = authoritative?.writerOutput
+    || new WriterAgent().generateStoryOutline(params.prompt, 'short_drama', {
+      duration: params.duration,
+      characters: [{ name: context.subject, role: 'protagonist' }],
+    });
 
   writerOutput.outline = context.storyBible.premise;
   writerOutput.characterProfiles[context.subject] = {
@@ -579,11 +722,12 @@ function buildSemanticPlan(params: BuildProductionProjectParams, context: {
     };
   });
 
-  const directorOutput = director.directStoryboard(writerOutput.narrative, {
-    contentType: 'short_drama',
-    aspectRatio: params.ratio,
-    targetDuration: params.duration,
-  });
+  const directorOutput = authoritative?.directorOutput
+    || new DirectorAgent().directStoryboard(writerOutput.narrative, {
+      contentType: 'short_drama',
+      aspectRatio: params.ratio,
+      targetDuration: params.duration,
+    });
   directorOutput.shots = params.shots.map((sourceShot, index) => {
     const shot = directorOutput.shots[index] || directorOutput.shots[directorOutput.shots.length - 1];
     const beat = sourceShot ? findBeatForShot(context.storyBible, sourceShot.id) : undefined;
@@ -806,8 +950,9 @@ export function buildProductionProject(params: BuildProductionProjectParams): Pr
     : params.visualAnchors
       .filter(anchor => ['object', 'material'].includes(anchor.category))
       .map(anchor => anchor.element)), params.prompt);
-  const storyBible = buildStoryBible(params, subject, location, atmosphere, objectNames);
-  const storyShots = params.shots.map((shot, index) => {
+  const storyBible = params.authoritativeStoryBible
+    || buildStoryBible(params, subject, location, atmosphere, objectNames);
+  const storyShots = params.preserveShotNarrative ? params.shots : params.shots.map((shot, index) => {
     const fiveDynastiesAudio = storyBible.protagonist.includes('山河图接力者')
       ? buildFiveDynastiesShotAudio(index)
       : null;
@@ -1003,6 +1148,16 @@ export function buildProductionProject(params: BuildProductionProjectParams): Pr
         dramaticPurpose: beat.purpose,
         emotionShift: beat.emotion,
         prompt: shot.prompt,
+        sceneId: shot.sceneId,
+        sceneLabel: shot.sceneLabel,
+        characterIds: shot.characterIds,
+        propIds: shot.propIds,
+        actionStart: shot.actionStart,
+        actionEnd: shot.actionEnd,
+        firstFrameDescription: shot.firstFrameDescription,
+        lastFrameDescription: shot.lastFrameDescription,
+        motionDescription: shot.motionDescription,
+        audioIntent: shot.audioIntent,
         subtitleText: shot.subtitleText,
         narrationText: shot.narrationText,
         status: shot.status || 'planned',

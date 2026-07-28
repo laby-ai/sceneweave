@@ -75,9 +75,14 @@ const cancelledProject = recoverVimaxTaskProject({
     prompt: '雨夜天台上的记者发现一枚发光胶片',
     model: 'qwen3.7-plus',
     referenceIds: ['member-reference-1'],
+    projectId: 'project-with-attachments',
   },
 });
-assert.equal(cancelledProject?.project.id, 'task:task-plan-cancelled');
+assert.equal(
+  cancelledProject?.project.id,
+  'project-with-attachments',
+  'task recovery must preserve the original project so its attachments remain available',
+);
 assert.equal(cancelledProject?.messages[0]?.content, '雨夜天台上的记者发现一枚发光胶片');
 assert.match(cancelledProject?.messages[1]?.content || '', /规划已取消/);
 assert.deepEqual(cancelledProject?.messages[1]?.quickOptions, ['重新生成']);
@@ -118,7 +123,7 @@ async function main() {
     'the recovery cursor must be sent before the provider call can outlive the browser stream',
   );
   assert.match(routeSource, /isVimaxPlanningTaskCancelled\(taskId, owner\)/);
-  assert.match(routeSource, /callArkTextStream\([\s\S]{0,500}request\.signal/);
+  assert.match(routeSource, /callArkTextStream\([\s\S]{0,500}planningAbort\.signal/);
   assert.match(
     `${routeSource}\n${planTaskSource}`,
     /requestAborted[\s\S]{0,500}cancelTask\(input\.taskId\)/,

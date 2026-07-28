@@ -8,6 +8,7 @@ import { buildVimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-p
 import { resolveVimaxSkillRuntimeBinding } from '@/lib/skills/vimax-short-drama/vimax-skill-runtime-binding';
 import { applyVimaxShotGenerationRoutes } from '@/lib/skills/vimax-short-drama/vimax-shot-generation-route';
 import { normalizeVimaxInitialReferenceIds } from '@/lib/skills/vimax-short-drama/vimax-initial-references';
+import { normalizeVimaxProjectAttachmentIds } from '@/lib/skills/vimax-short-drama/vimax-project-attachments';
 import {
   buildVimaxContinuityContract,
   resolveVimaxProviderHandoffMode,
@@ -44,6 +45,8 @@ export function createPersistedVimaxPlanEnvelope(input: CreatePersistedVimaxPlan
     workflow: 'vimax-agent',
     skillId: input.body.skillId,
     referenceIds: normalizeVimaxInitialReferenceIds(input.body.referenceIds),
+    projectId: input.body.projectId,
+    projectAttachmentIds: normalizeVimaxProjectAttachmentIds(input.body.projectAttachmentIds),
   }, input.owner);
   const built = buildProductionBackedVimaxPlan(input.prompt, input.basePlan, input.body, taskId);
   const workflow = resolveVimaxSkillRuntimeBinding({ skillId: input.body.skillId });

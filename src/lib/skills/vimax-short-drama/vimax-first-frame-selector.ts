@@ -13,6 +13,7 @@ export async function selectVimaxBestImageCandidate(input: {
   referenceImages: string[];
   candidateUrls: string[];
   config: VimaxImageSelectorConfig;
+  signal?: AbortSignal;
 }) {
   const { selectorApiBase, selectorApiKey, selectorModel } = input.config;
   if (!selectorApiBase || !selectorApiKey || !selectorModel || input.candidateUrls.length < 2) {
@@ -53,6 +54,7 @@ export async function selectVimaxBestImageCandidate(input: {
         { role: 'user', content },
       ],
     }),
+    signal: input.signal,
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) return { index: 0, reason: '一致性筛选暂不可用，已保留首个成功候选。' };

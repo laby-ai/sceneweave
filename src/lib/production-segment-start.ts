@@ -18,6 +18,11 @@ import {
   evaluateVimaxCanonicalFirstFrameReadiness,
   type VimaxCanonicalFirstFrameState,
 } from '@/lib/skills/vimax-short-drama/vimax-canonical-first-frame';
+import {
+  evaluateVimaxBridgeTailHandoffReadiness,
+  reviewVimaxBridgeTail,
+  type VimaxBridgeTailAcceptance,
+} from '@/lib/skills/vimax-short-drama/vimax-bridge-tail-acceptance';
 import { parseVimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 import {
   buildProductionSegmentStartPayload,
@@ -183,6 +188,7 @@ async function runSegmentProviderJob(params: {
   let partialVideoUrl: string | undefined;
   let partialLastFrameUrl: string | undefined;
   let lastFrameExtraction: LastFrameExtractionResult | undefined;
+  let bridgeTailAcceptance: VimaxBridgeTailAcceptance | undefined;
 
   try {
     const parentTask = getTaskFresh(parentTaskId);
@@ -342,6 +348,38 @@ async function runSegmentProviderJob(params: {
     }
     const lastFrameUrl = tailFrame.lastFrameUrl || undefined;
     partialLastFrameUrl = lastFrameUrl;
+    if (runtimeSegment.generationRoute?.boundaryIntent === 'bridge') {
+      const latestParent = getTaskFresh(parentTaskId);
+      const latestPlan = latestParent?.result?.assemblyPlan as ProductionAssemblyPlan | undefined;
+      const nextSegment = latestPlan?.segments.find(item => item.index === segmentIndex + 1);
+      const sourceLastFrameUrl = runtimeSegment.expectedInputs.previousLastFrameUrl
+        || runtimeSegment.expectedInputs.firstFrameUrl;
+      if (!imageConnection || !sourceLastFrameUrl || !lastFrameUrl || !nextSegment) {
+        throw new Error('过门镜头缺少尾态审查连接、真实首尾帧或下一镜计划，已阻止下一镜启动。 [bridge-tail-review-not-ready]');
+      }
+      bridgeTailAcceptance = await reviewVimaxBridgeTail({
+        connection: imageConnection,
+        sourceLastFrameUrl,
+        observedLastFrameUrl: lastFrameUrl,
+        plannedStartState: runtimeSegment.shotFrameContract.firstFrame.description,
+        plannedEndState: runtimeSegment.shotFrameContract.lastFrame.description,
+        nextPlannedStartState: nextSegment.shotFrameContract.firstFrame.description,
+        sceneId: runtimeSegment.storySegmentContract.storyState.scene,
+        actionPhase: runtimeSegment.shotFrameContract.motionDescription,
+        anchors: runtimeSegment.shotFrameContract.lastFrame.continuityAnchors,
+      });
+      const currentTask = getTaskFresh(childTaskId);
+      updateTask(childTaskId, {
+        result: {
+          ...(currentTask?.result || {}),
+          bridgeTailAcceptance,
+        },
+      });
+      const handoffReadiness = evaluateVimaxBridgeTailHandoffReadiness(bridgeTailAcceptance);
+      if (!handoffReadiness.ok) {
+        throw new Error(`${handoffReadiness.reason} 确认后只会重做这一镜。 [bridge-tail-revision-ready]`);
+      }
+    }
 
     completeTask(childTaskId, {
       videoUrl: videoResult.videoUrl,
@@ -350,6 +388,7 @@ async function runSegmentProviderJob(params: {
       lastFrameUrl,
       audioCue: segmentAudioCue(segment),
       storyStateCue: segmentStoryStateCue(segment),
+      ...(bridgeTailAcceptance ? { bridgeTailAcceptance } : {}),
       hasAudio: Boolean(generateAudio),
       handoff: {
         requiresTailFrame: tailFrame.requiresTailFrame,
@@ -368,6 +407,7 @@ async function runSegmentProviderJob(params: {
         lastFrameSource: tailFrame.source,
         audioCue: segmentAudioCue(segment),
         storyStateCue: segmentStoryStateCue(segment),
+        ...(bridgeTailAcceptance ? { bridgeTailAcceptance } : {}),
         hasAudio: Boolean(generateAudio),
       }],
     });
@@ -382,6 +422,7 @@ async function runSegmentProviderJob(params: {
         lastFrameUrl: lastFrameUrl || null,
         audioCue: segmentAudioCue(segment),
         storyStateCue: segmentStoryStateCue(segment),
+        ...(bridgeTailAcceptance ? { bridgeTailAcceptance } : {}),
         hasAudio: Boolean(generateAudio),
       },
     });
@@ -395,6 +436,8 @@ async function runSegmentProviderJob(params: {
           ...(partialVideoUrl ? { videoUrl: partialVideoUrl } : {}),
           ...(providerTaskId ? { providerTaskId } : {}),
           ...(partialLastFrameUrl ? { lastFrameUrl: partialLastFrameUrl } : {}),
+          ...(bridgeTailAcceptance ? { bridgeTailAcceptance } : {}),
+          storyStateCue: segmentStoryStateCue(segment),
           handoff: {
             requiresTailFrame: segmentIndex < segmentCount - 1,
             lastFrameUrlPresent: Boolean(partialLastFrameUrl),
@@ -409,7 +452,9 @@ async function runSegmentProviderJob(params: {
             status: 'failed',
             ...(partialVideoUrl ? { videoUrl: partialVideoUrl } : {}),
             ...(partialLastFrameUrl ? { lastFrameUrl: partialLastFrameUrl } : {}),
+            ...(bridgeTailAcceptance ? { bridgeTailAcceptance } : {}),
             audioCue: segmentAudioCue(segment),
+            storyStateCue: segmentStoryStateCue(segment),
             hasAudio: providerTaskId ? Boolean(generateAudio) : null,
             error: message,
           }],
@@ -427,6 +472,8 @@ async function runSegmentProviderJob(params: {
         videoUrl: partialVideoUrl || null,
         lastFrameUrl: partialLastFrameUrl || null,
         audioCue: segmentAudioCue(segment),
+        storyStateCue: segmentStoryStateCue(segment),
+        ...(bridgeTailAcceptance ? { bridgeTailAcceptance } : {}),
         hasAudio: providerTaskId ? Boolean(generateAudio) : null,
       },
     });

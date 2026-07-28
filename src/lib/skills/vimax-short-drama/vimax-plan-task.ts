@@ -12,6 +12,7 @@ import {
 } from '@/lib/task-manager';
 import type { VimaxAgentPlan, VimaxAgentStepBody } from '@/lib/skills/vimax-short-drama/vimax-agent-contract';
 import { normalizeVimaxInitialReferenceIds } from '@/lib/skills/vimax-short-drama/vimax-initial-references';
+import { normalizeVimaxProjectAttachmentIds } from '@/lib/skills/vimax-short-drama/vimax-project-attachments';
 import type { VimaxProductionPlan } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 
 interface PersistVimaxPlanTaskInput {
@@ -35,12 +36,14 @@ export function createVimaxPlanningTask(owner: TaskOwner, prompt: string, body: 
     phase: 'plan',
     skillId: body.skillId,
     referenceIds: normalizeVimaxInitialReferenceIds(body.referenceIds),
+    projectId: body.projectId,
+    projectAttachmentIds: normalizeVimaxProjectAttachmentIds(body.projectAttachmentIds),
     idempotencyKey: body.requestId,
   }, owner);
 }
 
-export function startVimaxPlanningTask(taskId: string) {
-  if (!startTask(taskId)) throw new Error('创作任务无法进入规划状态。');
+export function startVimaxPlanningTask(taskId: string, abortController?: AbortController) {
+  if (!startTask(taskId, abortController)) throw new Error('创作任务无法进入规划状态。');
 }
 
 export function isVimaxPlanningTaskCancelled(taskId: string, owner: TaskOwner) {

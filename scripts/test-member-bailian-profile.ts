@@ -92,10 +92,14 @@ assert.match(shell, /creation-agent-dark/);
 assert.match(shell, /data-creation-agent-theme="dark"/);
 assert.match(
   shell,
-  /availableModes=\{\['agent', 'image', 'video'\]\}/,
-  'the primary creation entry must expose only the three verified creation workflows',
+  /\bagentOnly\b/,
+  'the primary creation entry must stay on the single short-drama agent workflow',
 );
-assert.doesNotMatch(shell, /\bagentOnly\b/, 'the verified image and video workflows must remain reachable');
+assert.doesNotMatch(
+  shell,
+  /\bavailableModes=/,
+  'the primary creation entry must not expose internal image/video mode routing',
+);
 
 const provider = await readFile(path.join(process.cwd(), 'src/lib/byok-provider.ts'), 'utf8');
 assert.match(provider, /trustedOwner\?: TaskOwner/);
