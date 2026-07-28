@@ -82,6 +82,9 @@ assert.match(
 );
 assert.match(built.plan.shots[0].prompt, /天台右侧.*发光胶片/);
 assert.match(built.plan.shots[1].prompt, /旧放映机.*同一张童年照片/);
+assert.equal(built.plan.shots[0].description, plan.shots[0].prompt);
+assert.equal(built.plan.shots[1].description, plan.shots[1].prompt);
+assert.equal(built.plan.nextAction, plan.nextAction);
 assert.equal(built.plan.shots[0].camera, plan.shots[0].camera);
 assert.equal(built.plan.shots[1].camera, plan.shots[1].camera);
 assert.equal(built.plan.shots[1].actionStart, '林岚右手胶片停在胸前');

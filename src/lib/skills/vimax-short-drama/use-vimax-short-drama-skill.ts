@@ -22,6 +22,7 @@ import {
   type VimaxProductionPlan,
 } from '@/lib/skills/vimax-short-drama/vimax-production-plan';
 import { waitForVimaxBackgroundVideoTask } from '@/lib/skills/vimax-short-drama/vimax-background-video-task';
+import { waitForVimaxBackgroundReferenceTask } from '@/lib/skills/vimax-short-drama/vimax-background-reference-task';
 import { waitForPersistedVimaxPlan } from '@/lib/skills/vimax-short-drama/vimax-plan-stream-recovery';
 import { resolveVimaxVideoInputAssets } from '@/lib/skills/vimax-short-drama/vimax-video-input-assets';
 import { formatProviderError } from '@/lib/byok-client';
@@ -64,6 +65,8 @@ export interface VimaxPlanContext {
   segmentCount?: number;
   settings?: VimaxGenerationSettings;
   referenceIds?: string[];
+  projectId?: string;
+  projectAttachmentIds?: string[];
 }
 
 type VimaxAssetKind = NonNullable<NonNullable<ChatMessage['vimaxAgent']>['assets']>[number]['kind'];
@@ -71,8 +74,27 @@ type VimaxAssetKind = NonNullable<NonNullable<ChatMessage['vimaxAgent']>['assets
 interface PartialPlan {
   title?: string;
   summary?: string;
+  story?: NonNullable<ChatMessage['vimaxAgent']>['story'];
+  characters?: NonNullable<ChatMessage['vimaxAgent']>['characters'];
+  scenes?: NonNullable<ChatMessage['vimaxAgent']>['scenes'];
+  props?: NonNullable<ChatMessage['vimaxAgent']>['props'];
   assets: Array<{ kind?: VimaxAssetKind; label?: string; prompt?: string }>;
-  shots: Array<{ index?: number; title?: string; duration?: number; camera?: string; prompt?: string }>;
+  shots: Array<{
+    index?: number;
+    title?: string;
+    duration?: number;
+    camera?: string;
+    prompt?: string;
+    description?: string;
+    actionStart?: string;
+    actionEnd?: string;
+    dialogue?: string;
+    narration?: string;
+    spatialRelation?: 'same-scene' | 'new-scene';
+    temporalRelation?: 'continuous' | 'elapsed' | 'time-jump';
+    routeConfidence?: 'high' | 'medium' | 'low';
+    conflictFlags?: string[];
+  }>;
 }
 
 function isUnauthorized(error: unknown): error is ClientRequestError {
@@ -145,9 +167,11 @@ interface VimaxShortDramaSkillDeps {
 
 export interface VimaxShortDramaSkill {
   handlePlanStep: (context: VimaxPlanContext) => Promise<void>;
-  handleReferenceAssetsStep: () => Promise<void>;
+  handleReferenceAssetsStep: (options?: { recover?: boolean; cancel?: boolean }) => Promise<void>;
   handleVideoStep: (options?: {
     recover?: boolean;
+    resume?: boolean;
+    cancel?: boolean;
     confirmRouteDecisions?: boolean;
   }) => Promise<void>;
   cancelCurrentRun: () => boolean;
@@ -167,6 +191,10 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
   } = deps;
   const fallbackRunCoordinatorRef = useRef<VimaxRunCoordinator | null>(null);
   const planningReadinessPendingRef = useRef(false);
+  const activePlanningTaskIdRef = useRef<string | null>(null);
+  const activeReferenceTaskIdRef = useRef<string | null>(null);
+  const activeVideoTaskIdRef = useRef<string | null>(null);
+  const pendingPlanningCancelRef = useRef(false);
   if (!fallbackRunCoordinatorRef.current) fallbackRunCoordinatorRef.current = createVimaxRunCoordinator();
   const runCoordinator = providedRunCoordinator || fallbackRunCoordinatorRef.current;
 
@@ -236,6 +264,8 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       messageId: progressMsgId,
       timeoutMs: 60_000,
     });
+    activePlanningTaskIdRef.current = null;
+    pendingPlanningCancelRef.current = false;
     setIsLoading(true);
     setInputValue('');
     setMessages(prev => [
@@ -266,7 +296,11 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       const response = await clientApiRequest('/api/smart/vimax-agent-step', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...requestHeaders },
-        body: JSON.stringify(buildVimaxPlanRequest({ ...context, settings: generationSettings })),
+        body: JSON.stringify(buildVimaxPlanRequest({
+          ...context,
+          settings: generationSettings,
+          requestId: run.requestId,
+        })),
         signal: run.signal,
         redirectOnUnauthorized: false,
       });
@@ -350,7 +384,30 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
                 } : m));
               } else if (event === 'plan.accepted') {
                 persistedTaskId = typeof data.taskId === 'string' ? data.taskId : '';
-                if (persistedTaskId) onTaskIdAvailable?.(persistedTaskId);
+                if (persistedTaskId) {
+                  activePlanningTaskIdRef.current = persistedTaskId;
+                  onTaskIdAvailable?.(persistedTaskId);
+                  updateRunMessages(run, current => current.map(message => message.id === progressMsgId ? {
+                    ...message,
+                    vimaxAgent: {
+                      phase: 'plan',
+                      title: '短剧制作计划',
+                      summary: prompt,
+                      model: generationSettings.planModel,
+                      taskId: persistedTaskId,
+                      generationSettings,
+                      costState: 'incurred',
+                      nextAction: '正在生成故事与分镜。',
+                    },
+                  } : message));
+                  if (pendingPlanningCancelRef.current) {
+                    void clientApiRequest(`/api/tasks/${encodeURIComponent(persistedTaskId)}`, {
+                      method: 'DELETE',
+                      headers: requestHeaders,
+                      redirectOnUnauthorized: false,
+                    }).catch(() => undefined);
+                  }
+                }
               } else if (event === 'plan.complete') {
                 plan = data.plan || {};
                 assets = Array.isArray(plan.assets) ? plan.assets : [];
@@ -422,6 +479,10 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
           taskId: planTaskId || undefined,
           generationSettings,
           productionPlan,
+          story: plan.story,
+          characters: plan.characters,
+          scenes: plan.scenes,
+          props: plan.props,
           costState: 'incurred',
           nextAction: plan.nextAction || '确认分镜后进入千问参考素材生成。',
           assets: assets.map((asset: { kind?: NonNullable<NonNullable<ChatMessage['vimaxAgent']>['assets']>[number]['kind']; label?: string; prompt?: string }) => ({
@@ -436,6 +497,11 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
             duration?: number;
             camera?: string;
             prompt?: string;
+            description?: string;
+            actionStart?: string;
+            actionEnd?: string;
+            dialogue?: string;
+            narration?: string;
             spatialRelation?: 'same-scene' | 'new-scene';
             temporalRelation?: 'continuous' | 'elapsed' | 'time-jump';
             routeConfidence?: 'high' | 'medium' | 'low';
@@ -445,7 +511,11 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
             title: shot.title || `Clip ${index + 1}`,
             duration: Number(shot.duration) || 6,
             camera: shot.camera || '固定镜头',
-            prompt: shot.prompt || '',
+            prompt: shot.description || shot.prompt || '',
+            actionStart: shot.actionStart,
+            actionEnd: shot.actionEnd,
+            dialogue: shot.dialogue,
+            narration: shot.narration,
             spatialRelation: shot.spatialRelation,
             temporalRelation: shot.temporalRelation,
             routeConfidence: shot.routeConfidence,
@@ -482,11 +552,15 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         },
       } : message));
     } finally {
-      if (runCoordinator.finish(run)) setIsLoading(false);
+      if (runCoordinator.finish(run)) {
+        activePlanningTaskIdRef.current = null;
+        pendingPlanningCancelRef.current = false;
+        setIsLoading(false);
+      }
     }
   }, [messagesRef, onAuthenticationRequired, onTaskIdAvailable, requestHeaders, runCoordinator, setMessages, setIsLoading, setInputValue, setCurrentStep, updateRunMessages]);
 
-  const handleReferenceAssetsStep = useCallback(async () => {
+  const handleReferenceAssetsStep = useCallback(async (options: { recover?: boolean; cancel?: boolean } = {}) => {
     const planMessage = findVimaxReferencePlanMessage(messagesRef.current);
     const plan = planMessage?.vimaxAgent;
     if (!plan) {
@@ -521,6 +595,55 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       return;
     }
 
+    const recoveredReferenceTaskId = options.recover
+      ? [...messagesRef.current].reverse().find(message => message.vimaxAgent?.referenceTaskId)?.vimaxAgent?.referenceTaskId
+      : undefined;
+    if (options.recover && !recoveredReferenceTaskId) {
+      setMessages(prev => [...prev, {
+        id: genId(),
+        role: 'assistant',
+        content: '没有找到可恢复的参考图任务，请重新生成缺失参考图。',
+        timestamp: Date.now(),
+        generationStatus: 'failed',
+        quickOptions: ['仅重试缺失参考图', '调整分镜'],
+      }]);
+      return;
+    }
+
+    if (options.cancel) {
+      const referenceTaskId = [...messagesRef.current].reverse()
+        .find(message => message.vimaxAgent?.referenceTaskId)?.vimaxAgent?.referenceTaskId;
+      if (!referenceTaskId) {
+        setMessages(prev => [...prev, {
+          id: genId(),
+          role: 'assistant',
+          content: '没有找到仍可取消的参考图任务。',
+          timestamp: Date.now(),
+          generationStatus: 'failed',
+        }]);
+        return;
+      }
+      const response = await clientApiRequest(`/api/tasks/${encodeURIComponent(referenceTaskId)}`, {
+        method: 'DELETE',
+        headers: requestHeaders,
+        redirectOnUnauthorized: false,
+      });
+      const payload = await response.json().catch(() => ({})) as { message?: string; error?: string };
+      setMessages(prev => prev.map(message => (
+        message.vimaxAgent?.referenceTaskId === referenceTaskId
+          ? {
+            ...message,
+            content: response.ok
+              ? '本次参考图生成已取消；分镜、项目素材和已保存结果均已保留。'
+              : payload.error || '参考图任务已经结束，无法再次取消。',
+            generationStatus: 'failed',
+            quickOptions: ['仅重试缺失参考图', '调整分镜'],
+          }
+          : message
+      )));
+      return;
+    }
+
     const progressMsgId = `vimax-seedream-${Date.now()}`;
     const run = runCoordinator.begin({
       projectId: messagesRef.current[0]?.id || progressMsgId,
@@ -528,11 +651,12 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       messageId: progressMsgId,
       timeoutMs: VIMAX_REFERENCE_RUN_TIMEOUT_MS,
     });
+    activeReferenceTaskIdRef.current = recoveredReferenceTaskId || null;
     setIsLoading(true);
     setMessages(prev => [...prev, {
       id: progressMsgId,
       role: 'assistant',
-      content: '正在生成参考图…',
+      content: options.recover ? '正在恢复同一批参考图…' : '正在生成参考图…',
       timestamp: Date.now(),
       generationStatus: 'generating',
       generationProgress: 20,
@@ -541,46 +665,87 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       vimaxAgent: {
         ...plan,
         phase: 'reference_assets',
+        referenceTaskId: recoveredReferenceTaskId,
         costState: 'incurred',
-        nextAction: '等待千问图像返回参考素材。',
+        nextAction: options.recover ? '正在查看已保存的参考图任务。' : '等待千问图像返回参考素材。',
       },
     } as ChatMessage]);
 
     try {
-      const response = await clientApiRequest('/api/smart/vimax-agent-step', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...requestHeaders },
-        body: JSON.stringify({
-          taskId: plan.taskId,
-          phase: 'reference_assets',
-          productionPlan: plan.productionPlan,
-          plan: {
-            title: plan.title,
-            summary: plan.summary,
-            assets: (plan.assets || []).map(asset => ({
-              kind: asset.kind,
-              label: asset.label,
-              prompt: asset.prompt || '',
-            })),
-            shots: (plan.shots || []).map(shot => ({
-              index: shot.index,
-              title: shot.title,
-              duration: shot.duration,
-              camera: shot.camera,
-              prompt: shot.prompt,
-              referenceUrl: shot.referenceUrl,
-            })),
-            nextAction: plan.nextAction,
-          },
-        }),
-        timeoutMs: VIMAX_REFERENCE_REQUEST_TIMEOUT_MS,
-        signal: run.signal,
-        redirectOnUnauthorized: false,
-      });
-      const data = await response.json();
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || '千问参考素材生成失败');
+      let backgroundTaskId = recoveredReferenceTaskId;
+      let acceptedData: Record<string, unknown> = {};
+      if (!backgroundTaskId) {
+        const response = await clientApiRequest('/api/smart/vimax-agent-step', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...requestHeaders },
+          body: JSON.stringify({
+            taskId: plan.taskId,
+            phase: 'reference_assets',
+            productionPlan: plan.productionPlan,
+            plan: {
+              title: plan.title,
+              summary: plan.summary,
+              assets: (plan.assets || []).map(asset => ({
+                kind: asset.kind,
+                label: asset.label,
+                prompt: asset.prompt || '',
+              })),
+              shots: (plan.shots || []).map(shot => ({
+                index: shot.index,
+                title: shot.title,
+                duration: shot.duration,
+                camera: shot.camera,
+                prompt: shot.prompt,
+                referenceUrl: shot.referenceUrl,
+              })),
+              nextAction: plan.nextAction,
+            },
+          }),
+          timeoutMs: VIMAX_REFERENCE_REQUEST_TIMEOUT_MS,
+          signal: run.signal,
+          redirectOnUnauthorized: false,
+        });
+        acceptedData = await response.json().catch(() => ({}));
+        if (response.status !== 202 || acceptedData.success !== true || acceptedData.accepted !== true) {
+          throw new Error(typeof acceptedData.error === 'string' ? acceptedData.error : '参考图任务提交失败');
+        }
+        backgroundTaskId = typeof acceptedData.backgroundTaskId === 'string'
+          ? acceptedData.backgroundTaskId
+          : undefined;
+        if (!backgroundTaskId) throw new Error('参考图任务已受理，但没有返回可恢复的任务号。');
       }
+      activeReferenceTaskIdRef.current = backgroundTaskId;
+      updateRunMessages(run, current => current.map(message => message.id === progressMsgId ? {
+        ...message,
+        vimaxAgent: {
+          ...plan,
+          phase: 'reference_assets',
+          referenceTaskId: backgroundTaskId,
+          costState: 'incurred',
+          nextAction: '参考图正在生成，页面刷新后仍可继续查看。',
+        },
+      } : message));
+
+      const result = await waitForVimaxBackgroundReferenceTask({
+        taskId: backgroundTaskId,
+        requestId: run.requestId,
+        headers: requestHeaders || {},
+        signal: run.signal,
+        onProgress: (progress, stage, message) => {
+          updateRunMessages(run, current => current.map(item => item.id === progressMsgId ? {
+            ...item,
+            content: message || item.content,
+            generationProgress: progress,
+            generationStepInfo: {
+              step: 'seedream-reference',
+              progress,
+              totalSteps: 4,
+              currentStepLabel: stage || '参考图生成中',
+            },
+          } : item));
+        },
+      });
+      const data = { ...acceptedData, ...result, success: true };
 
       const generatedAssets = Array.isArray(data.assets) ? data.assets : [];
       const portraitCount = generatedAssets.filter((asset: { subjectView?: unknown }) => typeof asset.subjectView === 'string').length;
@@ -608,13 +773,11 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
           : `已保留 ${shotReferenceCount} 张分镜参考图；镜头 ${failedShotIndices.join('、')} 尚未完成。重试只会生成缺失镜头，不会重复调用已成功结果。`,
         generationStatus: referencesComplete ? 'completed' : 'failed',
         generationProgress: 100,
-        generatedImages: generatedAssets
-          .filter((asset: { url?: string }) => typeof asset.url === 'string')
-          .map((asset: { url: string; prompt?: string; label?: string }) => ({
-            url: asset.url,
-            prompt: asset.prompt,
-            label: asset.label || '参考素材',
-          })),
+        generatedImages: generatedAssets.flatMap(asset => (
+          typeof asset.url === 'string'
+            ? [{ url: asset.url, prompt: asset.prompt, label: asset.label || '参考素材' }]
+            : []
+        )),
         assetType: '分镜',
         generationStepInfo: { step: 'seedream-reference', progress: 100, totalSteps: 4, currentStepLabel: '参考图已生成' },
         quickOptions: referencesComplete
@@ -623,14 +786,15 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         vimaxAgent: {
           ...plan,
           phase: 'reference_assets',
+          referenceTaskId: backgroundTaskId,
           model: data.model || plan.model,
           costState: 'incurred',
           nextAction: referencesComplete
             ? '确认参考素材后进入视频模型费用确认。'
             : `仅重试缺失镜头 ${failedShotIndices.join('、')}。`,
           shots: shotsWithRef,
-          assets: generatedAssets.map((asset: { kind?: NonNullable<NonNullable<ChatMessage['vimaxAgent']>['assets']>[number]['kind']; label?: string; prompt?: string; url?: string; shotIndex?: number; subjectId?: string; subjectView?: 'front' | 'side' | 'back' }) => ({
-            kind: asset.kind || 'reference',
+          assets: generatedAssets.map(asset => ({
+            kind: (asset.kind as VimaxAssetKind) || 'reference',
             label: asset.label || '参考素材',
             prompt: asset.prompt,
             url: asset.url,
@@ -655,21 +819,48 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         vimaxAgent: {
           ...plan,
           phase: 'reference_assets',
+          referenceTaskId: activeReferenceTaskIdRef.current || undefined,
           costState: 'blocked',
           nextAction: '修正千问图像配置或素材 prompt 后重试。',
         },
       } : message));
     } finally {
-      if (runCoordinator.finish(run)) setIsLoading(false);
+      if (runCoordinator.finish(run)) {
+        activeReferenceTaskIdRef.current = null;
+        setIsLoading(false);
+      }
     }
   }, [messagesRef, onAuthenticationRequired, requestHeaders, runCoordinator, setMessages, setIsLoading, updateRunMessages]);
 
   const handleVideoStep = useCallback(async (options: {
     recover?: boolean;
+    resume?: boolean;
+    cancel?: boolean;
     confirmRouteDecisions?: boolean;
   } = {}) => {
     const recoverCompleted = options.recover === true;
+    const resumeExisting = options.resume === true;
     const reversed = [...messagesRef.current].reverse();
+    const activeVideoAgent = reversed.find(message => message.vimaxAgent?.videoTaskId)?.vimaxAgent;
+    if (options.cancel) {
+      const videoTaskId = activeVideoAgent?.videoTaskId || activeVideoTaskIdRef.current;
+      if (!videoTaskId) return;
+      await clientApiRequest(`/api/tasks/${encodeURIComponent(videoTaskId)}`, {
+        method: 'DELETE',
+        headers: requestHeaders,
+        redirectOnUnauthorized: false,
+      });
+      activeVideoTaskIdRef.current = null;
+      setMessages(current => current.map(message => message.vimaxAgent?.videoTaskId === videoTaskId ? {
+        ...message,
+        content: `${message.content}\n已取消本次成片任务；已完成片段、分镜和参考素材均已保留。`,
+        generationStatus: 'failed',
+        generationProgress: 100,
+        quickOptions: ['找回已完成片段', '调整分镜'],
+      } : message));
+      setIsLoading(false);
+      return;
+    }
     // 真实参考图 URL：优先用 generatedImages（恢复历史后最可靠），回退到 vimaxAgent.assets。
     const refMessage = reversed.find(message => (message.generatedImages || []).some(image => image.url))
       || reversed.find(message => (message.vimaxAgent?.assets || []).some(asset => asset.url));
@@ -714,6 +905,8 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       role: 'assistant',
       content: recoverCompleted
         ? '正在找回本项目已完成的视频片段并合成为完整短剧，不会重新提交生成…'
+        : resumeExisting
+          ? '正在继续查看同一成片任务，不会重新提交视频模型或合成任务…'
         : '正在调用当前视频模型逐段生成完整短剧，预计 4-10 分钟…',
       timestamp: Date.now(),
       generationStatus: 'generating',
@@ -723,56 +916,64 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
       vimaxAgent: {
         ...agent,
         phase: 'video',
+        videoTaskId: resumeExisting ? activeVideoAgent?.videoTaskId : agent.videoTaskId,
         costState: 'incurred',
         nextAction: recoverCompleted ? '等待已完成片段恢复并合成。' : '等待视频模型返回成片。',
       },
     } as ChatMessage]);
 
     try {
-      const response = await clientApiRequest('/api/smart/vimax-agent-step', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...requestHeaders },
-        body: JSON.stringify({
-          taskId: agent.taskId,
-          phase: 'video',
-          confirm: !recoverCompleted,
-          confirmRouteDecisions: options.confirmRouteDecisions === true,
-          recover: recoverCompleted,
-          background: true,
-          recoverCreatedAfter: recoverCompleted ? recoveryOrigin?.timestamp : undefined,
-          productionPlan: agent.productionPlan,
-          ratio: generationSettings.ratio,
-          resolution: generationSettings.resolution,
-          plan: {
-            title: agent.title,
-            summary: agent.summary,
-            shots: (agent.shots || []).map(shot => ({
-              index: shot.index,
-              title: shot.title,
-              duration: shot.duration,
-              camera: shot.camera,
-              prompt: shot.prompt,
-              spatialRelation: shot.spatialRelation,
-              temporalRelation: shot.temporalRelation,
-              routeConfidence: shot.routeConfidence,
-              conflictFlags: shot.conflictFlags,
-              referenceUrl: shot.referenceUrl,
-            })),
-            assets: referenceUrls.map((url, index) => ({
-              kind: 'reference' as const,
-              label: `参考素材${index + 1}`,
-              prompt: '',
-              url,
-            })),
-            nextAction: agent.nextAction,
-          },
-          assets: referenceAssets,
-        }),
-        signal: run.signal,
-        redirectOnUnauthorized: false,
-      });
-      let data = await response.json().catch(() => ({}));
-      if (response.status === 410 && data.code === 'legacy-plan-not-supported') {
+      const response = resumeExisting ? null : await clientApiRequest('/api/smart/vimax-agent-step', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...requestHeaders },
+          body: JSON.stringify({
+            taskId: agent.taskId,
+            phase: 'video',
+            confirm: !recoverCompleted,
+            confirmRouteDecisions: options.confirmRouteDecisions === true,
+            recover: recoverCompleted,
+            background: true,
+            recoverCreatedAfter: recoverCompleted ? recoveryOrigin?.timestamp : undefined,
+            productionPlan: agent.productionPlan,
+            ratio: generationSettings.ratio,
+            resolution: generationSettings.resolution,
+            plan: {
+              title: agent.title,
+              summary: agent.summary,
+              shots: (agent.shots || []).map(shot => ({
+                index: shot.index,
+                title: shot.title,
+                duration: shot.duration,
+                camera: shot.camera,
+                prompt: shot.prompt,
+                spatialRelation: shot.spatialRelation,
+                temporalRelation: shot.temporalRelation,
+                routeConfidence: shot.routeConfidence,
+                conflictFlags: shot.conflictFlags,
+                referenceUrl: shot.referenceUrl,
+              })),
+              assets: referenceUrls.map((url, index) => ({
+                kind: 'reference' as const,
+                label: `参考素材${index + 1}`,
+                prompt: '',
+                url,
+              })),
+              nextAction: agent.nextAction,
+            },
+            assets: referenceAssets,
+          }),
+          signal: run.signal,
+          redirectOnUnauthorized: false,
+        });
+      let data = response
+        ? await response.json().catch(() => ({}))
+        : {
+            success: true,
+            accepted: true,
+            backgroundTaskId: activeVideoAgent?.videoTaskId,
+            recovered: true,
+          };
+      if (response?.status === 410 && data.code === 'legacy-plan-not-supported') {
         updateRunMessages(run, prev => prev.map(message => message.id === progressMsgId ? {
           ...message,
           content: data.error || '旧项目已停止生成，请新建项目后重新规划。',
@@ -794,7 +995,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         } : message));
         return;
       }
-      if (response.status === 409 && data.code === 'shot-route-confirmation-required') {
+      if (response?.status === 409 && data.code === 'shot-route-confirmation-required') {
         const issues = Array.isArray(data.routeIssues)
           ? data.routeIssues.map((issue: { shotIndex?: number; reason?: string }) => (
             `Clip ${issue.shotIndex || '?'}：${issue.reason || '需要确认生成路线'}`
@@ -825,10 +1026,21 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         } : message));
         return;
       }
-      if (response.status === 202 && data.success && data.accepted) {
+      if ((resumeExisting || response?.status === 202) && data.success && data.accepted) {
         if (typeof data.backgroundTaskId !== 'string' || !data.backgroundTaskId) {
           throw new Error('后台视频任务已受理，但没有返回可恢复的任务号。');
         }
+        activeVideoTaskIdRef.current = data.backgroundTaskId;
+        updateRunMessages(run, prev => prev.map(message => message.id === progressMsgId ? {
+          ...message,
+          vimaxAgent: {
+            ...agent,
+            phase: 'video',
+            videoTaskId: data.backgroundTaskId,
+            costState: 'incurred',
+            nextAction: '成片任务正在执行，刷新后可继续查看或取消。',
+          },
+        } : message));
         const backgroundResult = await waitForVimaxBackgroundVideoTask({
           taskId: data.backgroundTaskId,
           requestId: run.requestId,
@@ -851,7 +1063,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         });
         data = { ...data, ...backgroundResult, success: true };
       }
-      if (!response.ok || !data.success || !data.videoUrl) {
+      if ((response && !response.ok) || !data.success || !data.videoUrl) {
         throw new Error(data.error || '视频模型生成失败');
       }
 
@@ -872,6 +1084,7 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
           ...agent,
           taskId: typeof data.taskId === 'string' ? data.taskId : agent.taskId,
           phase: 'video',
+          videoTaskId: typeof data.backgroundTaskId === 'string' ? data.backgroundTaskId : agent.videoTaskId,
           model: data.model || requestHeaders?.['x-yh-video-model'] || 'doubao-seedance-1.5-pro',
           costState: 'incurred',
           nextAction: '完整短剧已生成，可下载、复用或调整分镜后重做。',
@@ -901,27 +1114,101 @@ export function useVimaxShortDramaSkill(deps: VimaxShortDramaSkillDeps): VimaxSh
         vimaxAgent: {
           ...agent,
           phase: 'video',
+          videoTaskId: activeVideoTaskIdRef.current || agent.videoTaskId,
           costState: 'blocked',
           nextAction: '修正视频模型配置或参考素材后重试。',
         },
       } : message));
     } finally {
+      activeVideoTaskIdRef.current = null;
       if (runCoordinator.finish(run)) setIsLoading(false);
     }
   }, [messagesRef, onAuthenticationRequired, requestHeaders, runCoordinator, setMessages, setIsLoading, updateRunMessages]);
 
   const cancelCurrentRun = useCallback(() => {
-    const cancelled = runCoordinator.cancel();
+    const currentRun = runCoordinator.current();
+    const cancelled = runCoordinator.cancel({ abort: currentRun?.phase !== 'plan' });
     if (!cancelled) return false;
+    if (cancelled.phase === 'plan') {
+      pendingPlanningCancelRef.current = true;
+      const taskId = activePlanningTaskIdRef.current;
+      if (taskId) {
+        void clientApiRequest(`/api/tasks/${encodeURIComponent(taskId)}`, {
+          method: 'DELETE',
+          headers: requestHeaders,
+          redirectOnUnauthorized: false,
+        }).catch(() => undefined);
+      }
+    }
+    if (cancelled.phase === 'reference_assets') {
+      const knownReferenceTaskId = activeReferenceTaskIdRef.current;
+      const parentTaskId = [...messagesRef.current].reverse()
+        .find(message => message.id === cancelled.messageId || message.vimaxAgent?.phase === 'reference_assets')
+        ?.vimaxAgent?.taskId;
+      activeReferenceTaskIdRef.current = null;
+      void (async () => {
+        let referenceTaskId = knownReferenceTaskId;
+        if (!referenceTaskId && parentTaskId) {
+          const parentResponse = await clientApiRequest(`/api/tasks/${encodeURIComponent(parentTaskId)}`, {
+            headers: requestHeaders,
+            redirectOnUnauthorized: false,
+          }).catch(() => null);
+          const parentPayload = await parentResponse?.json().catch(() => ({})) as {
+            task?: { result?: { vimaxReferenceTaskId?: string } };
+          } | undefined;
+          referenceTaskId = parentPayload?.task?.result?.vimaxReferenceTaskId || null;
+        }
+        if (!referenceTaskId) return;
+        await clientApiRequest(`/api/tasks/${encodeURIComponent(referenceTaskId)}`, {
+          method: 'DELETE',
+          headers: requestHeaders,
+          redirectOnUnauthorized: false,
+        }).catch(() => undefined);
+      })();
+    }
+    if (cancelled.phase === 'video') {
+      const knownVideoTaskId = activeVideoTaskIdRef.current;
+      const parentTaskId = [...messagesRef.current].reverse()
+        .find(message => message.id === cancelled.messageId || message.vimaxAgent?.phase === 'video')
+        ?.vimaxAgent?.taskId;
+      activeVideoTaskIdRef.current = null;
+      void (async () => {
+        let videoTaskId = knownVideoTaskId;
+        if (!videoTaskId && parentTaskId) {
+          const parentResponse = await clientApiRequest(`/api/tasks/${encodeURIComponent(parentTaskId)}`, {
+            headers: requestHeaders,
+            redirectOnUnauthorized: false,
+          }).catch(() => null);
+          const parentPayload = await parentResponse?.json().catch(() => ({})) as {
+            task?: { result?: { vimaxVideoTaskId?: string } };
+          } | undefined;
+          videoTaskId = parentPayload?.task?.result?.vimaxVideoTaskId || null;
+        }
+        if (!videoTaskId) return;
+        await clientApiRequest(`/api/tasks/${encodeURIComponent(videoTaskId)}`, {
+          method: 'DELETE',
+          headers: requestHeaders,
+          redirectOnUnauthorized: false,
+        }).catch(() => undefined);
+      })();
+    }
     setMessages(current => current.map(message => message.id === cancelled.messageId ? {
       ...message,
-      content: `${message.content}\n已停止本次生成；当前项目和阶段进度已保留。`,
+      content: cancelled.phase === 'reference_assets'
+        ? `${message.content}\n已取消本次参考图生成；分镜、项目素材和已保存结果均已保留。`
+        : cancelled.phase === 'video'
+          ? `${message.content}\n已取消本次成片任务；已完成片段、分镜和参考素材均已保留。`
+          : `${message.content}\n已取消本次规划；原输入、参考素材和项目已保留，可重新生成。`,
       generationStatus: 'failed',
-      quickOptions: ['重新生成'],
+      quickOptions: cancelled.phase === 'reference_assets'
+        ? ['仅重试缺失参考图', '调整分镜']
+        : cancelled.phase === 'video'
+          ? ['找回已完成片段', '调整分镜']
+          : ['重新生成'],
     } : message));
     setIsLoading(false);
     return true;
-  }, [runCoordinator, setIsLoading, setMessages]);
+  }, [messagesRef, requestHeaders, runCoordinator, setIsLoading, setMessages]);
 
   return { handlePlanStep, handleReferenceAssetsStep, handleVideoStep, cancelCurrentRun };
 }

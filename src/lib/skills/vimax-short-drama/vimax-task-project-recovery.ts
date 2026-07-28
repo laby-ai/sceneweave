@@ -18,7 +18,10 @@ const number = (value: unknown, fallback = 0) => Number.isFinite(value) ? Number
 export function shouldMountVimaxTaskBackedControls(
   message: Pick<ChatMessage, 'generatedVideo' | 'generationStatus'>,
 ): boolean {
-  return message.generationStatus === 'completed' && !text(message.generatedVideo?.url);
+  return (
+    (message.generationStatus === 'completed' || message.generationStatus === 'failed')
+    && !text(message.generatedVideo?.url)
+  );
 }
 
 export function needsPersistedVimaxRenderRecovery(task: unknown): boolean {
@@ -114,14 +117,94 @@ function readReferenceResult(result: UnknownRecord) {
 }
 
 export function recoverVimaxTaskProject(task: unknown): RecoveredVimaxTaskProject | null {
-  if (!isRecord(task) || text(task.status) !== 'completed') return null;
+  if (!isRecord(task)) return null;
+  const status = text(task.status);
   const taskId = text(task.id);
-  const result = isRecord(task.result) ? task.result : null;
-  if (!taskId || !result) return null;
-  const locked = readLockedVideo(result);
-  const referenceResult = locked ? null : readReferenceResult(result);
-
   const config = isRecord(task.config) ? task.config : {};
+  if (!taskId) return null;
+  const projectId = text(config.projectId) || `task:${taskId}`;
+  if (
+    (status === 'cancelled' || status === 'failed')
+    && text(config.workflow) === 'vimax-agent'
+    && text(config.phase) === 'plan'
+  ) {
+    const prompt = text(config.prompt) || '继续短剧规划';
+    const createdAt = number(task.createdAt, Date.now());
+    const cancelled = status === 'cancelled';
+    const messages: ChatMessage[] = [{
+      id: `${taskId}:prompt`,
+      role: 'user',
+      content: prompt,
+      timestamp: createdAt,
+    }, {
+      id: `${taskId}:planning-${status}`,
+      role: 'assistant',
+      content: cancelled
+        ? '本次规划已取消。原输入、参考素材和项目均已保留，可重新生成。'
+        : '本次规划未完成。原输入、参考素材和项目均已保留，可重新生成。',
+      timestamp: number(task.lastUpdatedAt, createdAt),
+      generationStatus: 'failed',
+      generationProgress: 100,
+      generationType: 'storyboard',
+      generationStepInfo: {
+        step: 'vimax-agent-plan',
+        progress: 100,
+        totalSteps: 4,
+        currentStepLabel: cancelled ? '规划已取消' : '规划失败',
+      },
+      quickOptions: ['重新生成'],
+      vimaxAgent: {
+        phase: 'plan',
+        title: '短剧制作计划',
+        summary: prompt,
+        model: text(config.model) || '规划模型',
+        costState: 'blocked',
+        nextAction: '重新生成只会启动一次新的规划，不会进入参考图或视频阶段。',
+        taskId,
+      },
+    }];
+    return {
+      project: {
+        id: projectId,
+        title: prompt.slice(0, 30) || '短剧规划',
+        time: number(task.lastUpdatedAt, createdAt),
+        messages,
+        params: { recoveredTaskId: taskId },
+      },
+      messages,
+    };
+  }
+  if (status !== 'completed') return null;
+  const result = isRecord(task.result) ? task.result : null;
+  if (!result) return null;
+  const locked = readLockedVideo(result);
+  const videoTaskId = text(result.vimaxVideoTaskId);
+  const videoTaskStatus = text(result.vimaxVideoTaskStatus);
+  const activeVideoTaskId = videoTaskId
+    && (!videoTaskStatus || videoTaskStatus === 'pending' || videoTaskStatus === 'running')
+    ? videoTaskId
+    : '';
+  const assemblyPlan = isRecord(result.assemblyPlan) ? result.assemblyPlan : null;
+  const assemblyStatus = text(assemblyPlan?.status);
+  const assemblySegments = Array.isArray(assemblyPlan?.segments)
+    ? assemblyPlan.segments.filter(isRecord)
+    : [];
+  const hasRecoverableSegment = assemblySegments.some(segment => (
+    text(segment.status) === 'failed' || text(segment.status) === 'cancelled'
+  ));
+  const hasActiveSegment = (assemblyStatus === 'running' || assemblyStatus === 'partial') && assemblySegments.some(segment => (
+    text(segment.status) === 'queued'
+    || text(segment.status) === 'pending'
+    || text(segment.status) === 'running'
+  ));
+  const activeVideoWorkflow = Boolean(activeVideoTaskId || hasActiveSegment);
+  const recoverableVideoTask = Boolean(
+    (videoTaskId && (videoTaskStatus === 'failed' || videoTaskStatus === 'cancelled'))
+    || hasRecoverableSegment,
+  );
+  const referenceResult = locked || activeVideoWorkflow ? null : readReferenceResult(result);
+  const activeReferenceTaskId = text(result.vimaxReferenceTaskId);
+
   const productionProject = isRecord(result.productionProject) ? result.productionProject : {};
   const prompt = text(config.prompt) || text(result.creationPrompt) || '恢复已完成的短剧项目';
   const title = text(productionProject.title) || prompt.slice(0, 30) || '已恢复短剧';
@@ -200,7 +283,7 @@ export function recoverVimaxTaskProject(task: unknown): RecoveredVimaxTaskProjec
     }, assistant];
     return {
       project: {
-        id: `task:${taskId}`,
+        id: projectId,
         title,
         time: number(task.lastUpdatedAt, createdAt),
         messages,
@@ -221,20 +304,40 @@ export function recoverVimaxTaskProject(task: unknown): RecoveredVimaxTaskProjec
     const assistant: ChatMessage = {
       id: `${taskId}:planned`,
       role: 'assistant',
-      content: `已恢复短剧「${title}」的当前故事与分镜。旧参考图和视频不会复用，请确认当前版本后重新生成。`,
+      content: activeVideoWorkflow
+        ? `已恢复短剧「${title}」和正在处理的成片任务；继续查看不会重新提交视频模型或合成任务。`
+        : recoverableVideoTask
+          ? `已恢复短剧「${title}」；上次成片任务${videoTaskStatus === 'cancelled' ? '已取消' : '未完成'}，已完成片段、分镜和参考素材均已保留。`
+        : activeReferenceTaskId
+          ? `已恢复短剧「${title}」和正在处理的参考图任务；继续查看不会重新提交模型任务。`
+          : `已恢复短剧「${title}」的当前故事与分镜。旧参考图和视频不会复用，请确认当前版本后重新生成。`,
       timestamp: number(task.lastUpdatedAt, createdAt),
-      generationStatus: 'completed',
-      generationProgress: 100,
-      generationType: 'storyboard',
-      quickOptions: ['确认计划', '调整分镜', '取消'],
+      generationStatus: activeVideoWorkflow || recoverableVideoTask || activeReferenceTaskId ? 'failed' : 'completed',
+      generationProgress: activeVideoWorkflow ? 80 : recoverableVideoTask ? 100 : activeReferenceTaskId ? 35 : 100,
+      generationType: activeVideoWorkflow || recoverableVideoTask ? 'video' : activeReferenceTaskId ? 'image' : 'storyboard',
+      quickOptions: activeVideoWorkflow
+        ? ['继续查看成片', '取消成片']
+        : recoverableVideoTask
+          ? ['找回已完成片段', '调整分镜']
+        : activeReferenceTaskId
+          ? ['继续查看参考图', '取消参考图']
+          : ['确认计划', '调整分镜', '取消'],
       vimaxAgent: {
-        phase: 'plan',
+        phase: activeVideoWorkflow || recoverableVideoTask ? 'video' : activeReferenceTaskId ? 'reference_assets' : 'plan',
         title,
         summary: text(plan.summary) || prompt,
         model: text(productionPlan.providerRoutes.find(route => route.stage === 'plan')?.model) || '规划模型',
-        costState: 'not-yet',
-        nextAction: '确认当前故事和分镜后重新生成参考图。',
+        costState: activeVideoWorkflow || recoverableVideoTask || activeReferenceTaskId ? 'incurred' : 'not-yet',
+        nextAction: activeVideoWorkflow
+          ? '继续查看同一成片任务，或取消后从已完成片段恢复。'
+          : recoverableVideoTask
+            ? '找回已完成片段并只恢复未交付的成片步骤。'
+          : activeReferenceTaskId
+            ? '继续查看同一参考图任务，或取消后仅重试缺失镜头。'
+            : '确认当前故事和分镜后重新生成参考图。',
         taskId,
+        referenceTaskId: activeReferenceTaskId || undefined,
+        videoTaskId: activeVideoTaskId || undefined,
         productionPlan,
         assets: planAssets.map((item, index) => ({
           kind: ['character', 'scene', 'prop', 'reference'].includes(text(item.kind))
@@ -262,7 +365,7 @@ export function recoverVimaxTaskProject(task: unknown): RecoveredVimaxTaskProjec
     }, assistant];
     return {
       project: {
-        id: `task:${taskId}`,
+        id: projectId,
         title,
         time: number(task.lastUpdatedAt, createdAt),
         messages,
@@ -324,7 +427,7 @@ export function recoverVimaxTaskProject(task: unknown): RecoveredVimaxTaskProjec
     timestamp: createdAt,
   }, assistant];
   const project: ChatHistoryEntry = {
-    id: `task:${taskId}`,
+    id: projectId,
     title,
     time: number(task.lastUpdatedAt, createdAt),
     messages,

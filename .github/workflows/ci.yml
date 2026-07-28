@@ -74,6 +74,7 @@ jobs:
           pnpm run test:creation-agent-layout
           pnpm run test:vimax-planning-contract
           pnpm run test:vimax-planner-shot-preservation
+          pnpm run test:vimax-non-narrative-plan-semantics
           pnpm run test:vimax-initial-references
           pnpm run test:vimax-reference-assets-recovery
           pnpm run test:task-store-durability
@@ -116,3 +117,4 @@ jobs:
           pnpm run qa:creation-agent-user-journey
           pnpm run qa:vimax-story-bible-editor
           pnpm run qa:segment-retry-browser
+          pnpm run qa:vimax-planning-cancel-browser

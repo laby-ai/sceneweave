@@ -41,7 +41,9 @@ export async function PATCH(
       productionProjectId: result.productionProject.id,
       shot: result.shot,
       storyboard: result.productionProject.storyboard,
+      productionProject: result.productionProject,
       changedFields: result.changedFields,
+      invalidation: result.invalidation,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : '分镜镜头写回失败';

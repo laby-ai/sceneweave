@@ -27,6 +27,15 @@ export interface VimaxStoryboardWritebackResponse {
   success: boolean;
   shot?: StoryboardShot;
   storyboard?: ProductionProject['storyboard'];
+  productionProject?: ProductionProject;
+  invalidation?: {
+    fromShotIndex: number;
+    retainedAcceptedSegments: number;
+    invalidatedShots: number;
+    removedReferenceAssets: number;
+    removedVideoSegments: number;
+    removedFinalVideos: number;
+  };
   error?: string;
 }
 
@@ -71,6 +80,7 @@ export function applyVimaxStoryboardEditorWriteback(
   if (!response.success || !response.shot || !response.storyboard) {
     throw new Error(response.error || '分镜保存失败');
   }
+  if (response.productionProject) return response.productionProject;
   if (!project.storyboard.shots.some(shot => shot.id === response.shot?.id)) throw new Error('分镜不存在');
   return { ...project, storyboard: response.storyboard };
 }

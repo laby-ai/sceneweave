@@ -307,6 +307,53 @@ function recoverInterruptedTask(task: BackgroundTask, timestamp: number): Backgr
   };
 }
 
+function reconcileVimaxVideoTaskStates(tasks: Map<string, BackgroundTask>, timestamp: number) {
+  let reconciled = false;
+  for (const [taskId, task] of tasks) {
+    const childTaskId = typeof task.result?.vimaxVideoTaskId === 'string'
+      ? task.result.vimaxVideoTaskId
+      : '';
+    if (!childTaskId) continue;
+    const child = tasks.get(childTaskId);
+    if (!child
+      || child.config.workflow !== 'vimax-agent-video'
+      || task.result?.vimaxVideoTaskStatus === child.status) continue;
+    tasks.set(taskId, {
+      ...task,
+      result: {
+        ...(task.result || {}),
+        vimaxVideoTaskStatus: child.status,
+      },
+      lastUpdatedAt: timestamp,
+      eventSeq: nextTaskEventSeq(task),
+    });
+    reconciled = true;
+  }
+  return reconciled;
+}
+
+function syncVimaxParentVideoTaskStatus(
+  tasks: Map<string, BackgroundTask>,
+  child: BackgroundTask,
+  status: TaskStatus,
+  timestamp: number,
+) {
+  if (child.config.workflow !== 'vimax-agent-video') return;
+  const parentTaskId = typeof child.config.parentTaskId === 'string' ? child.config.parentTaskId : '';
+  const parent = parentTaskId ? tasks.get(parentTaskId) : undefined;
+  if (!parent || !child.owner || !taskBelongsToOwner(parent, child.owner)) return;
+  tasks.set(parentTaskId, {
+    ...parent,
+    result: {
+      ...(parent.result || {}),
+      vimaxVideoTaskId: child.id,
+      vimaxVideoTaskStatus: status,
+    },
+    lastUpdatedAt: timestamp,
+    eventSeq: nextTaskEventSeq(parent),
+  });
+}
+
 /**
  * 保存所有任务到文件
  */
@@ -357,6 +404,7 @@ function getTaskStore(): Map<string, BackgroundTask> {
           recovered = true;
         }
       }
+      if (reconcileVimaxVideoTaskStates(taskCache, timestamp)) recovered = true;
       if (recovered) saveTasksToFile(taskCache);
     }
     lastLoadTime = now;
@@ -689,6 +737,7 @@ export function cancelTask(taskId: string): boolean {
     abortController: undefined,
   };
   store.set(taskId, cancelledTask);
+  syncVimaxParentVideoTaskStatus(store, cancelledTask, 'cancelled', Date.now());
   
   saveTasksToFile(store);
   emitTaskStateEvent({
@@ -753,6 +802,7 @@ export function retryTask(taskId: string): BackgroundTask | undefined {
   };
 
   store.set(taskId, updatedTask);
+  syncVimaxParentVideoTaskStatus(store, updatedTask, 'pending', updatedTask.lastUpdatedAt || Date.now());
   saveTasksToFile(store);
 
   emitTaskStateEvent({ owner: updatedTask.owner, taskId, taskType: task.type, status: 'queued' });

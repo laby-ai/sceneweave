@@ -258,10 +258,8 @@ try {
   assert.equal(createdSubject.status, 201, JSON.stringify(createdSubject.body));
 
   await expectOne(page.getByRole('button', { name: '生成创作' }), 'generate navigation').then(item => item.click());
-  const subjectButton = await expectOne(page.locator('button[title="添加主体"]'), 'subject menu button');
-  await subjectButton.click();
-  await expectOne(page.getByText('林夏', { exact: true }), 'subject menu item').then(item => item.waitFor({ state: 'visible' }));
-  await subjectButton.click();
+  assert.equal(await page.locator('button[title="添加主体"]').count(), 0, 'creation input must not expose the internal subject registry');
+  assert.equal(await page.locator('select[aria-label="参考图用途"]').count(), 0, 'creation input must not require an internal reference taxonomy');
 
   await expectOne(page.getByRole('button', { name: '回到绘影首页' }), 'home navigation').then(item => item.click());
   await expectOne(page.getByText('剧本分镜', { exact: true }), 'film entry').then(item => item.click());

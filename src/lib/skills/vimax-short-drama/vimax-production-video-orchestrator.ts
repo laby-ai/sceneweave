@@ -24,8 +24,13 @@ export function isReusableVimaxBoundaryBridge(
     && boundary.newCameraImageUrl);
 }
 
-async function waitForOwnedTask(owner: TaskOwner, taskId: string) {
+function throwIfAborted(signal?: AbortSignal) {
+  if (signal?.aborted) throw new Error('video_background_cancelled');
+}
+
+async function waitForOwnedTask(owner: TaskOwner, taskId: string, signal?: AbortSignal) {
   for (let attempt = 0; attempt < 1_800; attempt += 1) {
+    throwIfAborted(signal);
     const task = getTaskForOwner(taskId, owner);
     if (!task) throw new Error('视频子任务不存在或无权访问。');
     if (TERMINAL_TASK_STATUSES.has(task.status)) {
@@ -34,7 +39,19 @@ async function waitForOwnedTask(owner: TaskOwner, taskId: string) {
       }
       return task;
     }
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise<void>((resolve, reject) => {
+      const finish = () => {
+        signal?.removeEventListener('abort', cancel);
+        resolve();
+      };
+      const timer = setTimeout(finish, 500);
+      const cancel = () => {
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', cancel);
+        reject(new Error('video_background_cancelled'));
+      };
+      signal?.addEventListener('abort', cancel, { once: true });
+    });
   }
   throw new Error('视频子任务等待超时；任务号已保存，可稍后从项目中继续恢复。');
 }
@@ -46,6 +63,7 @@ export async function runVimaxProductionVideoOrchestrator(input: {
   imageConnection?: BYOKConnection;
   model: string;
   generateAudio?: boolean;
+  signal?: AbortSignal;
   shots?: Array<{ index: number; title?: string }>;
   onSegmentState?: (segment: HappyHorseVimaxSegment) => void | Promise<void>;
 }) {
@@ -54,6 +72,7 @@ export async function runVimaxProductionVideoOrchestrator(input: {
     taskId: input.parentTaskId,
   });
   for (let index = 0; index < queue.childTaskIds.length; index += 1) {
+    throwIfAborted(input.signal);
     const childTaskId = queue.childTaskIds[index];
     const child = prepareVimaxProductionSegmentForStart({
       owner: input.owner,
@@ -68,7 +87,7 @@ export async function runVimaxProductionVideoOrchestrator(input: {
         allowRealCost: true,
         generateAudio: input.generateAudio,
       }, input.connection, input.imageConnection);
-      await waitForOwnedTask(input.owner, childTaskId);
+      await waitForOwnedTask(input.owner, childTaskId, input.signal);
     }
     const latestParent = getTaskForOwner(input.parentTaskId, input.owner);
     const latestPlan = latestParent?.result?.assemblyPlan as ProductionAssemblyPlan | undefined;
@@ -89,6 +108,7 @@ export async function runVimaxProductionVideoOrchestrator(input: {
       });
     }
     if (index >= queue.childTaskIds.length - 1) continue;
+    throwIfAborted(input.signal);
     const parentAfterSegment = getTaskForOwner(input.parentTaskId, input.owner);
     const planAfterSegment = parentAfterSegment?.result?.assemblyPlan as ProductionAssemblyPlan | undefined;
     const nextSegment = planAfterSegment?.segments[index + 1];
@@ -102,9 +122,10 @@ export async function runVimaxProductionVideoOrchestrator(input: {
       generateAudio: input.generateAudio,
     }, input.connection);
     if (!bridge.childTaskId) throw new Error('边界桥接任务未建立，已停止下一镜提交。');
-    await waitForOwnedTask(input.owner, bridge.childTaskId);
+    await waitForOwnedTask(input.owner, bridge.childTaskId, input.signal);
   }
 
+  throwIfAborted(input.signal);
   const parent = getTaskForOwner(input.parentTaskId, input.owner);
   const assemblyPlan = parent?.result?.assemblyPlan as ProductionAssemblyPlan | undefined;
   if (!parent?.result || !assemblyPlan || assemblyPlan.status !== 'completed') {
@@ -141,6 +162,7 @@ export async function runVimaxProductionVideoOrchestrator(input: {
   }
   const { videoUrl, merge } = await finalizeHappyHorseSegments(segments, input.owner, {
     boundaryBridgeUrls,
+    signal: input.signal,
   });
   return {
     model: input.model,

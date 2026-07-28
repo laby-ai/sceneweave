@@ -112,6 +112,8 @@ export interface ChatMessage {
     costState: 'incurred' | 'not-yet' | 'blocked';
     nextAction: string;
     taskId?: string;
+    referenceTaskId?: string;
+    videoTaskId?: string;
     generationSettings?: {
       planModel: string;
       imageModel: string;
@@ -120,6 +122,30 @@ export interface ChatMessage {
       resolution: string;
     };
     productionPlan?: import('@/lib/skills/vimax-short-drama/vimax-production-plan').VimaxProductionPlan;
+    story?: {
+      premise?: string;
+      protagonist?: string;
+      desire?: string;
+      obstacle?: string;
+      conflict?: string;
+      turningPoint?: string;
+      endingHook?: string;
+    };
+    characters?: Array<{
+      id: string;
+      label: string;
+      description: string;
+    }>;
+    scenes?: Array<{
+      id: string;
+      label: string;
+      description: string;
+    }>;
+    props?: Array<{
+      id: string;
+      label: string;
+      description: string;
+    }>;
     assets?: Array<{
       kind: 'script' | 'character' | 'scene' | 'prop' | 'shot' | 'reference';
       label: string;
@@ -138,6 +164,10 @@ export interface ChatMessage {
       duration: number;
       camera: string;
       prompt: string;
+      actionStart?: string;
+      actionEnd?: string;
+      dialogue?: string;
+      narration?: string;
       spatialRelation?: 'same-scene' | 'new-scene';
       temporalRelation?: 'continuous' | 'elapsed' | 'time-jump';
       routeConfidence?: 'high' | 'medium' | 'low';

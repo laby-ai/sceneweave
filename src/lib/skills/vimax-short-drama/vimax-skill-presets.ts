@@ -65,6 +65,10 @@ export const VIMAX_SKILL_PRESETS: VimaxSkillPreset[] = [
   },
 ];
 
+const VIMAX_DISCOVERABLE_SKILL_PRESETS = VIMAX_SKILL_PRESETS.filter(
+  preset => preset.id !== 'storyboard-director',
+);
+
 export function resolveVimaxSkillPreset(id?: string | null): VimaxSkillPreset {
   return VIMAX_SKILL_PRESETS.find(preset => preset.id === id) || VIMAX_SKILL_PRESETS[0];
 }
@@ -78,8 +82,8 @@ export function resolveVimaxSkillPresetForRuntime(id?: string | null): VimaxSkil
 
 export function searchVimaxSkillPresets(query: string): VimaxSkillPreset[] {
   const normalized = query.trim().toLocaleLowerCase();
-  if (!normalized) return VIMAX_SKILL_PRESETS;
-  return VIMAX_SKILL_PRESETS.filter(preset => (
+  if (!normalized) return VIMAX_DISCOVERABLE_SKILL_PRESETS;
+  return VIMAX_DISCOVERABLE_SKILL_PRESETS.filter(preset => (
     [preset.name, preset.description, ...preset.keywords].some(value => value.toLocaleLowerCase().includes(normalized))
   ));
 }

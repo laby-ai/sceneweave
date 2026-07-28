@@ -72,23 +72,64 @@ const routes = resolveVimaxShotGenerationRoutes({
 });
 
 assert.deepEqual(routes.map(route => route.mode), [
-  'multi-reference',
   'first-frame',
-  'multi-reference',
+  'first-frame',
+  'first-frame',
 ]);
 assert.deepEqual(routes.map(route => route.model), [
-  'happyhorse-1.1-r2v',
   'happyhorse-1.1-i2v',
-  'happyhorse-1.1-r2v',
+  'happyhorse-1.1-i2v',
+  'happyhorse-1.1-i2v',
+]);
+assert.deepEqual(routes.map(route => route.boundaryIntent), [
+  'establish',
+  'continue',
+  'cut',
 ]);
 assert.equal(routes[0].requestedBy, 'server-default');
 assert.equal(routes[1].requestedBy, 'planner');
 assert.equal(routes[1].requiresPreviousLastFrame, true);
 assert.equal(routes[1].canonicalFirstFrameRequired, false);
 assert.equal(routes[1].requiresConfirmation, false);
+assert.equal(routes[0].canonicalFirstFrameRequired, true);
+assert.equal(routes[2].canonicalFirstFrameRequired, true);
 assert.deepEqual(routes[0].referenceRoles, ['subject', 'scene', 'prop']);
 assert.deepEqual(routes[1].referenceRoles, ['previous-tail']);
 assert.deepEqual(routes[2].referenceRoles, ['subject', 'scene', 'prop']);
+
+const bridgeRoutes = resolveVimaxShotGenerationRoutes({
+  shots: [
+    {
+      ...plan.shots[1],
+      index: 5,
+      title: '推门前',
+      sceneId: 'scene-rooftop',
+      actionStart: '林浅走向铁门。',
+      actionEnd: '林浅站在铁门前，右手伸出触碰生锈的门把手。',
+    },
+    {
+      ...plan.shots[2],
+      index: 6,
+      title: '穿过铁门',
+      sceneId: 'scene-projection-room',
+      actionStart: '林浅站在铁门前，右手伸出触碰生锈的门把手。',
+      actionEnd: '林浅完全进入黑暗房间，门在身后半掩，眼前出现放映机。',
+      spatialRelation: 'new-scene',
+      temporalRelation: 'continuous',
+      routeConfidence: 'high',
+      conflictFlags: [],
+    },
+  ],
+  provider: 'happyhorse-dashscope',
+  configuredModel: 'happyhorse-1.1-r2v',
+});
+assert.equal(bridgeRoutes[1].boundaryIntent, 'bridge');
+assert.equal(bridgeRoutes[1].mode, 'first-frame');
+assert.equal(bridgeRoutes[1].model, 'happyhorse-1.1-i2v');
+assert.equal(bridgeRoutes[1].requiresPreviousLastFrame, true);
+assert.equal(bridgeRoutes[1].canonicalFirstFrameRequired, false);
+assert.equal(bridgeRoutes[1].requiresConfirmation, false);
+assert.deepEqual(bridgeRoutes[1].referenceRoles, ['previous-tail']);
 
 const uncertainRoutes = resolveVimaxShotGenerationRoutes({
   shots: [
@@ -148,7 +189,7 @@ const recovered = JSON.parse(JSON.stringify(routed.assemblyPlan)) as {
 };
 assert.deepEqual(
   recovered.segments.map(segment => segment.generationRoute?.model),
-  ['happyhorse-1.1-r2v', 'happyhorse-1.1-i2v', 'happyhorse-1.1-r2v'],
+  ['happyhorse-1.1-i2v', 'happyhorse-1.1-i2v', 'happyhorse-1.1-i2v'],
 );
 assert.match(recovered.segments[1].generationRoute?.reason || '', /连续动作/);
 

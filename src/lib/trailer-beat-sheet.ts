@@ -99,7 +99,11 @@ function primaryPropName(project: ProductionProject) {
   return project.assets.find(asset => asset.kind === 'prop')?.name || '关键线索';
 }
 
-function sceneName(project: ProductionProject) {
+function sceneName(
+  project: ProductionProject,
+  shot?: ProductionProject['storyboard']['shots'][number],
+) {
+  if (shot?.sceneLabel?.trim()) return shot.sceneLabel.trim();
   return project.assets.find(asset => asset.kind === 'scene')?.name
     || project.semanticPlan?.sceneBibles?.[0]?.name
     || '主要场景';
@@ -111,162 +115,49 @@ function trailerStructure(duration: number): TrailerBeatSheet['structure'] {
   return '90s-trailer';
 }
 
-function timeRanges(duration: number, count: number) {
-  const ranges: string[] = [];
-  for (let index = 0; index < count; index += 1) {
-    const start = Math.round((duration * index) / count);
-    const end = Math.round((duration * (index + 1)) / count);
-    ranges.push(`${start}-${end}s`);
-  }
-  return ranges;
-}
-
-function beatKind(index: number, total: number): TrailerBeatKind {
+function trailerKindForBeat(beatId: ProductionStoryBeatId, index: number, total: number): TrailerBeatKind {
   if (index === 0) return 'hook';
-  if (index === 1) return 'setup';
-  if (index === 2) return 'inciting';
-  if (index < total - 2) return 'escalation';
-  if (index === total - 2) return 'climax';
-  return 'button';
-}
-
-function beatLabel(kind: TrailerBeatKind) {
-  const labels: Record<TrailerBeatKind, string> = {
-    hook: '冷开场钩子',
-    setup: '主角和目标',
-    inciting: '引爆事件',
-    escalation: '冲突升级',
-    turning: '关键转折',
-    climax: '最强预告片瞬间',
-    button: '结尾悬念',
-  };
-  return labels[kind];
-}
-
-function sourceBeat(kind: TrailerBeatKind, index: number, storyBeatIds: ProductionStoryBeatId[]): ProductionStoryBeatId {
-  if (kind === 'hook' || kind === 'setup') return storyBeatIds.find(id => id === 'setup') || storyBeatIds[0];
-  if (kind === 'inciting') return storyBeatIds.find(id => id === 'inciting') || storyBeatIds[Math.min(index, storyBeatIds.length - 1)];
-  if (kind === 'climax') return storyBeatIds.find(id => id === 'turning') || storyBeatIds[Math.min(index, storyBeatIds.length - 1)];
-  if (kind === 'button') return storyBeatIds.find(id => id === 'resolution') || storyBeatIds[storyBeatIds.length - 1];
-  return storyBeatIds.find(id => id === 'conflict') || storyBeatIds[Math.min(index, storyBeatIds.length - 1)];
-}
-
-function requiredVisual(project: ProductionProject, kind: TrailerBeatKind) {
-  const subject = project.storyBible.protagonist;
-  const prop = primaryPropName(project);
-  const scene = sceneName(project);
-  switch (kind) {
-    case 'hook':
-      return `用一个不解释但能看懂的异常画面抓住观众：${scene}里${prop}状态异常，同时露出被威胁对象或危险源，${subject}即将被牵入事件。`;
-    case 'setup':
-      return `明确展示${subject}、目标、被威胁对象和赌注，观众要知道主角为什么必须行动。`;
-    case 'inciting':
-      return `${subject}发现${prop}触发新信息，动作必须是拿起、查看、按下、推开或冲向目标，并让屏幕/环境显示危险源。`;
-    case 'escalation':
-      return `危险升级到画面可见：被威胁对象、阻挡、倒计时、追赶、警报、坍塌、直播或数据失控必须入画。`;
-    case 'climax':
-      return `${subject}做出最大风险动作，让预告片的高光通过身体动作、道具状态和操作结果发生。`;
-    case 'button':
-      return `只给结果边缘和悬念：${prop}状态改变，并出现新的未解问题或更大危险，不提前解释完整结局。`;
-    default:
-      return `${subject}围绕${prop}完成一个能改变局面的动作。`;
-  }
-}
-
-function viewerCheckpoint(project: ProductionProject, kind: TrailerBeatKind) {
-  const subject = project.storyBible.protagonist;
-  const prop = primaryPropName(project);
-  switch (kind) {
-    case 'hook':
-      return `观众不用读字幕也能回答：发生了什么异常，${prop}为什么值得注意。`;
-    case 'setup':
-      return `观众能说清${subject}是谁、想做什么、为什么不能离开。`;
-    case 'inciting':
-      return `观众能看见${prop}触发新信息，并理解${subject}必须马上行动。`;
-    case 'escalation':
-      return `观众能看见失败风险升级：谁会受损、危险来自哪里，不只是角色表情变紧张。`;
-    case 'climax':
-      return `观众能看见${subject}做出最大风险动作，并看见操作结果让局面明显不同。`;
-    case 'button':
-      return `观众能记住最后一个悬念画面，说出新的未解问题，并期待下一场。`;
-    default:
-      return `观众能看懂${subject}围绕${prop}完成了什么动作。`;
-  }
-}
-
-function storyQuestion(project: ProductionProject, kind: TrailerBeatKind) {
-  const subject = project.storyBible.protagonist;
-  const prop = primaryPropName(project);
-  switch (kind) {
-    case 'hook':
-      return `${prop}为什么会出现在这里？`;
-    case 'setup':
-      return `${subject}为什么必须介入？`;
-    case 'inciting':
-      return `${prop}暴露了什么新危险？`;
-    case 'escalation':
-      return `${subject}如果失败会失去什么？`;
-    case 'climax':
-      return `${subject}敢不敢付出代价改写结果？`;
-    case 'button':
-      return `结果真的被改写了吗？`;
-    default:
-      return `${subject}下一步要做什么？`;
-  }
-}
-
-function imageHandoff(project: ProductionProject, kind: TrailerBeatKind) {
-  const subject = project.storyBible.protagonist;
-  const prop = primaryPropName(project);
-  const scene = sceneName(project);
-  switch (kind) {
-    case 'hook':
-      return `${scene}中的${prop}特写作为下一段视觉接力棒。`;
-    case 'setup':
-      return `${subject}的视线落到${prop}，下一段从同一视线方向接起。`;
-    case 'inciting':
-      return `${prop}上的异常信息保持在画面中，下一段先复现该状态。`;
-    case 'escalation':
-      return `危险标识、倒计时或阻挡物保持同一位置，下一段承接升级。`;
-    case 'climax':
-      return `${subject}的手部动作或身体冲刺方向作为下一段开头动作。`;
-    case 'button':
-      return `${prop}的新状态留在最后一帧，作为首页/素材回看时的记忆点。`;
-    default:
-      return `${subject}、${scene}、${prop}三者关系必须在相邻段落保持。`;
-  }
-}
-
-function audioCue(project: ProductionProject, kind: TrailerBeatKind) {
-  if (kind === 'hook') return '冷开场低频、环境声或一句短促求救/警报。';
-  if (kind === 'button') return `声音戛然而止，保留一句和${primaryPropName(project)}有关的悬念声。`;
-  return '音乐逐步抬升，字幕/旁白只补充目标和危险，不解释画面已经能表达的信息。';
+  if (index === total - 1) return 'button';
+  if (beatId === 'setup') return 'setup';
+  if (beatId === 'inciting') return 'inciting';
+  if (beatId === 'turning') return 'turning';
+  if (beatId === 'resolution') return 'climax';
+  return 'escalation';
 }
 
 export function buildTrailerBeatSheet(productionProject: ProductionProject): TrailerBeatSheet {
   const structure = trailerStructure(productionProject.duration);
-  const targetCount = structure === '30s-trailer' ? 5 : structure === '60s-trailer' ? 7 : 8;
-  const storyBeatIds = productionProject.storyBible.beats.map(beat => beat.id);
-  const ranges = timeRanges(productionProject.duration, targetCount);
-  const beats = ranges.map((timeRange, index) => {
-    const kind = beatKind(index, ranges.length);
-    const storyBeatId = sourceBeat(kind, index, storyBeatIds);
-    const source = productionProject.storyBible.beats.find(beat => beat.id === storyBeatId);
+  let elapsed = 0;
+  const beats = productionProject.storyboard.shots.map((shot, index) => {
+    const start = elapsed;
+    elapsed += shot.duration;
+    const nextShot = productionProject.storyboard.shots[index + 1];
+    const source = productionProject.storyBible.beats.find(beat => beat.id === shot.storyBeat);
+    const kind = trailerKindForBeat(shot.storyBeat, index, productionProject.storyboard.shots.length);
+    const targetState = nextShot?.firstFrameDescription?.trim()
+      || nextShot?.actionStart?.trim()
+      || productionProject.storyBible.endingHook;
     return {
       id: `trailer-beat-${index + 1}`,
       kind,
-      label: beatLabel(kind),
-      timeRange,
-      purpose: source?.purpose || productionProject.storyBible.conflict,
-      requiredVisual: requiredVisual(productionProject, kind),
-      viewerCheckpoint: viewerCheckpoint(productionProject, kind),
-      storyQuestion: storyQuestion(productionProject, kind),
-      imageHandoff: imageHandoff(productionProject, kind),
-      audioCue: audioCue(productionProject, kind),
-      sourceStoryBeat: storyBeatId,
-      shotIds: source?.shotIds?.length ? source.shotIds : productionProject.storyboard.shots
-        .filter(shot => shot.storyBeat === storyBeatId)
-        .map(shot => shot.id),
+      label: shot.phaseLabel || shot.dramaticPurpose || `镜头 ${index + 1}`,
+      timeRange: `${start}-${elapsed}s`,
+      purpose: shot.dramaticPurpose || source?.purpose || shot.prompt,
+      requiredVisual: shot.prompt,
+      viewerCheckpoint: shot.actionEnd?.trim()
+        || shot.lastFrameDescription?.trim()
+        || shot.prompt,
+      storyQuestion: targetState,
+      imageHandoff: [
+        shot.lastFrameDescription?.trim() || shot.actionEnd?.trim(),
+        targetState,
+      ].filter(Boolean).join(' -> '),
+      audioCue: shot.audioIntent?.trim()
+        || shot.subtitleText?.trim()
+        || shot.narrationText?.trim()
+        || '',
+      sourceStoryBeat: shot.storyBeat,
+      shotIds: [shot.id],
     };
   });
 
@@ -275,10 +166,9 @@ export function buildTrailerBeatSheet(productionProject: ProductionProject): Tra
     reference: {
       primary: 'ViMAX',
       adaptedIdeas: [
-        '把创意先压成预告片节拍 artifact，再交给导演链和分镜',
-        '30/60/90 秒采用不同节拍密度，但都保留冷开场、主角目标、危机升级、高光和结尾悬念',
-        '每个节拍都要求可见动作和可见赌注，减少抽象空镜',
-        '每个节拍提供观众检查点和视觉接力棒，用来约束相邻片段衔接',
+        '模型逐镜计划是唯一叙事事实源',
+        '节拍 artifact 只索引模型镜头，不补写剧情',
+        '相邻镜头只保存真实尾态、目标首态和媒体血缘',
       ],
     },
     duration: productionProject.duration,
@@ -289,39 +179,46 @@ export function buildTrailerBeatSheet(productionProject: ProductionProject): Tra
   };
 }
 
-function bridgeAction(project: ProductionProject, index: number) {
-  const subject = project.storyBible.protagonist;
-  const prop = primaryPropName(project);
-  const verbs = ['看见', '拿起', '按下', '推开', '冲向', '停住', '回头'];
-  return `${subject}${verbs[index % verbs.length]}${prop}，动作必须在本段开头或结尾被镜头明确捕捉。`;
+function bridgeAction(
+  project: ProductionProject,
+  shot: ProductionProject['storyboard']['shots'][number],
+) {
+  if (shot.motionDescription?.trim()) return shot.motionDescription.trim();
+  if (shot.actionStart?.trim() || shot.actionEnd?.trim()) {
+    return `从“${shot.actionStart || '本镜起始状态'}”推进到“${shot.actionEnd || '本镜结束状态'}”。`;
+  }
+  return `${project.storyBible.protagonist}完成本镜计划动作：${shot.prompt}`;
 }
 
-function previousFrameMemory(project: ProductionProject, index: number, previous?: ProductionProject['storyboard']['shots'][number]) {
+function previousFrameMemory(project: ProductionProject, shot: ProductionProject['storyboard']['shots'][number], previous?: ProductionProject['storyboard']['shots'][number]) {
   const subject = project.storyBible.protagonist;
   const prop = primaryPropName(project);
-  const scene = sceneName(project);
+  const scene = sceneName(project, shot);
   if (!previous) {
     return `第一段开头必须清楚建立${subject}在${scene}与${prop}的空间关系。`;
   }
-  return `复现上一段最后一帧的三件事：${subject}的身体朝向、${prop}的位置或屏幕内容、${scene}中的危险标识。`;
+  return previous.lastFrameDescription?.trim()
+    || previous.actionEnd?.trim()
+    || `复现镜头${previous.index}的真实尾帧，再推进本镜计划。`;
 }
 
-function nextFrameTrigger(project: ProductionProject, index: number, next?: ProductionProject['storyboard']['shots'][number]) {
-  const subject = project.storyBible.protagonist;
-  const prop = primaryPropName(project);
+function nextFrameTrigger(project: ProductionProject, next?: ProductionProject['storyboard']['shots'][number]) {
   if (!next) {
-    return `最后一段收在${prop}的新状态和${subject}的结果反应上，不突然换到无关画面。`;
+    return `最后一段收在 Story Bible 的结尾钩子：${project.storyBible.endingHook}`;
   }
-  return `结尾留给下一段的触发点：${subject}的视线、手部动作或${prop}状态变化必须指向镜头${next.index}。`;
+  return next.firstFrameDescription?.trim()
+    || next.actionStart?.trim()
+    || `结尾必须自然连接镜头${next.index}：${next.prompt}`;
 }
 
 export function buildSegmentBridgePlan(productionProject: ProductionProject, trailerBeatSheet = buildTrailerBeatSheet(productionProject)): SegmentBridgePlan {
   const subject = productionProject.storyBible.protagonist;
   const prop = primaryPropName(productionProject);
-  const scene = sceneName(productionProject);
   const bridges = productionProject.storyboard.shots.map((shot, index) => {
     const previous = productionProject.storyboard.shots[index - 1];
     const next = productionProject.storyboard.shots[index + 1];
+    const scene = sceneName(productionProject, shot);
+    const previousScene = previous ? sceneName(productionProject, previous) : scene;
     const currentBeat = trailerBeatSheet.beats.find(beat => beat.shotIds.includes(shot.id))
       || trailerBeatSheet.beats[Math.min(index, trailerBeatSheet.beats.length - 1)];
     const nextBeat = next
@@ -334,20 +231,26 @@ export function buildSegmentBridgePlan(productionProject: ProductionProject, tra
       shotId: shot.id,
       fromBeat: currentBeat.label,
       toBeat: nextBeat.label,
-      entryState: previous
-        ? `承接上一段末尾：${subject}仍在${scene}，${prop}的位置、屏幕内容或手部动作保持连续；先复现上一段最后状态再推进。`
-        : `开场建立${subject}、${scene}和${prop}的空间关系，观众必须在前2秒知道谁在哪里、面对什么。`,
-      exitState: next
-        ? `结尾留下下一段能接住的状态：${subject}的视线、手部动作或${prop}状态变化指向${nextBeat.label}。`
-        : `结尾只给悬念边缘：${prop}状态改变，${subject}有结果反应，但不解释完整结局。`,
-      bridgeAction: bridgeAction(productionProject, index),
+      entryState: shot.firstFrameDescription?.trim()
+        || shot.actionStart?.trim()
+        || (previous
+          ? `承接镜头${previous.index}在${previousScene}的真实尾帧，再进入${scene}。`
+          : `开场建立${subject}、${scene}和${prop}的空间关系。`),
+      exitState: shot.lastFrameDescription?.trim()
+        || shot.actionEnd?.trim()
+        || (next
+          ? `结尾保留能接入镜头${next.index}的稳定状态。`
+          : `结尾呈现${productionProject.storyBible.endingHook}`),
+      bridgeAction: bridgeAction(productionProject, shot),
       editBridge: previous
-        ? '剪辑上使用动作匹配或道具状态匹配，禁止无原因换人、换景、换道具。'
+        ? previousScene === scene
+          ? '从上一段真实尾帧继续同一动作，保持主体、道具和运动方向。'
+          : `本镜负责完成从${previousScene}到${scene}的空间过渡，尾帧必须已经落在${scene}。`
         : '剪辑上先用稳定开场建立主角、场景和道具，后续段落按同一空间继续。',
-      previousFrameMemory: previousFrameMemory(productionProject, index, previous),
-      nextFrameTrigger: nextFrameTrigger(productionProject, index, next),
+      previousFrameMemory: previousFrameMemory(productionProject, shot, previous),
+      nextFrameTrigger: nextFrameTrigger(productionProject, next),
       viewerCheckpoint: currentBeat.viewerCheckpoint,
-      continuityCheck: `主角=${subject}；场景=${scene}；关键道具=${prop}；下一段必须继承这三个锚点。`,
+      continuityCheck: `主角=${subject}；当前场景=${scene}；关键道具=${prop}；动作终点=${shot.actionEnd || '按本镜计划验收'}。`,
     };
   });
 
@@ -376,9 +279,13 @@ function bridgePromptForBoundary(
 ) {
   const subject = project.storyBible.protagonist;
   const prop = primaryPropName(project);
-  const scene = sceneName(project);
+  const previousScene = sceneName(project, previous);
+  const nextScene = sceneName(project, next);
   return [
-    `边界桥接 ${previous.index}->${next.index}：从上一段尾帧出发，保持${subject}、${scene}、${prop}三项视觉锚点不变。`,
+    `边界桥接 ${previous.index}->${next.index}：从上一段真实尾帧出发，保持${subject}和${prop}的身份状态连续。`,
+    previousScene === nextScene
+      ? `场景保持${previousScene}。`
+      : `空间从${previousScene}过渡到${nextScene}，不得把${nextScene}误写成${previousScene}。`,
     `上一段出口：${previousBridge.exitState}`,
     `下一段入口：${nextBridge.entryState}`,
     `桥接动作：${previousBridge.nextFrameTrigger}；${nextBridge.bridgeAction}`,

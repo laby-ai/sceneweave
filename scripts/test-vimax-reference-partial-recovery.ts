@@ -19,7 +19,7 @@ globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) =
   prompts.push(prompt);
   try {
     await new Promise(resolve => setTimeout(resolve, 5));
-    if (failSecondShot && /镜头身份：Clip 2/.test(prompt)) {
+    if (failSecondShot && /林夏伸手拾起发光胶片/.test(prompt)) {
       failSecondShot = false;
       return new Response(JSON.stringify({ error: { code: 'fixture_rejected' } }), {
         status: 422,
@@ -101,7 +101,7 @@ async function main() {
     assert.deepEqual(second.failedShotIndices, []);
     assert.deepEqual(second.assets.filter(asset => asset.kind === 'shot').map(asset => asset.shotIndex), [1, 2]);
     assert.equal(prompts.length - callsAfterFirst, 1, 'retry must call only the missing shot');
-    assert.match(prompts.at(-1) || '', /镜头身份：Clip 2/);
+    assert.match(prompts.at(-1) || '', /林夏伸手拾起发光胶片/);
     assert.equal(maxInFlight, 1, 'reference generation must respect single-concurrency BYOK quotas');
 
     console.log(JSON.stringify({

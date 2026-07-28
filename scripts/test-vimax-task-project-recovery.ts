@@ -193,6 +193,13 @@ assert.equal(
   true,
   'a recoverable task without a delivered video must keep task-backed controls available',
 );
+assert.equal(
+  shouldMountVimaxTaskBackedControls({
+    generationStatus: 'failed',
+  }),
+  true,
+  'a locally invalidated project must keep its task-backed editor available after refresh',
+);
 assert.match(
   readFileSync('src/components/generate/generate-workspace.tsx', 'utf8'),
   /shouldMountVimaxTaskBackedControls\(message\)/,

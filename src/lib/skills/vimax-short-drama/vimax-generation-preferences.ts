@@ -34,6 +34,7 @@ export function resolveVimaxGenerationSettings(input: VimaxGenerationSettingsInp
 }
 
 interface VimaxPlanRequestInput {
+  requestId?: string;
   prompt: string;
   duration: number;
   segmentDuration?: number;
@@ -43,11 +44,14 @@ interface VimaxPlanRequestInput {
   sceneType?: string;
   settings: VimaxGenerationSettings;
   referenceIds?: string[];
+  projectId?: string;
+  projectAttachmentIds?: string[];
 }
 
 export function buildVimaxPlanRequest(input: VimaxPlanRequestInput) {
   return {
     phase: 'plan' as const,
+    ...(input.requestId ? { requestId: input.requestId } : {}),
     prompt: input.prompt,
     duration: input.duration,
     ...(input.segmentDuration ? { segmentDuration: input.segmentDuration } : {}),
@@ -60,5 +64,7 @@ export function buildVimaxPlanRequest(input: VimaxPlanRequestInput) {
     resolution: input.settings.resolution,
     stream: true,
     ...(input.referenceIds?.length ? { referenceIds: input.referenceIds } : {}),
+    ...(input.projectId ? { projectId: input.projectId } : {}),
+    ...(input.projectAttachmentIds?.length ? { projectAttachmentIds: input.projectAttachmentIds } : {}),
   };
 }

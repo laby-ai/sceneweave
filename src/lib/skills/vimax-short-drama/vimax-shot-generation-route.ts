@@ -2,9 +2,11 @@ import type { VimaxAgentPlan } from './vimax-agent-contract';
 
 export type VimaxShotHandoffIntent = 'strict-frame' | 'reference-flexible';
 export type VimaxContinuityPriority = 'action' | 'screen-direction' | 'subject' | 'scene' | 'prop';
+export type VimaxShotBoundaryIntent = 'establish' | 'continue' | 'bridge' | 'cut';
 
 export interface VimaxShotGenerationRoute {
   mode: 'first-frame' | 'multi-reference' | 'text-only';
+  boundaryIntent: VimaxShotBoundaryIntent;
   requestedBy: 'planner' | 'server-default';
   reason: string;
   model: string;
@@ -41,7 +43,8 @@ export function resolveVimaxShotGenerationRoutes(input: RouteInput): VimaxShotGe
         ? shot.handoffIntent === 'strict-frame'
         : false);
       return {
-        mode: strictFrame ? 'first-frame' : 'multi-reference',
+        mode: happyHorse ? 'first-frame' : strictFrame ? 'first-frame' : 'multi-reference',
+        boundaryIntent: index === 0 ? 'establish' : strictFrame ? 'continue' : 'cut',
         requestedBy: index === 0 || !hasPlannerIntent ? 'server-default' : 'planner',
         reason: index === 0
           ? '第一镜没有上一镜尾帧，使用已批准参考素材建立主体与场景。'
@@ -49,11 +52,9 @@ export function resolveVimaxShotGenerationRoutes(input: RouteInput): VimaxShotGe
             || (strictFrame
               ? '同一动作或空间需要从上一镜尾帧继续。'
               : '允许换景或换机位，以批准参考素材保持主体和美术设定。'),
-        model: happyHorse
-          ? strictFrame ? 'happyhorse-1.1-i2v' : 'happyhorse-1.1-r2v'
-          : input.configuredModel,
+        model: happyHorse ? 'happyhorse-1.1-i2v' : input.configuredModel,
         requiresPreviousLastFrame: strictFrame,
-        canonicalFirstFrameRequired: false,
+        canonicalFirstFrameRequired: happyHorse && !strictFrame,
         referenceRoles: strictFrame
           ? ['previous-tail']
           : ['subject', 'scene', 'prop', 'previous-tail'],
@@ -67,12 +68,18 @@ export function resolveVimaxShotGenerationRoutes(input: RouteInput): VimaxShotGe
     );
     const semanticContinuous = shot.spatialRelation === 'same-scene'
       && shot.temporalRelation === 'continuous';
-    const semanticReset = shot.spatialRelation === 'new-scene'
-      || shot.temporalRelation === 'time-jump'
-      || shot.temporalRelation === 'elapsed';
-    const contradictoryRelation = (
-      shot.spatialRelation === 'new-scene' && shot.temporalRelation === 'continuous'
-    );
+    const semanticBridge = shot.spatialRelation === 'new-scene'
+      && shot.temporalRelation === 'continuous';
+    const semanticCut = shot.temporalRelation === 'time-jump'
+      || shot.temporalRelation === 'elapsed'
+      || (shot.spatialRelation === 'new-scene' && shot.temporalRelation !== 'continuous');
+    const boundaryIntent: VimaxShotBoundaryIntent = index === 0
+      ? 'establish'
+      : semanticContinuous
+        ? 'continue'
+        : semanticBridge
+          ? 'bridge'
+          : 'cut';
     const continuousSceneMismatch = index > 0
       && semanticContinuous
       && (
@@ -83,7 +90,7 @@ export function resolveVimaxShotGenerationRoutes(input: RouteInput): VimaxShotGe
     const previousActionEnd = normalizeBoundaryState(previousShot?.actionEnd);
     const currentActionStart = normalizeBoundaryState(shot.actionStart);
     const continuousActionMismatch = index > 0
-      && semanticContinuous
+      && (semanticContinuous || semanticBridge)
       && (
         !previousActionEnd
         || !currentActionStart
@@ -91,41 +98,38 @@ export function resolveVimaxShotGenerationRoutes(input: RouteInput): VimaxShotGe
       );
     const plannerConflicts = shot.conflictFlags?.filter(Boolean) || [];
     const requiresConfirmation = !hasSemanticRoute
-      || (!semanticContinuous && !semanticReset)
+      || (!semanticContinuous && !semanticBridge && !semanticCut)
       || shot.routeConfidence !== 'high'
-      || contradictoryRelation
       || continuousSceneMismatch
       || continuousActionMismatch
       || plannerConflicts.length > 0;
-    const strictFrame = index > 0 && semanticContinuous;
-    const explicitTextOnly = happyHorse && input.configuredModel === 'happyhorse-1.1-t2v';
+    const requiresPreviousTail = index > 0 && (semanticContinuous || semanticBridge);
+    const canonicalFirstFrameRequired = happyHorse && !requiresPreviousTail;
 
     return {
-      mode: explicitTextOnly ? 'text-only' : strictFrame ? 'first-frame' : 'multi-reference',
+      mode: happyHorse ? 'first-frame' : requiresPreviousTail ? 'first-frame' : 'multi-reference',
+      boundaryIntent,
       requestedBy: index === 0 ? 'server-default' : 'planner',
       reason: index === 0
-        ? '第一镜没有上一镜尾帧，使用已批准参考素材建立主体与场景。'
-        : strictFrame
-          ? '同一场景中的连续动作必须从上一镜真实尾帧继续。'
-          : '换景或时间推进使用已批准主体、场景和道具参考重新建立镜头。',
-      model: happyHorse && !explicitTextOnly
-        ? strictFrame ? 'happyhorse-1.1-i2v' : 'happyhorse-1.1-r2v'
-        : input.configuredModel,
-      requiresPreviousLastFrame: strictFrame,
-      canonicalFirstFrameRequired: false,
-      referenceRoles: explicitTextOnly
-        ? []
-        : strictFrame
+        ? '第一镜先由批准素材编译权威首帧，再统一进入图生视频。'
+        : semanticContinuous
+          ? '同一场景中的连续动作从上一镜真实尾帧继续。'
+          : semanticBridge
+            ? '连续跨越空间边界，从上一镜真实尾帧完成过门动作并落到下一场景。'
+            : '明确换景或时间推进，先编译新场景权威首帧再进入图生视频。',
+      model: happyHorse ? 'happyhorse-1.1-i2v' : input.configuredModel,
+      requiresPreviousLastFrame: requiresPreviousTail,
+      canonicalFirstFrameRequired,
+      referenceRoles: requiresPreviousTail
         ? ['previous-tail']
         : ['subject', 'scene', 'prop'],
       requiresConfirmation,
       confirmationReason: requiresConfirmation
         ? [
           !hasSemanticRoute ? '当前项目缺少新版镜头时空与置信度合同。' : '',
-          !semanticContinuous && !semanticReset ? '镜头时空关系无法映射到受支持的生成路线。' : '',
+          !semanticContinuous && !semanticBridge && !semanticCut ? '镜头时空关系无法映射到受支持的生成路线。' : '',
           shot.routeConfidence === 'medium' ? '规划模型对镜头衔接判断为中置信度。' : '',
           shot.routeConfidence === 'low' ? '规划模型对镜头衔接判断为低置信度。' : '',
-          contradictoryRelation ? '换景与连续时间要求互相冲突。' : '',
           continuousSceneMismatch ? '连续镜头的场景 ID 不一致或缺失。' : '',
           continuousActionMismatch ? '连续镜头的动作边界没有逐字承接上一镜尾态。' : '',
           ...plannerConflicts,

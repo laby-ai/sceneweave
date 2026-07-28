@@ -156,12 +156,19 @@ async function main() {
     assert.match(content[2]?.text || '', /图2是角色「林夏」/);
 
     const route = await readFile(path.join(process.cwd(), 'src/app/api/smart/vimax-agent-step/route.ts'), 'utf8');
+    const planEnvelope = await readFile(
+      path.join(process.cwd(), 'src/lib/skills/vimax-short-drama/vimax-plan-envelope.ts'),
+      'utf8',
+    );
     const workspace = await readFile(path.join(process.cwd(), 'src/components/generate/generate-workspace.tsx'), 'utf8');
-    assert.match(route, /referenceIds:\s*normalizeVimaxInitialReferenceIds\(body\.referenceIds\)/);
+    assert.match(planEnvelope, /referenceIds:\s*normalizeVimaxInitialReferenceIds\(input\.body\.referenceIds\)/);
+    assert.match(planEnvelope, /projectAttachmentIds:\s*normalizeVimaxProjectAttachmentIds/);
     assert.match(route, /appendVimaxInitialReferenceContext\(prompt,\s*initialReferenceRecords\)/);
+    assert.match(route, /appendVimaxProjectAttachmentContext\(subjectPrompt,\s*owner,\s*projectAttachments\)/);
     assert.match(route, /initialReferenceAssets,/);
-    assert.match(workspace, /referenceIds:\s*selectedReferences\.map/);
-    assert.match(workspace, /aria-label="上传参考图"/);
+    assert.match(workspace, /projectAttachmentIds:\s*selectedReferences/);
+    assert.match(workspace, /aria-label="添加项目素材"/);
+    assert.doesNotMatch(workspace, /clientApiFetch<[^>]+>\('\/api\/subjects'/);
     assert.doesNotMatch(workspace, /title="上传参考"\s+type="button">\s*<Plus/);
   } finally {
     await rm(root, { recursive: true, force: true });

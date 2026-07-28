@@ -89,13 +89,13 @@ export function VimaxProjectHome({
         <div data-testid="creation-agent-brand-mark" className="mb-2 flex items-center gap-2 rounded-full border border-white/15 bg-[#0c1320]/90 px-3 py-1.5 text-xs font-medium text-[#78a2ff] shadow-[0_10px_30px_rgba(0,0,0,0.24)] backdrop-blur-xl">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={withBasePath('/brand/huiying-logo-icon.png')} alt="" className="h-5 w-5 object-contain" />
-          创作智能体
+          绘影短剧
         </div>
         <h1 className="text-center text-[28px] font-semibold text-white [text-shadow:0_2px_18px_rgba(0,0,0,0.8)] sm:text-[32px]">
-          你好，想创作什么？
+          把故事讲给绘影
         </h1>
         <p className="mt-2 text-center text-sm leading-6 text-slate-300 [text-shadow:0_1px_12px_rgba(0,0,0,0.85)]">
-          输入想法、脚本或参考资料，从创意规划到分镜、素材与成片持续推进。
+          写下一段故事、粘贴剧本，或上传参考素材。绘影会先和你确认，再开始制作。
         </p>
         <div className="mt-6 w-full">{composer}</div>
 

@@ -20,6 +20,7 @@ interface TaskResponse {
     status?: string;
     progress?: number;
     stage?: string;
+    error?: string;
     result?: VimaxSegmentedProductionTaskResult;
   };
 }
@@ -89,6 +90,7 @@ export function VimaxSegmentedProductionCard({
             status: child.task?.status,
             progress: child.task?.progress,
             stage: child.task?.stage,
+            error: child.task?.error,
           }];
         })));
       setView(buildVimaxSegmentedProductionView(taskId, response.task?.result, snapshots));
@@ -100,6 +102,15 @@ export function VimaxSegmentedProductionCard({
   }, [requestHeaders, taskId]);
 
   useEffect(() => { void refresh(); }, [refresh]);
+
+  useEffect(() => {
+    const handleProjectUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ taskId?: string }>).detail;
+      if (detail?.taskId === taskId) void refresh();
+    };
+    window.addEventListener('huiying-vimax-project-updated', handleProjectUpdated);
+    return () => window.removeEventListener('huiying-vimax-project-updated', handleProjectUpdated);
+  }, [refresh, taskId]);
 
   const streamTargetKey = view?.segments
     .filter(segment => segment.taskId && (segment.status === 'queued' || segment.status === 'running'))
@@ -190,13 +201,13 @@ export function VimaxSegmentedProductionCard({
       {view?.segments.length ? (
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
           {view.segments.map(segment => (
-            <div key={segment.index} className="rounded-lg border border-[#e3e7ed] bg-white px-3 py-2 text-xs">
+            <div key={segment.index} data-testid={`vimax-segment-${segment.index + 1}`} className="rounded-lg border border-[#e3e7ed] bg-white px-3 py-2 text-xs">
               <div className="flex items-center gap-2">
                 <span className="font-medium text-[#3a414b]">{segment.title}</span>
                 <span className="text-[#9299a4]">{segment.duration}s</span>
                 <span className="ml-auto text-[#68717d]">{SEGMENT_STATUS[segment.status] || segment.status}</span>
               </div>
-              {segment.stage || segment.status === 'queued' || segment.status === 'running' ? (
+              {segment.stage || (segment.taskId && (segment.status === 'queued' || segment.status === 'running')) ? (
                 <div className="mt-2">
                   <div className="flex items-center justify-between text-[11px] text-[#7d8590]">
                     <span>{segment.stage || '正在同步任务阶段'}</span>

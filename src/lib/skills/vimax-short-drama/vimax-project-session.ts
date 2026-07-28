@@ -19,9 +19,10 @@ interface BeginVimaxRunInput {
 
 export interface VimaxRunCoordinator {
   begin(input: BeginVimaxRunInput): VimaxRunToken;
+  current(): VimaxRunToken | null;
   isCurrent(token: VimaxRunToken): boolean;
   finish(token: VimaxRunToken): boolean;
-  cancel(): VimaxRunToken | null;
+  cancel(options?: { abort?: boolean }): VimaxRunToken | null;
 }
 
 export const VIMAX_REFERENCE_REQUEST_TIMEOUT_MS = 300_000;
@@ -52,11 +53,11 @@ export function createVimaxRunCoordinator(
 ): VimaxRunCoordinator {
   let active: { token: VimaxRunToken; controller: AbortController; timeout: ReturnType<typeof setTimeout> } | null = null;
 
-  const cancel = () => {
+  const cancel = (options: { abort?: boolean } = {}) => {
     if (!active) return null;
     const cancelled = active.token;
     clearTimeout(active.timeout);
-    active.controller.abort();
+    if (options.abort !== false) active.controller.abort();
     active = null;
     return cancelled;
   };
@@ -79,6 +80,9 @@ export function createVimaxRunCoordinator(
       };
       return token;
     },
+    current() {
+      return active?.token || null;
+    },
     isCurrent(token) {
       return active?.token.requestId === token.requestId;
     },
@@ -95,6 +99,22 @@ export function createVimaxRunCoordinator(
 export function recoverVimaxProjectMessages(messages: ChatMessage[]): ChatMessage[] {
   return messages.map(message => {
     if (message.generationStatus !== 'generating') return message;
+    if (message.vimaxAgent?.phase === 'reference_assets' && message.vimaxAgent.referenceTaskId) {
+      return {
+        ...message,
+        content: `${message.content}\n页面已恢复，可继续查看同一批参考图；不会重新提交模型任务。`,
+        generationStatus: 'failed',
+        quickOptions: ['继续查看参考图', '取消参考图'],
+      };
+    }
+    if (message.vimaxAgent?.phase === 'video' && message.vimaxAgent.videoTaskId) {
+      return {
+        ...message,
+        content: `${message.content}\n页面已恢复，可继续查看同一成片任务；不会重新提交视频模型或合成任务。`,
+        generationStatus: 'failed',
+        quickOptions: ['继续查看成片', '取消成片'],
+      };
+    }
     return {
       ...message,
       content: `${message.content}\n页面刷新后，本次连接已中断；已保留当前阶段，可重新生成。`,

@@ -8,6 +8,8 @@ import path from 'node:path';
 
 import { chromium } from '@playwright/test';
 
+import type { ProductionAssemblyPlan } from '../src/lib/production-assembly-plan';
+
 const port = 5395;
 const accountPort = 5394;
 const origin = `http://127.0.0.1:${port}`;
@@ -46,7 +48,7 @@ const accountServer = createServer((request, response) => {
   if (request.url === '/v1/me/provider-key-profile') {
     return json(response, 200, {
       profile: {
-        configured: false,
+        configured: true,
         text_model: 'qwen3.7-plus',
         image_model: 'wan2.7-image-pro',
         tts_model: 'qwen-audio-3.0-tts-plus',
@@ -131,7 +133,10 @@ async function main() {
     stage: '片段已完成',
     result: { videoUrl: '/huiying/api/final-videos/completed-fixture' },
   });
-  failTask(failedChildTaskId, 'fixture_provider_timeout');
+  failTask(
+    failedChildTaskId,
+    '这一镜的结尾还未自然进入下一幕，已保留现有结果并准备仅重做当前镜头。确认后只会重做这一镜。 [bridge-tail-revision-ready]',
+  );
 
   const built = buildProductionBackedVimaxPlan(plan.summary, plan, {
     phase: 'video',
@@ -201,7 +206,7 @@ async function main() {
             duration: 5,
             prompt: plan.shots[1].prompt,
             status: 'failed',
-            error: 'fixture_provider_timeout',
+            error: '这一镜的结尾还未自然进入下一幕，已保留现有结果并准备仅重做当前镜头。确认后只会重做这一镜。 [bridge-tail-revision-ready]',
             expectedInputs: {
               firstFrameUrl: '/huiying/api/final-videos/completed-fixture/tail',
               previousLastFrameUrl: '/huiying/api/final-videos/completed-fixture/tail',
@@ -214,6 +219,32 @@ async function main() {
               videoUrl: null,
               lastFrameUrl: null,
               providerTaskId: 'fixture-failed-provider-task',
+              bridgeTailAcceptance: {
+                version: 'sceneweave-bridge-tail-acceptance-v1',
+                status: 'rejected',
+                reviewer: 'fixture',
+                reviewModel: null,
+                checkedAt: new Date(0).toISOString(),
+                observedEndState: '记者仍停留在雨夜天台。',
+                plannedStartState: '记者握住录音笔走向楼梯。',
+                plannedEndState: '记者进入楼梯间并关上天台门。',
+                nextPlannedStartState: '记者站在楼梯间继续追踪。',
+                sceneId: 'scene-stairwell',
+                actionPhase: '从天台进入楼梯间',
+                anchors: ['记者', '蓝色风衣', '录音笔'],
+                reviewNotes: ['仍停留在天台', '尚未进入楼梯间'],
+                revisionInstruction: [
+                  '只重做当前过门镜头，不改变前后镜头的剧情、人物身份和既有动作因果。',
+                  '真实尾态：记者仍停留在雨夜天台。',
+                  '目标尾态：记者进入楼梯间并关上天台门。',
+                  '下一镜起始：记者站在楼梯间继续追踪。',
+                  '保持锚点：记者、蓝色风衣、录音笔',
+                  '本次需要修正：仍停留在天台；尚未进入楼梯间',
+                ].join('\n'),
+                blockers: ['still-outside-target-scene', 'bridge-action-incomplete'],
+                canUpdateCanon: false,
+                canStartNextSegment: false,
+              },
             },
           },
         ],
@@ -262,19 +293,31 @@ async function main() {
     app.stderr?.on('data', chunk => appOutput.push(String(chunk)));
     await waitForHealth();
 
-    const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const viewportWidth = Number(process.env.QA_VIEWPORT_WIDTH || 1280);
+    const viewportHeight = viewportWidth <= 390 ? 844 : 900;
+    const context = await browser.newContext({ viewport: { width: viewportWidth, height: viewportHeight } });
     await context.addCookies([{ name: 'huiying_account_token', value: fixtureToken, url: origin }]);
     await context.addInitScript(token => localStorage.setItem('account_entitlement_token', token), fixtureToken);
     const page = await context.newPage();
     const errors: string[] = [];
+    const requestFailures: Array<{ error: string; url: string }> = [];
     const failedResponses: Array<{ status: number; url: string }> = [];
     let retryRequests = 0;
     let cancelRequests = 0;
     let providerRequests = 0;
     page.on('console', message => {
-      if (message.type() === 'error') errors.push(message.text());
+      if (message.type() === 'error') {
+        const location = message.location();
+        errors.push(`${message.text()}${location.url ? ` @ ${location.url}` : ''}`);
+      }
     });
     page.on('pageerror', error => errors.push(error.message));
+    page.on('requestfailed', request => {
+      requestFailures.push({
+        error: request.failure()?.errorText || 'unknown',
+        url: request.url(),
+      });
+    });
     page.on('response', response => {
       if (response.status() >= 400) failedResponses.push({ status: response.status(), url: response.url() });
     });
@@ -294,6 +337,9 @@ async function main() {
     await card.getByText('已完成', { exact: true }).waitFor({ state: 'visible' });
     await card.getByText('片段 2', { exact: true }).waitFor({ state: 'visible' });
     await card.getByText('失败', { exact: true }).waitFor({ state: 'visible' });
+    await card.getByText('这一镜的结尾还没有自然进入下一幕。系统已根据实际画面准备调整，确认后只会重做这一镜。').waitFor({ state: 'visible' });
+    const screenshotPath = path.join(process.cwd(), 'outputs', `bridge-tail-rejection-browser-${viewportWidth}.png`);
+    await page.screenshot({ path: screenshotPath, fullPage: true });
 
     const retryButton = card.getByRole('button', { name: '仅重试此片段', exact: true });
     await retryButton.click();
@@ -312,7 +358,7 @@ async function main() {
     const failedAfterRetry = getTaskFresh(failedChildTaskId);
     const completedAfterRetry = getTaskFresh(completedChildTaskId);
     const parentAfterRetry = getTaskFresh(parentTaskId);
-    const segments = parentAfterRetry?.result?.assemblyPlan?.segments || [];
+    const segments = (parentAfterRetry?.result?.assemblyPlan as ProductionAssemblyPlan | undefined)?.segments || [];
     assert.equal(failedAfterRetry?.status, 'pending');
     assert.equal(failedAfterRetry?.config.retryCount, 1);
     assert.equal(completedAfterRetry?.status, 'completed');
@@ -320,6 +366,9 @@ async function main() {
     assert.equal(segments[0]?.expectedOutputs?.videoUrl, '/huiying/api/final-videos/completed-fixture');
     assert.equal(segments[1]?.status, 'queued');
     assert.equal(segments[1]?.expectedOutputs?.taskId, failedChildTaskId);
+    assert.match(segments[1]?.prompt || '', /【本次单镜修正】/);
+    assert.match(segments[1]?.prompt || '', /真实尾态：记者仍停留在雨夜天台/);
+    assert.equal(segments[1]?.expectedOutputs?.bridgeTailAcceptance, undefined);
     assert.equal(retryRequests, 1, 'refresh must not submit another retry request');
     assert.equal(providerRequests, 0, 'refresh must not call a provider');
 
@@ -371,7 +420,11 @@ async function main() {
       clientWidth: document.documentElement.clientWidth,
     }));
     assert(dimensions.scrollWidth <= dimensions.clientWidth + 1, 'segment recovery page has horizontal overflow');
-    assert.deepEqual(errors, [], `console errors: ${errors.join(' | ')}`);
+    assert.deepEqual(
+      errors,
+      [],
+      `console errors: ${errors.join(' | ')}; request failures: ${JSON.stringify(requestFailures)}`,
+    );
     assert.deepEqual(failedResponses, [], `failed responses: ${JSON.stringify(failedResponses)}`);
 
     console.log(JSON.stringify({
@@ -387,6 +440,8 @@ async function main() {
       cancelledSegmentRefreshed: true,
       cancelledSegmentRecovered: true,
       refreshedSameTask: true,
+      screenshotPath,
+      viewportWidth,
       usedRealKey: false,
       incurredCost: false,
     }, null, 2));

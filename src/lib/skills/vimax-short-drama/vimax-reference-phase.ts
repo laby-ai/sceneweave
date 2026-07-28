@@ -29,6 +29,7 @@ export interface VimaxReferencePhaseInput {
   planningConnection?: BYOKConnection;
   imageConnection?: BYOKConnection;
   initialReferenceAssets?: VimaxAgentReferenceAsset[];
+  signal?: AbortSignal;
   config: VimaxReferencePhaseConfig;
 }
 
@@ -60,6 +61,7 @@ export async function runVimaxReferenceAssetsPhase(input: VimaxReferencePhaseInp
       : [],
     existingSubjectRegistry: input.task.result?.vimaxSubjectReferenceRegistry as VimaxSubjectReferenceRegistry | undefined,
     initialReferenceAssets: input.initialReferenceAssets,
+    signal: input.signal,
   });
 
   if (!updateTask(input.task.id, {
